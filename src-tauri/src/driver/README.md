@@ -6,6 +6,7 @@ The `driver` subsystem implements the multi-engine database adapter abstraction 
 - Metadata catalog introspection into canonical domain models (`introspect_schema`).
 - Arbitrary SQL execution returning tabular serialized JSON values (`execute_query`).
 - Atomic transactional DDL migration batch execution with rollback on failure (`execute_ddl`).
+- Atomic transactional row mutation batches targeted by primary keys (`update_rows`).
 - Dialect identification (`db_type`).
 
 A centralized factory (`DriverFactory`) dynamically selects and initializes the appropriate driver adapter based on the user's `ConnectionConfig.db_type`.
@@ -66,6 +67,7 @@ Implemented by all engine driver adapters (`SqliteDriver`, `PostgresDriver`, `My
 | `introspect_schema` | `async fn introspect_schema(&self) -> Result<DatabaseSchema, AppError>` | Extracts tables, columns, primary keys, and foreign keys. |
 | `execute_query` | `async fn execute_query(&self, sql: &str) -> Result<QueryResult, AppError>` | Runs arbitrary SQL queries and returns column names and row values. |
 | `execute_ddl` | `async fn execute_ddl(&self, statements: &[String]) -> Result<MigrationReport, AppError>` | Sequentially applies DDL statements inside an atomic transaction. |
+| `update_rows` | `async fn update_rows(&self, updates: Vec<RowUpdatePayload>) -> Result<u64, AppError>` | Transactionally applies targeted row mutations with rollback on error. |
 | `db_type` | `fn db_type(&self) -> DatabaseType` | Returns the database engine dialect identifier (`Sqlite`, `Postgres`, etc.). |
 
 ---
@@ -163,6 +165,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ]).await?;
     println!("Applied migration in {} ms", migration_report.execution_time_ms);
 
+    // 4. Execute Transactional Row Mutation Batch
+    use std::collections::HashMap;
+    use dyno_db_modeler_lib::driver::RowUpdatePayload;
+
+    let mut pks = HashMap::new();
+    pks.insert("id".to_string(), serde_json::json!(1));
+    let mut values = HashMap::new();
+    values.insert("message".to_string(), serde_json::json!("Updated audit entry"));
+
+    let affected = pg_driver.update_rows(vec![
+        RowUpdatePayload::new("audit_logs", pks, values),
+    ]).await?;
+    println!("Mutated {} rows", affected);
+
     Ok(())
 }
 ```
@@ -176,3 +192,4 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 - **MSSQL Host Requirement**: Microsoft SQL Server requires a network host address. If `config.host` is `None` or blank, `DriverFactory::create` immediately produces `AppError::Config` before initiating TCP handshakes.
 - **Connection Acquisition Timeouts**: All networked driver pools enforce a 5-second connection acquisition timeout to avoid indefinite hanging during network failures.
 - **DDL Rollback Guarantee**: `execute_ddl` encloses all statements in explicit transactions (`BEGIN ... COMMIT`). If any statement triggers a syntax error or constraint violation, the transaction is immediately rolled back and an `AppError::Migration` is returned.
+- **Atomic Row Mutation Rollback**: `update_rows` executes all row mutations within an isolated transaction. If any update fails due to invalid column names, syntax errors, or check/foreign-key constraint violations, the entire transaction is rolled back immediately, ensuring no partial row updates remain committed.

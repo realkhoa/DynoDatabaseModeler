@@ -11,6 +11,7 @@ import type {
   DatabaseSchema,
   MigrationReport,
   QueryResult,
+  RowUpdatePayload,
   SchemaDiff,
 } from '../types/database';
 
@@ -88,4 +89,14 @@ export const api = {
   executeQuery: (sql: string): Promise<QueryResult> => {
     return invoke<QueryResult>('cmd_execute_query', { sql });
   },
+
+  /**
+   * @brief Executes transactional row mutations against the active database.
+   * @param updates List of row update payloads specifying tables, PKs, and modified column values.
+   * @return Promise resolving to total number of rows updated.
+   */
+  updateRows: (updates: RowUpdatePayload[]): Promise<number> => {
+    return invoke<number>('cmd_update_rows', { updates });
+  },
 };
+

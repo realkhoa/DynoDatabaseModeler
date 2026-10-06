@@ -5,7 +5,12 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { api } from './ipc';
-import type { ConnectionConfig, DatabaseSchema, SchemaDiff } from '../types/database';
+import type {
+  ConnectionConfig,
+  DatabaseSchema,
+  RowUpdatePayload,
+  SchemaDiff,
+} from '../types/database';
 
 // Mock Tauri core invoke function
 vi.mock('@tauri-apps/api/core', () => ({
@@ -148,4 +153,23 @@ describe('Tauri IPC client API', () => {
     expect(invoke).toHaveBeenCalledWith('cmd_execute_query', { sql });
     expect(result).toEqual(mockResult);
   });
+
+  /**
+   * @brief Verifies updateRows calls cmd_update_rows with row update payloads.
+   */
+  it('calls cmd_update_rows with updates payload', async () => {
+    const mockUpdates: RowUpdatePayload[] = [
+      {
+        table: 'users',
+        primary_keys: { id: 1 },
+        updated_values: { name: 'Alice Smith' },
+      },
+    ];
+    vi.mocked(invoke).mockResolvedValueOnce(1);
+
+    const result = await api.updateRows(mockUpdates);
+    expect(invoke).toHaveBeenCalledWith('cmd_update_rows', { updates: mockUpdates });
+    expect(result).toBe(1);
+  });
 });
+

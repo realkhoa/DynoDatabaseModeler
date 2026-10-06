@@ -213,6 +213,20 @@ export interface QueryResult {
 }
 
 /**
+ * @brief Transactional single-row mutation payload submitted to backend database driver.
+ * @details Identifies the target table, primary key locator mapping, and updated column-value pairs.
+ */
+export interface RowUpdatePayload {
+  /** @brief Name of the target table to update. */
+  table: string;
+  /** @brief Primary key column names mapped to their unique identifying values for the row. */
+  primary_keys: Record<string, any>;
+  /** @brief Modified column names mapped to their new desired values. */
+  updated_values: Record<string, any>;
+}
+
+
+/**
  * @brief Formats a CanonicalType variant into a human-readable display string.
  * @param dataType CanonicalType instance to format.
  * @return Human-readable data type label (e.g., 'VARCHAR(255)', 'DECIMAL(10,2)', 'INTEGER').

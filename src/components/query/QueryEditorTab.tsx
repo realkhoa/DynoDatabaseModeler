@@ -7,9 +7,12 @@
 
 import React, { useState, useRef, useCallback } from 'react';
 import Editor, { OnMount } from '@monaco-editor/react';
-import { Play, Loader2, AlertCircle, FileCode } from 'lucide-react';
+import { Play, Loader2, AlertCircle, FileCode, CheckCircle2, Eye, Download } from 'lucide-react';
 import { api } from '../../api/ipc';
-import type { ConnectionConfig, QueryResult } from '../../types/database';
+import type { ConnectionConfig, QueryResult, RowUpdatePayload } from '../../types/database';
+import { EditableDataGrid, EditableDataGridHandle } from './EditableDataGrid';
+import { ValueInspectorDrawer } from './ValueInspectorDrawer';
+import { ExportModal } from './ExportModal';
 
 /**
  * @brief Properties accepted by the QueryEditorTab component.
@@ -45,6 +48,33 @@ export function formatCellValue(val: unknown): React.ReactNode {
 }
 
 /**
+ * @brief Attempts to extract table name from a SELECT SQL query string.
+ * @param sql SQL statement string to analyze.
+ * @return Extracted table identifier or 'unknown'.
+ */
+export function extractTableNameFromSql(sql: string): string {
+  const match = sql.match(/\bfrom\s+([`"']?[a-zA-Z0-9_]+[`"']?\.)?([`"']?([a-zA-Z0-9_]+)[`"']?)/i);
+  if (match && match[3]) {
+    return match[3];
+  }
+  return 'unknown';
+}
+
+/**
+ * @brief Coordinates and metadata for the currently active/inspected tabular cell.
+ */
+interface SelectedCellState {
+  /** @brief Zero-based row index in dataset. */
+  rowIndex: number;
+  /** @brief Zero-based column index in dataset. */
+  colIndex: number;
+  /** @brief Column header name. */
+  columnName: string;
+  /** @brief Current effective value of the cell. */
+  value: any;
+}
+
+/**
  * @brief Interactive SQL Query Editor and results grid tab component.
  * @param props Component configuration properties.
  * @return Rendered QueryEditorTab React element.
@@ -57,11 +87,76 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
   const [query, setQuery] = useState(initialQuery);
   const [result, setResult] = useState<QueryResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedCell, setSelectedCell] = useState<SelectedCellState | null>(null);
+  const [isInspectorOpen, setIsInspectorOpen] = useState(false);
+  const [isExportOpen, setIsExportOpen] = useState(false);
+
+  const gridRef = useRef<EditableDataGridHandle | null>(null);
+
+  const detectedTableName = extractTableNameFromSql(query);
 
   // Keep latest query in ref for Monaco action callback
   const queryRef = useRef(query);
   queryRef.current = query;
+
+  /**
+   * @brief Handles cell selection in the results data grid.
+   * @param colName Column name.
+   * @param val Current cell value.
+   */
+  const handleCellSelect = useCallback(
+    (colName: string, val: any) => {
+      setSelectedCell((prev) => ({
+        columnName: colName,
+        value: val,
+        rowIndex: prev?.rowIndex ?? 0,
+        colIndex: prev?.colIndex ?? 0,
+      }));
+    },
+    []
+  );
+
+  /**
+   * @brief Captures full cell coordinate position on selection.
+   * @param pos Position and value metadata.
+   */
+  const handleCellPositionSelect = useCallback(
+    (pos: { rowIndex: number; colIndex: number; columnName: string; value: any }) => {
+      setSelectedCell(pos);
+    },
+    []
+  );
+
+  /**
+   * @brief Opens the Value Inspector Drawer for the selected cell or first cell by default.
+   */
+  const handleOpenInspector = useCallback(() => {
+    if (!selectedCell && result && result.rows.length > 0 && result.columns.length > 0) {
+      setSelectedCell({
+        rowIndex: 0,
+        colIndex: 0,
+        columnName: result.columns[0],
+        value: result.rows[0][0],
+      });
+    }
+    setIsInspectorOpen(true);
+  }, [result, selectedCell]);
+
+  /**
+   * @brief Applies modifications made in the inspector drawer back to the data grid.
+   * @param newValue Modified value from the drawer editor.
+   */
+  const handleApplyDrawerEdit = useCallback(
+    (newValue: any) => {
+      if (!selectedCell) return;
+      gridRef.current?.updateCell(selectedCell.rowIndex, selectedCell.colIndex, newValue);
+      setSelectedCell((prev) => (prev ? { ...prev, value: newValue } : null));
+    },
+    [selectedCell]
+  );
 
   /**
    * @brief Executes the current SQL statement string via Tauri IPC backend.
@@ -72,6 +167,7 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
 
     setIsLoading(true);
     setError(null);
+    setSaveStatus(null);
 
     try {
       const res = await api.executeQuery(sqlToRun);
@@ -87,6 +183,40 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
       setIsLoading(false);
     }
   }, [onQuerySuccess]);
+
+  /**
+   * @brief Persists batch row updates via backend Tauri IPC and refreshes current query results.
+   * @param updates List of row update payloads to commit transactionally.
+   */
+  const handleSave = useCallback(
+    async (updates: RowUpdatePayload[]) => {
+      setIsSaving(true);
+      setError(null);
+      setSaveStatus(null);
+
+      try {
+        const count = await api.updateRows(updates);
+        setSaveStatus(`Successfully saved ${count} row update(s)`);
+
+        // Refresh grid data by re-executing active query
+        const sqlToRun = queryRef.current.trim();
+        if (sqlToRun) {
+          const res = await api.executeQuery(sqlToRun);
+          setResult(res);
+          if (onQuerySuccess) {
+            onQuerySuccess(res);
+          }
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(msg || 'Failed to save changes');
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [onQuerySuccess]
+  );
+
 
   /**
    * @brief Configures Monaco Editor keyboard shortcuts on editor mount.
@@ -150,13 +280,40 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
         </div>
 
         {/* Execution Metadata Telemetry */}
-        {result && (
-          <div className="flex items-center space-x-2 text-[#8c919a] font-mono text-[11px]">
-            <span data-testid="row-count">{result.rows.length} rows returned</span>
-            <span>•</span>
-            <span data-testid="exec-duration">{result.execution_time_ms} ms</span>
-          </div>
-        )}
+        <div className="flex items-center space-x-3 text-[#8c919a] font-mono text-[11px]">
+          {result && (
+            <div className="flex items-center space-x-2">
+              <span data-testid="row-count">{result.rows.length} rows returned</span>
+              <span>•</span>
+              <span data-testid="exec-duration">{result.execution_time_ms} ms</span>
+            </div>
+          )}
+
+          {result && (
+            <button
+              type="button"
+              data-testid="inspect-value-btn"
+              onClick={handleOpenInspector}
+              className="flex items-center space-x-1.5 px-2.5 py-1 bg-[#26282d] hover:bg-[#35373c] text-[#e6e8ea] rounded border border-[#35373c] text-[11px] font-mono cursor-pointer transition-colors shadow-xs"
+              title="Inspect cell value in drawer"
+            >
+              <Eye className="w-3.5 h-3.5 text-[#3a82f7]" />
+              <span>Inspect Value</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            data-testid="export-data-btn"
+            onClick={() => setIsExportOpen(true)}
+            disabled={!result || result.rows.length === 0}
+            className="flex items-center space-x-1.5 px-2.5 py-1 bg-[#26282d] hover:bg-[#35373c] disabled:opacity-50 disabled:cursor-not-allowed text-[#e6e8ea] rounded border border-[#35373c] text-[11px] font-mono cursor-pointer transition-colors shadow-xs"
+            title="Export query results"
+          >
+            <Download className="w-3.5 h-3.5 text-[#3a82f7]" />
+            <span>Export Data</span>
+          </button>
+        </div>
       </div>
 
       {/* Editor Area */}
@@ -182,12 +339,12 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
       </div>
 
       {/* Results Table Grid Area */}
-      <div className="flex-1 overflow-auto bg-[#18191c] relative select-text">
+      <div className="flex-1 flex flex-col overflow-hidden bg-[#18191c] relative select-text">
         {/* Error Banner */}
         {error && (
           <div
             data-testid="query-error-banner"
-            className="p-3 m-3 bg-red-500/10 border border-red-500/30 rounded text-[#e05252] font-mono text-xs flex items-start gap-2 shadow-sm"
+            className="p-3 m-3 bg-red-500/10 border border-red-500/30 rounded text-[#e05252] font-mono text-xs flex items-start gap-2 shadow-sm shrink-0"
           >
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-400" />
             <div>
@@ -197,53 +354,59 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
           </div>
         )}
 
-        {/* Tabular Results Table */}
-        {result && !error && (
-          <div className="min-w-full inline-block align-middle">
-            <table className="w-full text-left border-collapse text-xs font-mono">
-              <thead>
-                <tr className="sticky top-0 bg-[#24262b] text-[#8c919a] border-b border-[#35373c] z-10 shadow-xs">
-                  {result.columns.map((col, cidx) => (
-                    <th
-                      key={`${col}-${cidx}`}
-                      className="px-3 py-1.5 font-semibold text-[11px] whitespace-nowrap border-r border-[#35373c]/50 last:border-r-0"
-                    >
-                      {col}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#2b2d30]">
-                {result.rows.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={result.columns.length || 1}
-                      className="px-3 py-6 text-center text-[#8c919a] italic"
-                    >
-                      (0 rows returned)
-                    </td>
-                  </tr>
-                ) : (
-                  result.rows.map((row, idx) => (
-                    <tr
-                      key={idx}
-                      className="border-b border-[#2b2d30] hover:bg-[#24262b] transition-colors"
-                    >
-                      {row.map((val, cidx) => (
-                        <td
-                          key={cidx}
-                          className="px-3 py-1.5 text-[11px] whitespace-nowrap max-w-[320px] truncate border-r border-[#2b2d30]/50 last:border-r-0"
-                        >
-                          {formatCellValue(val)}
-                        </td>
-                      ))}
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+        {/* Save Status Banner */}
+        {saveStatus && (
+          <div
+            data-testid="save-status-banner"
+            className="p-2.5 m-3 mb-0 bg-emerald-500/10 border border-emerald-500/30 rounded text-emerald-400 font-mono text-xs flex items-center justify-between shadow-sm shrink-0"
+          >
+            <div className="flex items-center space-x-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+              <span>{saveStatus}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSaveStatus(null)}
+              className="text-emerald-400/80 hover:text-emerald-200 cursor-pointer font-bold px-1"
+            >
+              ✕
+            </button>
           </div>
         )}
+
+        {/* Tabular Results Editable Data Grid */}
+        {result && !error && (
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <EditableDataGrid
+              ref={gridRef}
+              tableName={detectedTableName}
+              columns={result.columns}
+              rows={result.rows}
+              onSave={handleSave}
+              isSaving={isSaving}
+              onCellSelect={handleCellSelect}
+              onCellPositionSelect={handleCellPositionSelect}
+            />
+          </div>
+        )}
+
+        {/* Value Inspector Drawer */}
+        <ValueInspectorDrawer
+          isOpen={isInspectorOpen}
+          columnName={selectedCell?.columnName}
+          value={selectedCell?.value}
+          onClose={() => setIsInspectorOpen(false)}
+          onApplyEdit={handleApplyDrawerEdit}
+        />
+
+        {/* Export Data Wizard Modal */}
+        <ExportModal
+          isOpen={isExportOpen}
+          tableName={detectedTableName === 'unknown' ? 'exported_table' : detectedTableName}
+          columns={result?.columns ?? []}
+          rows={result?.rows ?? []}
+          onClose={() => setIsExportOpen(false)}
+        />
 
         {/* Empty / Initial Placeholder */}
         {!result && !error && !isLoading && (

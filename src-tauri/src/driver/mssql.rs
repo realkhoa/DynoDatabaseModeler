@@ -11,7 +11,7 @@ use tokio::sync::Mutex;
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 
 pub use super::parse_referential_action;
-use super::{DatabaseDriver, MigrationReport, QueryResult};
+use super::{DatabaseDriver, MigrationReport, QueryResult, RowUpdatePayload};
 use crate::error::AppError;
 use crate::model::connection::{ConnectionConfig, DatabaseType};
 use crate::model::schema::*;
@@ -296,10 +296,123 @@ impl DatabaseDriver for MssqlDriver {
         })
     }
 
+    /// @brief Executes a batch of row mutations transactionally against Microsoft SQL Server.
+    /// @details Initiates an explicit transaction (`BEGIN TRANSACTION`), constructs and executes
+    /// UPDATE statements with properly escaped identifiers and literal values, tracking affected rows.
+    /// If any statement encounters a database error, the transaction is immediately rolled back via
+    /// `IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION` and an `AppError::Database` is returned.
+    /// Upon complete execution of all mutations, the transaction is committed.
+    /// @param updates List of row update payloads specifying tables, PKs, and modified column values.
+    /// @return Returns the total count of rows affected across all updates, or AppError on rollback/failure.
+    async fn update_rows(&self, updates: Vec<RowUpdatePayload>) -> Result<u64, AppError> {
+        if updates.is_empty() {
+            return Ok(0);
+        }
+
+        let mut client = self.client.lock().await;
+
+        client
+            .execute("BEGIN TRANSACTION", &[])
+            .await
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        let mut total_affected = 0u64;
+
+        for update in &updates {
+            if update.updated_values.is_empty() {
+                continue;
+            }
+            if update.primary_keys.is_empty() {
+                let _ = client
+                    .execute("IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION", &[])
+                    .await;
+                return Err(AppError::Database(
+                    "Primary keys must not be empty for row mutation".to_string(),
+                ));
+            }
+
+            let mut set_clauses = Vec::with_capacity(update.updated_values.len());
+            for (col, val) in &update.updated_values {
+                set_clauses.push(format!("{} = {}", format_mssql_ident(col), format_mssql_val(val)));
+            }
+
+            let mut where_clauses = Vec::with_capacity(update.primary_keys.len());
+            for (pk_col, pk_val) in &update.primary_keys {
+                where_clauses.push(format!("{} = {}", format_mssql_ident(pk_col), format_mssql_val(pk_val)));
+            }
+
+            let table_ident = format_mssql_ident(&update.table);
+            let sql = format!(
+                "UPDATE {} SET {} WHERE {};",
+                table_ident,
+                set_clauses.join(", "),
+                where_clauses.join(" AND ")
+            );
+
+            match client.execute(&sql, &[]).await {
+                Ok(res) => {
+                    total_affected += res.total();
+                }
+                Err(e) => {
+                    let _ = client
+                        .execute("IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION", &[])
+                        .await;
+                    return Err(AppError::Database(format!(
+                        "Row update failed on table '{}': {}",
+                        update.table, e
+                    )));
+                }
+            }
+        }
+
+        client
+            .execute("COMMIT TRANSACTION", &[])
+            .await
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        Ok(total_affected)
+    }
+
     /// @brief Returns the database engine dialect for Microsoft SQL Server.
     /// @return Returns DatabaseType::Mssql.
     fn db_type(&self) -> DatabaseType {
         DatabaseType::Mssql
+    }
+}
+
+/// @brief Formats an identifier for Microsoft SQL Server square bracket quoting.
+/// @param ident Identifier string (table, column, or schema name).
+/// @return Properly quoted MSSQL identifier.
+fn format_mssql_ident(ident: &str) -> String {
+    if ident.contains('.') {
+        ident
+            .split('.')
+            .map(|part| format!("[{}]", part.replace(']', "]]")))
+            .collect::<Vec<_>>()
+            .join(".")
+    } else {
+        format!("[{}]", ident.replace(']', "]]"))
+    }
+}
+
+/// @brief Formats a serde_json::Value into a safe Microsoft SQL Server literal SQL fragment.
+/// @param val Reference to serde_json::Value to serialize.
+/// @return SQL literal string representation (N'escaped string', number, bit, or NULL).
+fn format_mssql_val(val: &serde_json::Value) -> String {
+    match val {
+        serde_json::Value::Null => "NULL".to_string(),
+        serde_json::Value::Bool(b) => {
+            if *b {
+                "1".to_string()
+            } else {
+                "0".to_string()
+            }
+        }
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::String(s) => format!("N'{}'", s.replace('\'', "''")),
+        serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
+            format!("N'{}'", val.to_string().replace('\'', "''"))
+        }
     }
 }
 
