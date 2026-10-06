@@ -5,7 +5,7 @@
  * mini-map navigation, canvas zoom/pan controls, and Dagre hierarchical auto-layout.
  */
 
-import React, { useMemo, useEffect, useCallback } from 'react';
+import React, { useMemo, useEffect, useCallback, useState, useRef } from 'react';
 import {
   ReactFlow,
   Controls,
@@ -24,7 +24,21 @@ import '@xyflow/react/dist/style.css';
 import { TableNode, TableNodeData } from './TableNode';
 import { DatabaseSchema, Point } from '../../types/database';
 import { layoutElements } from '../../utils/layout';
-import { LayoutGrid, Plus, GitCompare } from 'lucide-react';
+import {
+  LayoutGrid,
+  Plus,
+  GitCompare,
+  Download,
+  ChevronDown,
+  FileJson,
+  Image as ImageIcon,
+  FileCode,
+} from 'lucide-react';
+import {
+  exportSchemaAsJson,
+  exportErdAsSvg,
+  exportErdAsPng,
+} from '../../utils/export';
 
 /**
  * @brief Properties accepted by the ErdCanvas diagram component.
@@ -182,15 +196,92 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
     [onTablePositionChange]
   );
 
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isExportOpen, setIsExportOpen] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close export dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        exportMenuRef.current &&
+        !exportMenuRef.current.contains(event.target as unknown as globalThis.Node)
+      ) {
+        setIsExportOpen(false);
+      }
+    };
+    if (isExportOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [isExportOpen]);
+
+  /**
+   * @brief Exports the current database schema as a formatted JSON document file.
+   */
+  const handleExportJson = useCallback(() => {
+    setIsExportOpen(false);
+    exportSchemaAsJson(schema);
+  }, [schema]);
+
+  /**
+   * @brief Exports the ERD canvas as an SVG vector graphic.
+   */
+  const handleExportSvg = useCallback(() => {
+    setIsExportOpen(false);
+    const svgEl =
+      containerRef.current?.querySelector('svg.react-flow__edges') ||
+      containerRef.current?.querySelector('svg');
+    if (svgEl) {
+      exportErdAsSvg(
+        svgEl as SVGElement,
+        `${schema.database_name || 'schema'}-erd.svg`
+      );
+    } else {
+      const fallbackSvg = document.createElementNS(
+        'http://www.w3.org/2000/svg',
+        'svg'
+      );
+      fallbackSvg.setAttribute('width', '800');
+      fallbackSvg.setAttribute('height', '600');
+      exportErdAsSvg(
+        fallbackSvg,
+        `${schema.database_name || 'schema'}-erd.svg`
+      );
+    }
+  }, [schema]);
+
+  /**
+   * @brief Exports the ERD canvas as a PNG raster image.
+   */
+  const handleExportPng = useCallback(async () => {
+    setIsExportOpen(false);
+    if (containerRef.current) {
+      try {
+        await exportErdAsPng(
+          containerRef.current,
+          `${schema.database_name || 'schema'}-erd.png`
+        );
+      } catch (err: unknown) {
+        console.error('Failed to export PNG:', err);
+      }
+    }
+  }, [schema]);
+
   return (
-    <div className="w-full h-full relative bg-[#1e1f22] select-none">
+    <div
+      ref={containerRef}
+      className="w-full h-full relative bg-[#1e1f22] select-none"
+    >
       {/* Top Floating Control Bar */}
       <div className="absolute top-3 right-4 z-10 flex items-center space-x-2">
         {onAddNewTable && (
           <button
             type="button"
             onClick={onAddNewTable}
-            className="inline-flex items-center gap-1.5 bg-[#24262b] hover:bg-[#2e3138] text-[#e6e8ea] px-3 py-1.5 rounded text-xs border border-[#35373c] shadow-lg transition-colors font-medium"
+            className="inline-flex items-center gap-1.5 bg-[#24262b] hover:bg-[#2e3138] text-[#e6e8ea] px-3 py-1.5 rounded text-xs border border-[#35373c] shadow-lg transition-colors font-medium cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5 text-[#20c997]" />
             <span>Add Table</span>
@@ -201,7 +292,7 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
           <button
             type="button"
             onClick={onOpenDiff}
-            className="inline-flex items-center gap-1.5 bg-[#24262b] hover:bg-[#2e3138] text-[#e6e8ea] px-3 py-1.5 rounded text-xs border border-[#35373c] shadow-lg transition-colors font-medium"
+            className="inline-flex items-center gap-1.5 bg-[#24262b] hover:bg-[#2e3138] text-[#e6e8ea] px-3 py-1.5 rounded text-xs border border-[#35373c] shadow-lg transition-colors font-medium cursor-pointer"
             title="Review schema differences and synchronize migrations"
           >
             <GitCompare className="w-3.5 h-3.5 text-[#3a82f7]" />
@@ -220,12 +311,62 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
         <button
           type="button"
           onClick={handleAutoLayout}
-          className="inline-flex items-center gap-1.5 bg-[#24262b] hover:bg-[#2e3138] text-[#e6e8ea] px-3 py-1.5 rounded text-xs border border-[#35373c] shadow-lg transition-colors font-medium"
+          className="inline-flex items-center gap-1.5 bg-[#24262b] hover:bg-[#2e3138] text-[#e6e8ea] px-3 py-1.5 rounded text-xs border border-[#35373c] shadow-lg transition-colors font-medium cursor-pointer"
           title="Auto arrange diagram nodes"
         >
           <LayoutGrid className="w-3.5 h-3.5 text-[#3a82f7]" />
           <span>Auto Layout</span>
         </button>
+
+        {/* Export Dropdown */}
+        <div className="relative" ref={exportMenuRef}>
+          <button
+            type="button"
+            data-testid="export-dropdown-button"
+            onClick={() => setIsExportOpen((prev) => !prev)}
+            className="inline-flex items-center gap-1.5 bg-[#24262b] hover:bg-[#2e3138] text-[#e6e8ea] px-3 py-1.5 rounded text-xs border border-[#35373c] shadow-lg transition-colors font-medium cursor-pointer"
+            title="Export ERD diagram"
+          >
+            <Download className="w-3.5 h-3.5 text-[#3a82f7]" />
+            <span>Export</span>
+            <ChevronDown className="w-3 h-3 text-[#8c919a]" />
+          </button>
+
+          {isExportOpen && (
+            <div
+              data-testid="export-menu"
+              className="absolute right-0 mt-1 w-44 bg-[#24262b] border border-[#35373c] rounded-md shadow-xl py-1 z-30"
+            >
+              <button
+                type="button"
+                data-testid="export-json-btn"
+                onClick={handleExportJson}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-[#e6e8ea] hover:bg-[#35373c] transition-colors text-left cursor-pointer"
+              >
+                <FileJson className="w-3.5 h-3.5 text-[#20c997]" />
+                <span>Export JSON (.json)</span>
+              </button>
+              <button
+                type="button"
+                data-testid="export-svg-btn"
+                onClick={handleExportSvg}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-[#e6e8ea] hover:bg-[#35373c] transition-colors text-left cursor-pointer"
+              >
+                <FileCode className="w-3.5 h-3.5 text-[#3a82f7]" />
+                <span>Export SVG (.svg)</span>
+              </button>
+              <button
+                type="button"
+                data-testid="export-png-btn"
+                onClick={handleExportPng}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-[#e6e8ea] hover:bg-[#35373c] transition-colors text-left cursor-pointer"
+              >
+                <ImageIcon className="w-3.5 h-3.5 text-[#e0a82e]" />
+                <span>Export PNG (.png)</span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Main React Flow Graph Canvas */}

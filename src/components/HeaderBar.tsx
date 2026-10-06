@@ -20,7 +20,7 @@ import type { ConnectionConfig } from '../types/database';
 /**
  * @brief Tab identifier types available in DynoDbModeler workspace.
  */
-export type WorkspaceTab = 'erd' | 'sql' | 'settings';
+export type WorkspaceTab = 'erd' | 'sql' | 'query' | 'settings';
 
 /**
  * @brief Properties accepted by the HeaderBar component.
@@ -87,7 +87,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           type="button"
           onClick={() => onSelectTab('sql')}
           className={`flex items-center space-x-1.5 px-3 py-1.5 rounded transition-colors ${
-            activeTab === 'sql'
+            activeTab === 'sql' || activeTab === 'query'
               ? 'bg-[#2b2d30] text-[#ffffff] font-medium shadow-xs border-b-2 border-[#3a82f7]'
               : 'text-[#8c919a] hover:text-[#e6e8ea] hover:bg-[#222428]'
           }`}

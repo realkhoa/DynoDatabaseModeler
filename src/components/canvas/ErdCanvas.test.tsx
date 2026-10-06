@@ -7,6 +7,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ErdCanvas } from './ErdCanvas';
 import type { DatabaseSchema } from '../../types/database';
+import {
+  exportSchemaAsJson,
+  exportErdAsSvg,
+  exportErdAsPng,
+} from '../../utils/export';
+
+vi.mock('../../utils/export', () => ({
+  exportSchemaAsJson: vi.fn(),
+  exportErdAsSvg: vi.fn(),
+  exportErdAsPng: vi.fn().mockResolvedValue(undefined),
+}));
 
 // Mock ResizeObserver for happy-dom testing environment
 if (typeof window !== 'undefined' && !window.ResizeObserver) {
@@ -157,5 +168,36 @@ describe('ErdCanvas component', () => {
     fireEvent.click(syncBtn);
     expect(onOpenDiff).toHaveBeenCalledTimes(1);
   });
+
+  /**
+   * @brief Verifies export dropdown toggling and export action triggers.
+   */
+  it('opens export menu and triggers export utilities for JSON, SVG, and PNG', async () => {
+    render(<ErdCanvas schema={mockSchema} onEditTable={vi.fn()} />);
+
+    // Click Export dropdown button
+    const exportBtn = screen.getByTestId('export-dropdown-button');
+    fireEvent.click(exportBtn);
+
+    expect(screen.getByTestId('export-menu')).toBeDefined();
+
+    // Click Export JSON
+    const exportJsonBtn = screen.getByTestId('export-json-btn');
+    fireEvent.click(exportJsonBtn);
+    expect(exportSchemaAsJson).toHaveBeenCalledWith(mockSchema);
+
+    // Re-open menu and click Export SVG
+    fireEvent.click(exportBtn);
+    const exportSvgBtn = screen.getByTestId('export-svg-btn');
+    fireEvent.click(exportSvgBtn);
+    expect(exportErdAsSvg).toHaveBeenCalled();
+
+    // Re-open menu and click Export PNG
+    fireEvent.click(exportBtn);
+    const exportPngBtn = screen.getByTestId('export-png-btn');
+    fireEvent.click(exportPngBtn);
+    expect(exportErdAsPng).toHaveBeenCalled();
+  });
 });
+
 

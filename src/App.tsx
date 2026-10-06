@@ -13,14 +13,13 @@ import { ConnectionModal } from './components/ConnectionModal';
 import { ErdCanvas } from './components/canvas/ErdCanvas';
 import { TableDrawer } from './components/canvas/TableDrawer';
 import { DiffModal } from './components/diff/DiffModal';
-import { SqlQueryView } from './components/SqlQueryView';
+import { QueryEditorTab } from './components/query/QueryEditorTab';
 import { SettingsView } from './components/SettingsView';
 import { api } from './api/ipc';
 import { computePendingChangesCount } from './utils/diffCount';
 import type {
   ConnectionConfig,
   DatabaseSchema,
-  QueryResult,
   SchemaDiff,
   TableSchema,
 } from './types/database';
@@ -80,12 +79,6 @@ export default function App(): React.ReactElement {
   const pendingChangesCount = useMemo(() => {
     return computePendingChangesCount(liveSchema, schema);
   }, [liveSchema, schema]);
-
-  // SQL Query Tab State
-  const [sqlQuery, setSqlQuery] = useState('SELECT 1 AS status, "Ready" AS message;');
-  const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
-  const [queryError, setQueryError] = useState<string | null>(null);
-  const [isExecutingQuery, setIsExecutingQuery] = useState(false);
 
   // Notification Toast State
   const [notification, setNotification] = useState<{
@@ -197,7 +190,6 @@ export default function App(): React.ReactElement {
     setLiveSchema(null);
     setSchema(null);
     setSelectedTableName(null);
-    setQueryResult(null);
     setDiff(null);
     setGeneratedDdl([]);
     setIsDiffModalOpen(false);
@@ -214,26 +206,6 @@ export default function App(): React.ReactElement {
     }
     setConnections((prev) => prev.filter((c) => c.id !== id));
     setNotification({ type: 'info', message: 'Connection removed.' });
-  };
-
-  /**
-   * @brief Executes the current SQL query in the query editor.
-   */
-  const handleExecuteQuery = async () => {
-    if (!sqlQuery.trim()) return;
-    setIsExecutingQuery(true);
-    setQueryError(null);
-    setQueryResult(null);
-
-    try {
-      const result = await api.executeQuery(sqlQuery);
-      setQueryResult(result);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setQueryError(msg);
-    } finally {
-      setIsExecutingQuery(false);
-    }
   };
 
   /**
@@ -527,16 +499,8 @@ export default function App(): React.ReactElement {
           )}
 
           {/* VIEW: SQL Query Editor Tab */}
-          {activeTab === 'sql' && (
-            <SqlQueryView
-              activeConnection={activeConnection}
-              sqlQuery={sqlQuery}
-              setSqlQuery={setSqlQuery}
-              onExecuteQuery={handleExecuteQuery}
-              isExecutingQuery={isExecutingQuery}
-              queryResult={queryResult}
-              queryError={queryError}
-            />
+          {(activeTab === 'sql' || (activeTab as string) === 'query') && (
+            <QueryEditorTab activeConnection={activeConnection} />
           )}
 
           {/* VIEW: Settings / Connection Manager Tab */}
