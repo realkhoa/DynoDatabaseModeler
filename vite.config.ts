@@ -16,6 +16,17 @@ export default defineConfig({
     port: 1420,
     strictPort: true,
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'monaco-editor': ['@monaco-editor/react'],
+          'xyflow': ['@xyflow/react'],
+          'lucide-react': ['lucide-react'],
+        },
+      },
+    },
+  },
   test: {
     environment: 'happy-dom',
     globals: true,

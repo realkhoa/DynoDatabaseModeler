@@ -228,15 +228,17 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
 
   /**
    * @brief Exports the ERD canvas as an SVG vector graphic.
+   * @details Targets the .react-flow__viewport element to serialize both nodes and relationship edges.
    */
   const handleExportSvg = useCallback(() => {
     setIsExportOpen(false);
-    const svgEl =
-      containerRef.current?.querySelector('svg.react-flow__edges') ||
-      containerRef.current?.querySelector('svg');
-    if (svgEl) {
+    const viewportEl = containerRef.current?.querySelector(
+      '.react-flow__viewport'
+    ) as HTMLElement | null;
+    const targetEl = viewportEl || containerRef.current;
+    if (targetEl) {
       exportErdAsSvg(
-        svgEl as SVGElement,
+        targetEl,
         `${schema.database_name || 'schema'}-erd.svg`
       );
     } else {
@@ -255,13 +257,18 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
 
   /**
    * @brief Exports the ERD canvas as a PNG raster image.
+   * @details Targets the .react-flow__viewport element or diagram container to render both nodes and edges.
    */
   const handleExportPng = useCallback(async () => {
     setIsExportOpen(false);
     if (containerRef.current) {
+      const viewportEl = containerRef.current.querySelector(
+        '.react-flow__viewport'
+      ) as HTMLElement | null;
+      const targetEl = viewportEl || containerRef.current;
       try {
         await exportErdAsPng(
-          containerRef.current,
+          targetEl,
           `${schema.database_name || 'schema'}-erd.png`
         );
       } catch (err: unknown) {

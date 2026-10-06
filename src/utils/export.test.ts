@@ -138,6 +138,29 @@ describe('export utilities', () => {
       expect(anchor.getAttribute('download')).toBe('test-namespace.svg');
       expect(window.URL.createObjectURL).toHaveBeenCalled();
     });
+    it('serializes .react-flow__viewport containing both nodes and edges via foreignObject', () => {
+      const container = document.createElement('div');
+      container.innerHTML = `
+        <div class="toolbar"><svg class="lucide lucide-plus"><line/></svg></div>
+        <div class="react-flow__viewport">
+          <svg class="react-flow__edges"><path d="M0,0 L10,10"/></svg>
+          <div class="react-flow__nodes"><div>Table Node users</div></div>
+        </div>
+      `;
+
+      let capturedBlob: Blob | null = null;
+      vi.spyOn(window.URL, 'createObjectURL').mockImplementation((blob: any) => {
+        capturedBlob = blob;
+        return 'blob:viewport-svg';
+      });
+
+      exportErdAsSvg(container, 'viewport-test.svg');
+
+      expect(createdElements.length).toBe(1);
+      const anchor = createdElements[0] as HTMLAnchorElement;
+      expect(anchor.getAttribute('download')).toBe('viewport-test.svg');
+      expect(capturedBlob).not.toBeNull();
+    });
   });
 
   describe('exportErdAsPng', () => {
@@ -185,6 +208,59 @@ describe('export utilities', () => {
         const anchor = createdElements[0] as HTMLAnchorElement;
         expect(anchor.getAttribute('download')).toBe('diagram.png');
         expect(anchor.getAttribute('href')).toBe('data:image/png;base64,mockpng');
+      } finally {
+        (window as any).Image = originalImage;
+      }
+    });
+
+    it('targets .react-flow__viewport instead of toolbar lucide icon and includes nodes and edges', async () => {
+      const container = document.createElement('div');
+      container.innerHTML = `
+        <div class="toolbar">
+          <svg class="lucide lucide-plus"><circle/></svg>
+        </div>
+        <div class="react-flow__viewport">
+          <svg class="react-flow__edges"><path d="M0,0 L10,10"/></svg>
+          <div class="react-flow__nodes"><div>Table users</div></div>
+        </div>
+      `;
+
+      let capturedBlob: Blob | null = null;
+      vi.spyOn(window.URL, 'createObjectURL').mockImplementation((blob: any) => {
+        capturedBlob = blob;
+        return 'blob:mock-viewport-png';
+      });
+
+      const mockDrawImage = vi.fn();
+      const mockFillRect = vi.fn();
+      const mockToDataURL = vi.fn().mockReturnValue('data:image/png;base64,viewport-png');
+
+      vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+        fillStyle: '',
+        fillRect: mockFillRect,
+        drawImage: mockDrawImage,
+      } as unknown as CanvasRenderingContext2D);
+      vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockImplementation(mockToDataURL);
+
+      const originalImage = window.Image;
+      class MockImage {
+        crossOrigin = '';
+        onload: (() => void) | null = null;
+        set src(_value: string) {
+          setTimeout(() => {
+            this.onload?.();
+          }, 0);
+        }
+      }
+      (window as any).Image = MockImage;
+
+      try {
+        await exportErdAsPng(container, 'viewport-diagram.png');
+
+        expect(createdElements.length).toBe(1);
+        const anchor = createdElements[0] as HTMLAnchorElement;
+        expect(anchor.getAttribute('download')).toBe('viewport-diagram.png');
+        expect(capturedBlob).not.toBeNull();
       } finally {
         (window as any).Image = originalImage;
       }
