@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryEditorTab, formatCellValue, extractTableNameFromSql } from './QueryEditorTab';
 import { api } from '../../api/ipc';
 import type { ConnectionConfig } from '../../types/database';
@@ -22,10 +22,14 @@ vi.mock('@monaco-editor/react', () => ({
     value,
     onChange,
     onMount,
+    language,
+    options,
   }: {
     value?: string;
     onChange?: (val: string) => void;
     onMount?: (editor: any, monaco: any) => void;
+    language?: string;
+    options?: { readOnly?: boolean };
   }) => {
     // Provide a mocked editor instance to onMount if passed
     if (onMount) {
@@ -40,7 +44,9 @@ vi.mock('@monaco-editor/react', () => ({
     }
     return (
       <textarea
-        data-testid="monaco-sql-editor"
+        data-testid={language === 'sql' ? 'monaco-sql-editor' : 'monaco-inspector-editor'}
+        data-language={language}
+        data-readonly={options?.readOnly ? 'true' : 'false'}
         value={value}
         onChange={(e) => onChange?.(e.target.value)}
       />
@@ -51,6 +57,13 @@ vi.mock('@monaco-editor/react', () => ({
 describe('QueryEditorTab component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    Object.defineProperty(navigator, 'clipboard', {
+      value: {
+        writeText: vi.fn().mockResolvedValue(undefined),
+      },
+      configurable: true,
+      writable: true,
+    });
   });
 
   const mockConnection: ConnectionConfig = {
@@ -200,7 +213,7 @@ describe('QueryEditorTab component', () => {
     const cell = screen.getByText('john_doe').closest('td')!;
     fireEvent.doubleClick(cell);
 
-    const input = screen.getByDisplayValue('john_doe');
+    const input = await screen.findByDisplayValue('john_doe');
     fireEvent.change(input, { target: { value: 'johnny' } });
     fireEvent.blur(input);
 
@@ -221,6 +234,97 @@ describe('QueryEditorTab component', () => {
       expect(screen.getByTestId('save-status-banner')).toBeDefined();
       expect(screen.getByText(/Successfully saved 1 row update\(s\)/)).toBeDefined();
     });
+  });
+
+  /**
+   * @brief Verifies opening ValueInspectorDrawer from QueryEditorTab toolbar and displaying cell details.
+   */
+  it('opens ValueInspectorDrawer when Inspect Value button is clicked with selected cell', async () => {
+    vi.mocked(api.executeQuery).mockResolvedValue({
+      columns: ['id', 'details'],
+      rows: [[1, '{"version":"1.0","role":"admin"}']],
+      rows_affected: 1,
+      execution_time_ms: 10,
+    });
+
+    render(
+      <QueryEditorTab
+        activeConnection={mockConnection}
+        initialQuery="SELECT id, details FROM config;"
+      />
+    );
+
+    // Run query
+    fireEvent.click(screen.getByRole('button', { name: /Run Query/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('{"version":"1.0","role":"admin"}')).toBeDefined();
+    });
+
+    // Select the details cell
+    const cell = screen.getByText('{"version":"1.0","role":"admin"}').closest('td')!;
+    fireEvent.click(cell);
+
+    // Click Inspect Value button
+    const inspectBtn = screen.getByTestId('inspect-value-btn');
+    fireEvent.click(inspectBtn);
+
+    // Drawer is opened
+    const drawer = screen.getByTestId('value-inspector-drawer');
+    expect(drawer).toBeDefined();
+    expect(within(drawer).getByText('details')).toBeDefined();
+    expect(within(drawer).getByText('JSON')).toBeDefined();
+
+    const drawerEditor = screen.getByTestId('monaco-inspector-editor') as HTMLTextAreaElement;
+    expect(drawerEditor.value).toContain('"version": "1.0"');
+
+    // Close drawer
+    const closeBtn = screen.getByRole('button', { name: /close drawer/i });
+    fireEvent.click(closeBtn);
+
+    expect(screen.queryByTestId('value-inspector-drawer')).toBeNull();
+  });
+
+  /**
+   * @brief Verifies applying edits from ValueInspectorDrawer updates the grid and marks it dirty.
+   */
+  it('applies edits from ValueInspectorDrawer back into EditableDataGrid', async () => {
+    vi.mocked(api.executeQuery).mockResolvedValue({
+      columns: ['id', 'title'],
+      rows: [[42, 'Original Title']],
+      rows_affected: 1,
+      execution_time_ms: 8,
+    });
+
+    render(
+      <QueryEditorTab
+        activeConnection={mockConnection}
+        initialQuery="SELECT id, title FROM books;"
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Run Query/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Original Title')).toBeDefined();
+    });
+
+    // Select the cell and open inspector
+    const cell = screen.getByText('Original Title').closest('td')!;
+    fireEvent.click(cell);
+    fireEvent.click(screen.getByTestId('inspect-value-btn'));
+
+    // Edit content in drawer
+    const drawerEditor = screen.getByTestId('monaco-inspector-editor');
+    fireEvent.change(drawerEditor, { target: { value: 'Modified Title in Drawer' } });
+
+    // Click Apply to Cell
+    const applyBtn = screen.getByRole('button', { name: /apply to cell/i });
+    fireEvent.click(applyBtn);
+
+    // Grid now shows updated title and mutation bar
+    expect(screen.getAllByText('Modified Title in Drawer').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/1 unsaved change/i)).toBeDefined();
   });
 
   /**

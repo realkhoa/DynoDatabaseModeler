@@ -6,9 +6,22 @@
  * computing RowUpdatePayload models with primary key matching.
  */
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, useImperativeHandle } from 'react';
 import { Save, Undo2, AlertCircle, Loader2 } from 'lucide-react';
 import type { RowUpdatePayload } from '../../types/database';
+
+/**
+ * @brief Imperative handle exposed by EditableDataGrid for external cell mutations.
+ */
+export interface EditableDataGridHandle {
+  /**
+   * @brief Programmatically updates a specific cell value and marks it dirty.
+   * @param rowIndex Zero-based row index.
+   * @param colIndex Zero-based column index.
+   * @param newValue New value to set for the cell.
+   */
+  updateCell: (rowIndex: number, colIndex: number, newValue: any) => void;
+}
 
 /**
  * @brief Properties accepted by the EditableDataGrid component.
@@ -28,6 +41,8 @@ export interface EditableDataGridProps {
   isSaving?: boolean;
   /** @brief Callback triggered when user selects a cell. */
   onCellSelect?: (colName: string, value: any) => void;
+  /** @brief Optional callback triggered with full cell coordinate metadata when selected. */
+  onCellPositionSelect?: (pos: { rowIndex: number; colIndex: number; columnName: string; value: any }) => void;
   /** @brief Selected cell coordinate if controlled externally. */
   selectedCell?: { rowIndex: number; colIndex: number } | null;
 }
@@ -116,78 +131,121 @@ export function parseEditedValue(input: string, original: unknown): unknown {
  * @param props Component properties.
  * @return Rendered EditableDataGrid element.
  */
-export const EditableDataGrid: React.FC<EditableDataGridProps> = ({
-  tableName = 'unknown',
-  primaryKeyColumns,
-  columns,
-  rows,
-  onSave,
-  isSaving = false,
-  onCellSelect,
-  selectedCell: controlledSelectedCell,
-}) => {
-  // Dirty cells map keyed by `${rowIndex}_${colIndex}`
-  const [dirtyCells, setDirtyCells] = useState<Record<string, DirtyCellRecord>>({});
-
-  // Active cell being edited
-  const [editingCell, setEditingCell] = useState<CellCoord | null>(null);
-  const [editValue, setEditValue] = useState<string>('');
-
-  // Internal selected cell tracking when uncontrolled
-  const [internalSelectedCell, setInternalSelectedCell] = useState<CellCoord | null>(null);
-
-  const activeSelectedCell =
-    controlledSelectedCell !== undefined ? controlledSelectedCell : internalSelectedCell;
-
-  const inputRef = useRef<HTMLInputElement | null>(null);
-
-  // Reset dirty cells when rows dataset changes
-  useEffect(() => {
-    setDirtyCells({});
-    setEditingCell(null);
-  }, [rows]);
-
-  // Focus and select input text when entering edit mode
-  useEffect(() => {
-    if (editingCell && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
-    }
-  }, [editingCell]);
-
-  /**
-   * @brief Resolves current effective value of a cell (modified or original).
-   * @param r Row index.
-   * @param c Column index.
-   * @return Effective cell value.
-   */
-  const getCellValue = useCallback(
-    (r: number, c: number): unknown => {
-      const key = `${r}_${c}`;
-      if (dirtyCells[key] !== undefined) {
-        return dirtyCells[key].newValue;
-      }
-      return rows[r]?.[c];
+export const EditableDataGrid = React.forwardRef<EditableDataGridHandle, EditableDataGridProps>(
+  (
+    {
+      tableName = 'unknown',
+      primaryKeyColumns,
+      columns,
+      rows,
+      onSave,
+      isSaving = false,
+      onCellSelect,
+      onCellPositionSelect,
+      selectedCell: controlledSelectedCell,
     },
-    [dirtyCells, rows]
-  );
+    ref
+  ) => {
+    // Dirty cells map keyed by `${rowIndex}_${colIndex}`
+    const [dirtyCells, setDirtyCells] = useState<Record<string, DirtyCellRecord>>({});
 
-  /**
-   * @brief Handles single-click cell selection.
-   * @param r Row index.
-   * @param c Column index.
-   */
-  const handleCellClick = useCallback(
-    (r: number, c: number) => {
-      setInternalSelectedCell({ rowIndex: r, colIndex: c });
-      if (onCellSelect) {
+    // Active cell being edited
+    const [editingCell, setEditingCell] = useState<CellCoord | null>(null);
+    const [editValue, setEditValue] = useState<string>('');
+
+    // Internal selected cell tracking when uncontrolled
+    const [internalSelectedCell, setInternalSelectedCell] = useState<CellCoord | null>(null);
+
+    const activeSelectedCell =
+      controlledSelectedCell !== undefined ? controlledSelectedCell : internalSelectedCell;
+
+    const inputRef = useRef<HTMLInputElement | null>(null);
+
+    // Reset dirty cells when rows dataset changes
+    useEffect(() => {
+      setDirtyCells({});
+      setEditingCell(null);
+    }, [rows]);
+
+    // Focus and select input text when entering edit mode
+    useEffect(() => {
+      if (editingCell && inputRef.current) {
+        inputRef.current.focus();
+        inputRef.current.select();
+      }
+    }, [editingCell]);
+
+    // Expose programmatic updateCell method via ref
+    useImperativeHandle(
+      ref,
+      () => ({
+        updateCell: (rowIndex: number, colIndex: number, newValue: any) => {
+          const originalVal = rows[rowIndex]?.[colIndex];
+          setDirtyCells((prev) => {
+            const key = `${rowIndex}_${colIndex}`;
+            const next = { ...prev };
+            const isSameAsOriginal =
+              newValue === originalVal ||
+              (Number.isNaN(newValue) && Number.isNaN(originalVal));
+
+            if (isSameAsOriginal) {
+              delete next[key];
+            } else {
+              next[key] = {
+                originalValue: originalVal,
+                newValue,
+                rowIndex,
+                colIndex,
+              };
+            }
+            return next;
+          });
+        },
+      }),
+      [rows]
+    );
+
+    /**
+     * @brief Resolves current effective value of a cell (modified or original).
+     * @param r Row index.
+     * @param c Column index.
+     * @return Effective cell value.
+     */
+    const getCellValue = useCallback(
+      (r: number, c: number): unknown => {
+        const key = `${r}_${c}`;
+        if (dirtyCells[key] !== undefined) {
+          return dirtyCells[key].newValue;
+        }
+        return rows[r]?.[c];
+      },
+      [dirtyCells, rows]
+    );
+
+    /**
+     * @brief Handles single-click cell selection.
+     * @param r Row index.
+     * @param c Column index.
+     */
+    const handleCellClick = useCallback(
+      (r: number, c: number) => {
+        setInternalSelectedCell({ rowIndex: r, colIndex: c });
         const colName = columns[c];
         const val = getCellValue(r, c);
-        onCellSelect(colName, val);
-      }
-    },
-    [columns, getCellValue, onCellSelect]
-  );
+        if (onCellSelect) {
+          onCellSelect(colName, val);
+        }
+        if (onCellPositionSelect) {
+          onCellPositionSelect({
+            rowIndex: r,
+            colIndex: c,
+            columnName: colName,
+            value: val,
+          });
+        }
+      },
+      [columns, getCellValue, onCellPositionSelect, onCellSelect]
+    );
 
   /**
    * @brief Activates inline edit mode on double-click.
@@ -463,4 +521,6 @@ export const EditableDataGrid: React.FC<EditableDataGridProps> = ({
       )}
     </div>
   );
-};
+});
+
+EditableDataGrid.displayName = 'EditableDataGrid';

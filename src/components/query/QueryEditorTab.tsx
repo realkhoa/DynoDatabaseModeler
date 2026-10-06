@@ -7,10 +7,11 @@
 
 import React, { useState, useRef, useCallback } from 'react';
 import Editor, { OnMount } from '@monaco-editor/react';
-import { Play, Loader2, AlertCircle, FileCode, CheckCircle2 } from 'lucide-react';
+import { Play, Loader2, AlertCircle, FileCode, CheckCircle2, Eye } from 'lucide-react';
 import { api } from '../../api/ipc';
 import type { ConnectionConfig, QueryResult, RowUpdatePayload } from '../../types/database';
-import { EditableDataGrid } from './EditableDataGrid';
+import { EditableDataGrid, EditableDataGridHandle } from './EditableDataGrid';
+import { ValueInspectorDrawer } from './ValueInspectorDrawer';
 
 /**
  * @brief Properties accepted by the QueryEditorTab component.
@@ -59,6 +60,20 @@ export function extractTableNameFromSql(sql: string): string {
 }
 
 /**
+ * @brief Coordinates and metadata for the currently active/inspected tabular cell.
+ */
+interface SelectedCellState {
+  /** @brief Zero-based row index in dataset. */
+  rowIndex: number;
+  /** @brief Zero-based column index in dataset. */
+  colIndex: number;
+  /** @brief Column header name. */
+  columnName: string;
+  /** @brief Current effective value of the cell. */
+  value: any;
+}
+
+/**
  * @brief Interactive SQL Query Editor and results grid tab component.
  * @param props Component configuration properties.
  * @return Rendered QueryEditorTab React element.
@@ -74,10 +89,70 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedCell, setSelectedCell] = useState<SelectedCellState | null>(null);
+  const [isInspectorOpen, setIsInspectorOpen] = useState(false);
+
+  const gridRef = useRef<EditableDataGridHandle | null>(null);
 
   // Keep latest query in ref for Monaco action callback
   const queryRef = useRef(query);
   queryRef.current = query;
+
+  /**
+   * @brief Handles cell selection in the results data grid.
+   * @param colName Column name.
+   * @param val Current cell value.
+   */
+  const handleCellSelect = useCallback(
+    (colName: string, val: any) => {
+      setSelectedCell((prev) => ({
+        columnName: colName,
+        value: val,
+        rowIndex: prev?.rowIndex ?? 0,
+        colIndex: prev?.colIndex ?? 0,
+      }));
+    },
+    []
+  );
+
+  /**
+   * @brief Captures full cell coordinate position on selection.
+   * @param pos Position and value metadata.
+   */
+  const handleCellPositionSelect = useCallback(
+    (pos: { rowIndex: number; colIndex: number; columnName: string; value: any }) => {
+      setSelectedCell(pos);
+    },
+    []
+  );
+
+  /**
+   * @brief Opens the Value Inspector Drawer for the selected cell or first cell by default.
+   */
+  const handleOpenInspector = useCallback(() => {
+    if (!selectedCell && result && result.rows.length > 0 && result.columns.length > 0) {
+      setSelectedCell({
+        rowIndex: 0,
+        colIndex: 0,
+        columnName: result.columns[0],
+        value: result.rows[0][0],
+      });
+    }
+    setIsInspectorOpen(true);
+  }, [result, selectedCell]);
+
+  /**
+   * @brief Applies modifications made in the inspector drawer back to the data grid.
+   * @param newValue Modified value from the drawer editor.
+   */
+  const handleApplyDrawerEdit = useCallback(
+    (newValue: any) => {
+      if (!selectedCell) return;
+      gridRef.current?.updateCell(selectedCell.rowIndex, selectedCell.colIndex, newValue);
+      setSelectedCell((prev) => (prev ? { ...prev, value: newValue } : null));
+    },
+    [selectedCell]
+  );
 
   /**
    * @brief Executes the current SQL statement string via Tauri IPC backend.
@@ -202,10 +277,23 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
 
         {/* Execution Metadata Telemetry */}
         {result && (
-          <div className="flex items-center space-x-2 text-[#8c919a] font-mono text-[11px]">
-            <span data-testid="row-count">{result.rows.length} rows returned</span>
-            <span>•</span>
-            <span data-testid="exec-duration">{result.execution_time_ms} ms</span>
+          <div className="flex items-center space-x-3 text-[#8c919a] font-mono text-[11px]">
+            <div className="flex items-center space-x-2">
+              <span data-testid="row-count">{result.rows.length} rows returned</span>
+              <span>•</span>
+              <span data-testid="exec-duration">{result.execution_time_ms} ms</span>
+            </div>
+
+            <button
+              type="button"
+              data-testid="inspect-value-btn"
+              onClick={handleOpenInspector}
+              className="flex items-center space-x-1.5 px-2.5 py-1 bg-[#26282d] hover:bg-[#35373c] text-[#e6e8ea] rounded border border-[#35373c] text-[11px] font-mono cursor-pointer transition-colors shadow-xs"
+              title="Inspect cell value in drawer"
+            >
+              <Eye className="w-3.5 h-3.5 text-[#3a82f7]" />
+              <span>Inspect Value</span>
+            </button>
           </div>
         )}
       </div>
@@ -272,14 +360,26 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
         {result && !error && (
           <div className="flex-1 min-h-0 overflow-hidden">
             <EditableDataGrid
+              ref={gridRef}
               tableName={extractTableNameFromSql(query)}
               columns={result.columns}
               rows={result.rows}
               onSave={handleSave}
               isSaving={isSaving}
+              onCellSelect={handleCellSelect}
+              onCellPositionSelect={handleCellPositionSelect}
             />
           </div>
         )}
+
+        {/* Value Inspector Drawer */}
+        <ValueInspectorDrawer
+          isOpen={isInspectorOpen}
+          columnName={selectedCell?.columnName}
+          value={selectedCell?.value}
+          onClose={() => setIsInspectorOpen(false)}
+          onApplyEdit={handleApplyDrawerEdit}
+        />
 
         {/* Empty / Initial Placeholder */}
         {!result && !error && !isLoading && (
