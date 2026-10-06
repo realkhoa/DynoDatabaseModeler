@@ -5,13 +5,14 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { QueryEditorTab, formatCellValue } from './QueryEditorTab';
+import { QueryEditorTab, formatCellValue, extractTableNameFromSql } from './QueryEditorTab';
 import { api } from '../../api/ipc';
 import type { ConnectionConfig } from '../../types/database';
 
 vi.mock('../../api/ipc', () => ({
   api: {
     executeQuery: vi.fn(),
+    updateRows: vi.fn(),
   },
 }));
 
@@ -169,6 +170,72 @@ describe('QueryEditorTab component', () => {
   });
 
   /**
+   * @brief Verifies inline cell editing and save integration within QueryEditorTab.
+   */
+  it('allows inline cell editing and persists updates via api.updateRows', async () => {
+    vi.mocked(api.executeQuery).mockResolvedValue({
+      columns: ['id', 'username'],
+      rows: [[1, 'john_doe']],
+      rows_affected: 1,
+      execution_time_ms: 10,
+    });
+    vi.mocked(api.updateRows).mockResolvedValue(1);
+
+    render(
+      <QueryEditorTab
+        activeConnection={mockConnection}
+        initialQuery="SELECT id, username FROM users;"
+      />
+    );
+
+    // Run query to populate results
+    const runBtn = screen.getByRole('button', { name: /Run Query/i });
+    fireEvent.click(runBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('john_doe')).toBeDefined();
+    });
+
+    // Edit cell
+    const cell = screen.getByText('john_doe').closest('td')!;
+    fireEvent.doubleClick(cell);
+
+    const input = screen.getByDisplayValue('john_doe');
+    fireEvent.change(input, { target: { value: 'johnny' } });
+    fireEvent.blur(input);
+
+    expect(screen.getByText(/1 unsaved change/i)).toBeDefined();
+
+    // Click Save Changes
+    const saveBtn = screen.getByRole('button', { name: /Save Changes/i });
+    fireEvent.click(saveBtn);
+
+    await waitFor(() => {
+      expect(api.updateRows).toHaveBeenCalledWith([
+        {
+          table: 'users',
+          primary_keys: { id: 1 },
+          updated_values: { username: 'johnny' },
+        },
+      ]);
+      expect(screen.getByTestId('save-status-banner')).toBeDefined();
+      expect(screen.getByText(/Successfully saved 1 row update\(s\)/)).toBeDefined();
+    });
+  });
+
+  /**
+   * @brief Verifies extractTableNameFromSql helper with diverse SQL patterns.
+   */
+  describe('extractTableNameFromSql', () => {
+    it('extracts table name from standard SELECT queries', () => {
+      expect(extractTableNameFromSql('SELECT * FROM users')).toBe('users');
+      expect(extractTableNameFromSql('SELECT id, name FROM "customers" WHERE id = 1')).toBe('customers');
+      expect(extractTableNameFromSql('select * from public.orders;')).toBe('orders');
+      expect(extractTableNameFromSql('SELECT 1 as id')).toBe('unknown');
+    });
+  });
+
+  /**
    * @brief Verifies formatCellValue helper for diverse data types.
    */
   describe('formatCellValue', () => {
@@ -197,3 +264,4 @@ describe('QueryEditorTab component', () => {
     });
   });
 });
+

@@ -10,6 +10,7 @@ import {
   type ConnectionConfig,
   type TableSchema,
   type DatabaseSchema,
+  type RowUpdatePayload,
 } from './database';
 
 describe('database type helpers', () => {
@@ -85,4 +86,20 @@ describe('database type helpers', () => {
     expect(schema.tables).toHaveLength(1);
     expect(schema.tables[0].columns[0].name).toBe('id');
   });
+
+  /**
+   * @brief Validates TypeScript structural compatibility with RowUpdatePayload.
+   */
+  it('creates valid typed RowUpdatePayload structures', () => {
+    const payload: RowUpdatePayload = {
+      table: 'users',
+      primary_keys: { id: 1 },
+      updated_values: { username: 'alice_new', is_active: false },
+    };
+
+    expect(payload.table).toBe('users');
+    expect(payload.primary_keys).toEqual({ id: 1 });
+    expect(payload.updated_values).toEqual({ username: 'alice_new', is_active: false });
+  });
 });
+

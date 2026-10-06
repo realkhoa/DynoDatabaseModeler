@@ -119,7 +119,7 @@ impl AppState {
         }
     }
 
-    /// @brief Executes dialect-specific SQL DDL statements for a given schema diff using the active connection's dialect.
+    /// @brief Generates dialect-specific SQL DDL statements for a given schema diff using the active connection's dialect.
     /// @param diff Reference to the computed schema diff.
     /// @return List of executable SQL DDL statements.
     /// @throws AppError::Connection if no active database connection exists to determine dialect.
