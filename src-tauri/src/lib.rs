@@ -26,6 +26,7 @@ pub fn run() {
             commands::cmd_generate_ddl,
             commands::cmd_execute_migration,
             commands::cmd_execute_query,
+            commands::cmd_disconnect,
         ])
         .setup(|_app| Ok(()))
         .run(tauri::generate_context!())

@@ -108,3 +108,12 @@ pub async fn cmd_execute_query(
 ) -> Result<QueryResult, AppError> {
     state.execute_query(&sql).await
 }
+
+/// @brief Disconnects the active database connection and clears stored configuration.
+/// @param state Tauri managed handle to shared AppState.
+/// @return `Ok(true)` on successful disconnect.
+#[tauri::command]
+pub async fn cmd_disconnect(state: State<'_, AppState>) -> Result<bool, AppError> {
+    state.disconnect().await;
+    Ok(true)
+}

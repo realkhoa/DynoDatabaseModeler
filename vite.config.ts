@@ -1,8 +1,9 @@
+/// <reference types="vitest/config" />
 /**
  * @file vite.config.ts
- * @brief Vite configuration for DynoDbModeler desktop frontend.
+ * @brief Vite and Vitest configuration for DynoDbModeler desktop frontend.
+ * @details Configures React plugin, Tailwind CSS Vite plugin, and Happy-DOM testing environment.
  */
-
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
@@ -15,4 +16,9 @@ export default defineConfig({
     port: 1420,
     strictPort: true,
   },
+  test: {
+    environment: 'happy-dom',
+    globals: true,
+  },
 });
+
