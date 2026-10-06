@@ -404,3 +404,85 @@ fn test_canonical_types_ddl_across_dialects() {
     assert!(sqlite_stmts[0].contains("\"c_json\" TEXT"));
     assert!(sqlite_stmts[0].contains("\"c_bin\" BLOB"));
 }
+
+/// @brief Tests that MySQL MODIFY COLUMN does not re-specify PRIMARY KEY, avoiding Error 1068.
+#[test]
+fn test_mysql_modify_column_omits_primary_key() {
+    let mut diff = SchemaDiff::default();
+    diff.columns_to_alter.push(ColumnAlteration {
+        table_name: "accounts".to_string(),
+        source_column: ColumnSchema {
+            name: "id".to_string(),
+            data_type: CanonicalType::Integer,
+            is_primary_key: true,
+            is_nullable: false,
+            is_auto_increment: true,
+            default_value: None,
+        },
+        target_column: ColumnSchema {
+            name: "id".to_string(),
+            data_type: CanonicalType::BigInt,
+            is_primary_key: true,
+            is_nullable: false,
+            is_auto_increment: true,
+            default_value: None,
+        },
+        is_destructive: false,
+    });
+
+    let statements = generate_ddl(&diff, DatabaseType::MySql);
+    assert_eq!(statements.len(), 1);
+    assert_eq!(
+        statements[0],
+        "ALTER TABLE `accounts` MODIFY COLUMN `id` BIGINT AUTO_INCREMENT NOT NULL;"
+    );
+    assert!(!statements[0].contains("PRIMARY KEY"));
+}
+
+/// @brief Tests fully-qualified table schema format in FK creation for PostgreSQL and MSSQL.
+#[test]
+fn test_fk_creation_uses_fully_qualified_schema() {
+    let mut diff = SchemaDiff::default();
+    diff.tables_to_create.push(TableSchema {
+        name: "orders".to_string(),
+        schema: Some("sales".to_string()),
+        columns: vec![
+            ColumnSchema {
+                name: "id".to_string(),
+                data_type: CanonicalType::BigInt,
+                is_primary_key: true,
+                is_nullable: false,
+                is_auto_increment: true,
+                default_value: None,
+            },
+            ColumnSchema {
+                name: "customer_id".to_string(),
+                data_type: CanonicalType::BigInt,
+                is_primary_key: false,
+                is_nullable: false,
+                is_auto_increment: false,
+                default_value: None,
+            },
+        ],
+        foreign_keys: vec![ForeignKeySchema {
+            constraint_name: "fk_orders_customer".to_string(),
+            source_column: "customer_id".to_string(),
+            target_table: "sales.customers".to_string(),
+            target_column: "id".to_string(),
+            on_delete: ReferentialAction::Cascade,
+            on_update: ReferentialAction::NoAction,
+        }],
+        indexes: vec![],
+        ui_position: None,
+    });
+
+    // PostgreSQL: "sales"."orders" referencing "sales"."customers"
+    let pg_stmts = generate_ddl(&diff, DatabaseType::Postgres);
+    assert!(pg_stmts.iter().any(|s| s
+        == "ALTER TABLE \"sales\".\"orders\" ADD CONSTRAINT \"fk_orders_customer\" FOREIGN KEY (\"customer_id\") REFERENCES \"sales\".\"customers\" (\"id\") ON DELETE CASCADE;"));
+
+    // MSSQL: [sales].[orders] referencing [sales].[customers]
+    let mssql_stmts = generate_ddl(&diff, DatabaseType::Mssql);
+    assert!(mssql_stmts.iter().any(|s| s
+        == "ALTER TABLE [sales].[orders] ADD CONSTRAINT [fk_orders_customer] FOREIGN KEY ([customer_id]) REFERENCES [sales].[customers] ([id]) ON DELETE CASCADE;"));
+}

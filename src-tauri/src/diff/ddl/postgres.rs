@@ -93,8 +93,12 @@ impl PostgresDdlGenerator {
 
         // 7. Add foreign keys from newly created tables
         for table in &diff.tables_to_create {
+            let table_name = match &table.schema {
+                Some(s) if !s.is_empty() => format!("{}.{}", s, table.name),
+                _ => table.name.clone(),
+            };
             for fk in &table.foreign_keys {
-                stmts.push(Self::foreign_key_sql(&table.name, fk));
+                stmts.push(Self::foreign_key_sql(&table_name, fk));
             }
         }
 

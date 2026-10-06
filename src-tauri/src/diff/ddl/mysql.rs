@@ -67,14 +67,18 @@ impl MySqlDdlGenerator {
             stmts.push(format!(
                 "ALTER TABLE {} MODIFY COLUMN {};",
                 Self::format_table_name(&alt.table_name),
-                Self::column_def(&alt.target_column)
+                Self::modify_column_def(&alt.target_column)
             ));
         }
 
         // 7. Add foreign keys from newly created tables
         for table in &diff.tables_to_create {
+            let table_name = match &table.schema {
+                Some(s) if !s.is_empty() => format!("{}.{}", s, table.name),
+                _ => table.name.clone(),
+            };
             for fk in &table.foreign_keys {
-                stmts.push(Self::foreign_key_sql(&table.name, fk));
+                stmts.push(Self::foreign_key_sql(&table_name, fk));
             }
         }
 
@@ -141,6 +145,33 @@ impl MySqlDdlGenerator {
         if col.is_primary_key {
             def.push_str(" PRIMARY KEY");
         } else if !col.is_nullable {
+            def.push_str(" NOT NULL");
+        }
+
+        if let Some(dflt) = &col.default_value {
+            def.push_str(&format!(" DEFAULT {}", dflt));
+        }
+
+        def
+    }
+
+    /// @brief Generates column modification SQL for MySQL ALTER TABLE MODIFY COLUMN.
+    /// @details Omits PRIMARY KEY specification to prevent MySQL Error 1068 (Multiple primary key defined).
+    /// @param col Reference to column schema definition.
+    /// @return Column definition SQL snippet suitable for MODIFY COLUMN.
+    fn modify_column_def(col: &ColumnSchema) -> String {
+        let mut def = format!(
+            "{} {}",
+            Self::quote_ident(&col.name),
+            Self::type_sql(&col.data_type)
+        );
+
+        if col.is_auto_increment {
+            def.push_str(" AUTO_INCREMENT");
+        }
+
+        // Note: Do NOT add PRIMARY KEY clause in MODIFY COLUMN to avoid MySQL error 1068
+        if !col.is_nullable {
             def.push_str(" NOT NULL");
         }
 
