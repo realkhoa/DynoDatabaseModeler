@@ -8,7 +8,7 @@ use sqlx::{postgres::PgPoolOptions, postgres::PgRow, Column, PgPool, Row};
 use std::time::Instant;
 
 pub use super::parse_referential_action;
-use super::{DatabaseDriver, MigrationReport, QueryResult};
+use super::{DatabaseDriver, MigrationReport, QueryResult, RowUpdatePayload};
 use crate::error::AppError;
 use crate::model::connection::{ConnectionConfig, DatabaseType};
 use crate::model::schema::*;
@@ -282,10 +282,117 @@ impl DatabaseDriver for PostgresDriver {
         })
     }
 
+    /// @brief Executes a batch of row mutations transactionally against PostgreSQL.
+    /// @details Begins a transaction on the connection pool, builds formatted UPDATE statements
+    /// (`UPDATE "table" SET "col" = <value> WHERE "pk" = <value>`), escapes identifiers and literal values safely,
+    /// and executes each update sequentially. If any statement fails (e.g., constraint violation, syntax error,
+    /// invalid column), the transaction is immediately rolled back and an `AppError::Database` is returned.
+    /// On success, the transaction is committed and the total affected row count is returned.
+    /// @param updates List of row update payloads specifying tables, PKs, and modified column values.
+    /// @return Returns the total count of rows affected across all updates, or AppError on rollback/failure.
+    async fn update_rows(&self, updates: Vec<RowUpdatePayload>) -> Result<u64, AppError> {
+        if updates.is_empty() {
+            return Ok(0);
+        }
+
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        let mut total_affected = 0u64;
+
+        for update in &updates {
+            if update.updated_values.is_empty() {
+                continue;
+            }
+            if update.primary_keys.is_empty() {
+                let _ = tx.rollback().await;
+                return Err(AppError::Database(
+                    "Primary keys must not be empty for row mutation".to_string(),
+                ));
+            }
+
+            let mut set_clauses = Vec::with_capacity(update.updated_values.len());
+            for (col, val) in &update.updated_values {
+                set_clauses.push(format!("{} = {}", format_pg_ident(col), format_pg_value(val)));
+            }
+
+            let mut where_clauses = Vec::with_capacity(update.primary_keys.len());
+            for (pk_col, pk_val) in &update.primary_keys {
+                where_clauses.push(format!("{} = {}", format_pg_ident(pk_col), format_pg_value(pk_val)));
+            }
+
+            let table_ident = format_pg_ident(&update.table);
+            let sql = format!(
+                "UPDATE {} SET {} WHERE {};",
+                table_ident,
+                set_clauses.join(", "),
+                where_clauses.join(" AND ")
+            );
+
+            match sqlx::query(&sql).execute(&mut *tx).await {
+                Ok(res) => {
+                    total_affected += res.rows_affected();
+                }
+                Err(e) => {
+                    let _ = tx.rollback().await;
+                    return Err(AppError::Database(format!(
+                        "Row update failed on table '{}': {}",
+                        update.table, e
+                    )));
+                }
+            }
+        }
+
+        tx.commit()
+            .await
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        Ok(total_affected)
+    }
+
     /// @brief Returns the database dialect type for PostgreSQL.
     /// @return Returns DatabaseType::Postgres.
     fn db_type(&self) -> DatabaseType {
         DatabaseType::Postgres
+    }
+}
+
+/// @brief Formats an identifier for PostgreSQL quoting (supporting dot-separated schema paths).
+/// @param ident Identifier string (table, column, or schema name).
+/// @return Properly double-quoted PostgreSQL identifier.
+fn format_pg_ident(ident: &str) -> String {
+    if ident.contains('.') {
+        ident
+            .split('.')
+            .map(|part| format!("\"{}\"", part.replace('"', "\"\"")))
+            .collect::<Vec<_>>()
+            .join(".")
+    } else {
+        format!("\"{}\"", ident.replace('"', "\"\""))
+    }
+}
+
+/// @brief Formats a serde_json::Value into a safe PostgreSQL literal SQL fragment.
+/// @param val Reference to serde_json::Value to serialize.
+/// @return SQL literal string representation (escaped string, number, boolean, or NULL).
+fn format_pg_value(val: &serde_json::Value) -> String {
+    match val {
+        serde_json::Value::Null => "NULL".to_string(),
+        serde_json::Value::Bool(b) => {
+            if *b {
+                "TRUE".to_string()
+            } else {
+                "FALSE".to_string()
+            }
+        }
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::String(s) => format!("'{}'", s.replace('\'', "''")),
+        serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
+            format!("'{}'", val.to_string().replace('\'', "''"))
+        }
     }
 }
 

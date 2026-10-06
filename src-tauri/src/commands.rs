@@ -10,7 +10,7 @@ use crate::diff::compute_schema_diff;
 use crate::diff::ddl::generate_ddl;
 use crate::diff::model::SchemaDiff;
 use crate::driver::factory::DriverFactory;
-use crate::driver::{MigrationReport, QueryResult};
+use crate::driver::{MigrationReport, QueryResult, RowUpdatePayload};
 use crate::error::AppError;
 use crate::model::connection::ConnectionConfig;
 use crate::model::schema::DatabaseSchema;
@@ -117,3 +117,18 @@ pub async fn cmd_disconnect(state: State<'_, AppState>) -> Result<bool, AppError
     state.disconnect().await;
     Ok(true)
 }
+
+/// @brief Executes transactional row mutations against the active database.
+/// @param payload Ordered list of row update payloads containing table, primary keys, and modified columns.
+/// @param state Tauri managed handle to shared AppState.
+/// @return Total count of rows affected across all executed updates.
+/// @throws AppError::Connection if no active database session exists.
+/// @throws AppError::Database on SQL syntax, constraint, or execution error.
+#[tauri::command]
+pub async fn cmd_update_rows(
+    payload: Vec<RowUpdatePayload>,
+    state: State<'_, AppState>,
+) -> Result<u64, AppError> {
+    state.update_rows(payload).await
+}
+

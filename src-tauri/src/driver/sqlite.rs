@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use sqlx::{sqlite::SqlitePoolOptions, Column, Row, SqlitePool};
 use std::time::Instant;
 
-use super::{DatabaseDriver, MigrationReport, QueryResult};
+use super::{DatabaseDriver, MigrationReport, QueryResult, RowUpdatePayload};
 use crate::error::AppError;
 use crate::model::connection::{ConnectionConfig, DatabaseType};
 use crate::model::schema::*;
@@ -232,10 +232,115 @@ impl DatabaseDriver for SqliteDriver {
         })
     }
 
+    /// @brief Executes a batch of row mutations transactionally against the SQLite database.
+    /// @details Begins a transaction on the connection pool, builds parameterized UPDATE statements
+    /// for each payload (`UPDATE "table" SET "col" = ? WHERE "pk" = ?`), binds column and primary key values,
+    /// and executes each statement sequentially. If any statement encounters an error (syntax, missing column,
+    /// constraint violation), the transaction is explicitly rolled back and an `AppError::Database` is returned.
+    /// On success, the transaction is committed and the total affected rows count is returned.
+    /// @param updates List of row update payloads specifying tables, PKs, and modified column values.
+    /// @return Returns the total count of rows affected across all updates, or AppError on rollback/failure.
+    async fn update_rows(&self, updates: Vec<RowUpdatePayload>) -> Result<u64, AppError> {
+        if updates.is_empty() {
+            return Ok(0);
+        }
+
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        let mut total_affected = 0u64;
+
+        for update in &updates {
+            if update.updated_values.is_empty() {
+                continue;
+            }
+            if update.primary_keys.is_empty() {
+                let _ = tx.rollback().await;
+                return Err(AppError::Database(
+                    "Primary keys must not be empty for row mutation".to_string(),
+                ));
+            }
+
+            let mut set_clauses = Vec::with_capacity(update.updated_values.len());
+            let mut set_values = Vec::with_capacity(update.updated_values.len());
+            for (col, val) in &update.updated_values {
+                set_clauses.push(format!("\"{}\" = ?", col.replace('"', "\"\"")));
+                set_values.push(val);
+            }
+
+            let mut where_clauses = Vec::with_capacity(update.primary_keys.len());
+            let mut where_values = Vec::with_capacity(update.primary_keys.len());
+            for (pk_col, pk_val) in &update.primary_keys {
+                where_clauses.push(format!("\"{}\" = ?", pk_col.replace('"', "\"\"")));
+                where_values.push(pk_val);
+            }
+
+            let table_esc = update.table.replace('"', "\"\"");
+            let sql = format!(
+                "UPDATE \"{}\" SET {} WHERE {};",
+                table_esc,
+                set_clauses.join(", "),
+                where_clauses.join(" AND ")
+            );
+
+            let mut query = sqlx::query(&sql);
+            for val in set_values.into_iter().chain(where_values.into_iter()) {
+                query = bind_sqlite_val(query, val);
+            }
+
+            match query.execute(&mut *tx).await {
+                Ok(res) => {
+                    total_affected += res.rows_affected();
+                }
+                Err(e) => {
+                    let _ = tx.rollback().await;
+                    return Err(AppError::Database(format!(
+                        "Row update failed on table '{}': {}",
+                        update.table, e
+                    )));
+                }
+            }
+        }
+
+        tx.commit()
+            .await
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        Ok(total_affected)
+    }
+
     /// @brief Returns the database type dialect enum associated with this driver.
     /// @return Returns DatabaseType::Sqlite variant.
     fn db_type(&self) -> DatabaseType {
         DatabaseType::Sqlite
+    }
+}
+
+/// @brief Binds a JSON value to a SQLite parameterized query.
+/// @param query Target sqlx SQLite query.
+/// @param val Reference to serde_json::Value to bind into the query.
+/// @return Query with the bound value appended.
+fn bind_sqlite_val<'a>(
+    query: sqlx::query::Query<'a, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'a>>,
+    val: &'a serde_json::Value,
+) -> sqlx::query::Query<'a, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'a>> {
+    match val {
+        serde_json::Value::Null => query.bind(Option::<String>::None),
+        serde_json::Value::Bool(b) => query.bind(*b),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                query.bind(i)
+            } else if let Some(f) = n.as_f64() {
+                query.bind(f)
+            } else {
+                query.bind(n.to_string())
+            }
+        }
+        serde_json::Value::String(s) => query.bind(s.as_str()),
+        serde_json::Value::Array(_) | serde_json::Value::Object(_) => query.bind(val.to_string()),
     }
 }
 

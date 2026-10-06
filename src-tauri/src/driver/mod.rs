@@ -5,12 +5,17 @@
 
 pub mod factory;
 pub mod mssql;
+pub mod mutation_model;
 pub mod mysql;
 pub mod postgres;
 pub mod sqlite;
 
+pub use mutation_model::RowUpdatePayload;
+
 #[cfg(test)]
 mod factory_test;
+#[cfg(test)]
+mod mutation_test;
 #[cfg(test)]
 mod sqlite_test;
 
@@ -72,6 +77,11 @@ pub trait DatabaseDriver: Send + Sync {
     /// @param statements Slice of SQL DDL statement strings to apply in sequence.
     /// @return Returns MigrationReport with execution statistics, or AppError::Migration if rolled back.
     async fn execute_ddl(&self, statements: &[String]) -> Result<MigrationReport, AppError>;
+
+    /// @brief Executes a batch of row mutations transactionally against the database.
+    /// @param updates List of row update payloads specifying tables, PKs, and modified column values.
+    /// @return Returns the total count of rows affected across all updates, or AppError on failure/rollback.
+    async fn update_rows(&self, updates: Vec<RowUpdatePayload>) -> Result<u64, AppError>;
 
     /// @brief Identifies the specific relational database engine dialect handled by this driver.
     /// @return Returns the corresponding DatabaseType enum variant.

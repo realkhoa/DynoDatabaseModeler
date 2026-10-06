@@ -10,7 +10,7 @@ use tokio::sync::RwLock;
 use crate::diff::ddl::generate_ddl;
 use crate::diff::model::SchemaDiff;
 use crate::driver::factory::DriverFactory;
-use crate::driver::{DatabaseDriver, MigrationReport, QueryResult};
+use crate::driver::{DatabaseDriver, MigrationReport, QueryResult, RowUpdatePayload};
 use crate::error::AppError;
 use crate::model::connection::ConnectionConfig;
 use crate::model::schema::DatabaseSchema;
@@ -119,7 +119,7 @@ impl AppState {
         }
     }
 
-    /// @brief Generates dialect-specific SQL DDL statements for a given schema diff using the active connection's dialect.
+    /// @brief Executes dialect-specific SQL DDL statements for a given schema diff using the active connection's dialect.
     /// @param diff Reference to the computed schema diff.
     /// @return List of executable SQL DDL statements.
     /// @throws AppError::Connection if no active database connection exists to determine dialect.
@@ -129,5 +129,20 @@ impl AppState {
             .await
             .ok_or_else(|| AppError::Connection("No active database connection".to_string()))?;
         Ok(generate_ddl(diff, config.db_type))
+    }
+
+    /// @brief Executes a batch of transactional row updates against the active database.
+    /// @param updates List of row update payloads specifying tables, PKs, and modified column values.
+    /// @return Total number of affected rows on success, or AppError if rolled back or disconnected.
+    /// @throws AppError::Connection if no database connection is currently active.
+    pub async fn update_rows(&self, updates: Vec<RowUpdatePayload>) -> Result<u64, AppError> {
+        let lock = self.active_driver.read().await;
+        if let Some(driver) = lock.as_ref() {
+            driver.update_rows(updates).await
+        } else {
+            Err(AppError::Connection(
+                "No active database connection".to_string(),
+            ))
+        }
     }
 }
