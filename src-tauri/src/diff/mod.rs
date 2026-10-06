@@ -3,6 +3,7 @@
 //! @details Compares live introspected database schemas with target desired schemas
 //! to compute fine-grained structural alterations.
 
+pub mod ddl;
 #[cfg(test)]
 mod diff_test;
 pub mod model;
