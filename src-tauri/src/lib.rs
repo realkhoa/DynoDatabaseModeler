@@ -1,6 +1,7 @@
 //! @file lib.rs
 //! @brief DynoDbModeler application core library entry point.
 
+pub mod diff;
 pub mod driver;
 pub mod error;
 pub mod model;

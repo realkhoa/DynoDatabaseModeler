@@ -315,7 +315,9 @@ fn format_mssql_cell(row: &Row, idx: usize) -> serde_json::Value {
         .or_else(|| row.get::<i32, _>(idx).map(|v| v.to_string()))
         .or_else(|| row.get::<f64, _>(idx).map(|v| v.to_string()))
         .or_else(|| row.get::<bool, _>(idx).map(|v| v.to_string()));
-    str_val.map(serde_json::Value::String).unwrap_or(serde_json::Value::Null)
+    str_val
+        .map(serde_json::Value::String)
+        .unwrap_or(serde_json::Value::Null)
 }
 
 /// @brief Parses Microsoft SQL Server data type names and maximum lengths into canonical types.
