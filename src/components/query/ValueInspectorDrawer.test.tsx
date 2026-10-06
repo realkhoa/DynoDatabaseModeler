@@ -158,6 +158,7 @@ describe('ValueInspectorDrawer component', () => {
 
       // Check telemetry badges
       expect(screen.getByTestId('telemetry-chars')).toBeDefined();
+      expect(screen.getByTestId('telemetry-words')).toBeDefined();
       expect(screen.getByTestId('telemetry-lines')).toBeDefined();
       expect(screen.getByTestId('telemetry-bytes')).toBeDefined();
     });

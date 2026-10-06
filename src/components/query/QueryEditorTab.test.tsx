@@ -328,6 +328,52 @@ describe('QueryEditorTab component', () => {
   });
 
   /**
+   * @brief Verifies Export Data button is disabled without results and opens ExportModal when clicked.
+   */
+  it('disables Export Data button when no results, and opens ExportModal upon click with results', async () => {
+    vi.mocked(api.executeQuery).mockResolvedValue({
+      columns: ['id', 'username'],
+      rows: [[1, 'john_doe'], [2, 'jane_doe']],
+      rows_affected: 2,
+      execution_time_ms: 12,
+    });
+
+    render(
+      <QueryEditorTab
+        activeConnection={mockConnection}
+        initialQuery="SELECT id, username FROM users;"
+      />
+    );
+
+    // Initial state: button disabled
+    const exportBtn = screen.getByTestId('export-data-btn');
+    expect(exportBtn.getAttribute('disabled')).not.toBeNull();
+
+    // Run query to load results
+    fireEvent.click(screen.getByRole('button', { name: /Run Query/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('john_doe')).toBeDefined();
+    });
+
+    // Now export button should be enabled
+    expect(exportBtn.getAttribute('disabled')).toBeNull();
+
+    // Click Export Data button
+    fireEvent.click(exportBtn);
+
+    // Export Modal is now visible
+    expect(screen.getByRole('dialog')).toBeDefined();
+    expect(screen.getByText('Export Data Wizard')).toBeDefined();
+    expect(screen.getByTestId('export-preview').textContent).toContain('id,username');
+
+    // Close modal
+    const closeBtn = screen.getByRole('button', { name: /close modal/i });
+    fireEvent.click(closeBtn);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  /**
    * @brief Verifies extractTableNameFromSql helper with diverse SQL patterns.
    */
   describe('extractTableNameFromSql', () => {

@@ -348,6 +348,7 @@ export const ValueInspectorDrawer: React.FC<ValueInspectorDrawerProps> = ({
   if (!isOpen) return null;
 
   const charCount = editorContent.length;
+  const wordCount = calculateWordCount(editorContent);
   const lineCount = calculateLineCount(editorContent);
   const byteSize = calculateByteSize(editorContent);
 
@@ -411,6 +412,10 @@ export const ValueInspectorDrawer: React.FC<ValueInspectorDrawerProps> = ({
         <div className="flex items-center space-x-3">
           <span data-testid="telemetry-chars">
             {charCount.toLocaleString()} chars
+          </span>
+          <span>•</span>
+          <span data-testid="telemetry-words">
+            {wordCount.toLocaleString()} words
           </span>
           <span>•</span>
           <span data-testid="telemetry-lines">{lineCount} lines</span>

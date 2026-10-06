@@ -7,11 +7,12 @@
 
 import React, { useState, useRef, useCallback } from 'react';
 import Editor, { OnMount } from '@monaco-editor/react';
-import { Play, Loader2, AlertCircle, FileCode, CheckCircle2, Eye } from 'lucide-react';
+import { Play, Loader2, AlertCircle, FileCode, CheckCircle2, Eye, Download } from 'lucide-react';
 import { api } from '../../api/ipc';
 import type { ConnectionConfig, QueryResult, RowUpdatePayload } from '../../types/database';
 import { EditableDataGrid, EditableDataGridHandle } from './EditableDataGrid';
 import { ValueInspectorDrawer } from './ValueInspectorDrawer';
+import { ExportModal } from './ExportModal';
 
 /**
  * @brief Properties accepted by the QueryEditorTab component.
@@ -91,6 +92,7 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [selectedCell, setSelectedCell] = useState<SelectedCellState | null>(null);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
+  const [isExportOpen, setIsExportOpen] = useState(false);
 
   const gridRef = useRef<EditableDataGridHandle | null>(null);
 
@@ -276,14 +278,16 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
         </div>
 
         {/* Execution Metadata Telemetry */}
-        {result && (
-          <div className="flex items-center space-x-3 text-[#8c919a] font-mono text-[11px]">
+        <div className="flex items-center space-x-3 text-[#8c919a] font-mono text-[11px]">
+          {result && (
             <div className="flex items-center space-x-2">
               <span data-testid="row-count">{result.rows.length} rows returned</span>
               <span>•</span>
               <span data-testid="exec-duration">{result.execution_time_ms} ms</span>
             </div>
+          )}
 
+          {result && (
             <button
               type="button"
               data-testid="inspect-value-btn"
@@ -294,8 +298,20 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
               <Eye className="w-3.5 h-3.5 text-[#3a82f7]" />
               <span>Inspect Value</span>
             </button>
-          </div>
-        )}
+          )}
+
+          <button
+            type="button"
+            data-testid="export-data-btn"
+            onClick={() => setIsExportOpen(true)}
+            disabled={!result || result.rows.length === 0}
+            className="flex items-center space-x-1.5 px-2.5 py-1 bg-[#26282d] hover:bg-[#35373c] disabled:opacity-50 disabled:cursor-not-allowed text-[#e6e8ea] rounded border border-[#35373c] text-[11px] font-mono cursor-pointer transition-colors shadow-xs"
+            title="Export query results"
+          >
+            <Download className="w-3.5 h-3.5 text-[#3a82f7]" />
+            <span>Export Data</span>
+          </button>
+        </div>
       </div>
 
       {/* Editor Area */}
@@ -379,6 +395,15 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
           value={selectedCell?.value}
           onClose={() => setIsInspectorOpen(false)}
           onApplyEdit={handleApplyDrawerEdit}
+        />
+
+        {/* Export Data Wizard Modal */}
+        <ExportModal
+          isOpen={isExportOpen}
+          tableName={extractTableNameFromSql(query)}
+          columns={result?.columns ?? []}
+          rows={result?.rows ?? []}
+          onClose={() => setIsExportOpen(false)}
         />
 
         {/* Empty / Initial Placeholder */}
