@@ -374,6 +374,38 @@ describe('QueryEditorTab component', () => {
   });
 
   /**
+   * @brief Verifies that ExportModal receives 'exported_table' as fallback tableName when query has no FROM clause.
+   */
+  it('falls back to exported_table as tableName for ExportModal when detectedTableName is unknown', async () => {
+    vi.mocked(api.executeQuery).mockResolvedValue({
+      columns: ['id'],
+      rows: [[1]],
+      rows_affected: 1,
+      execution_time_ms: 5,
+    });
+
+    render(
+      <QueryEditorTab
+        activeConnection={mockConnection}
+        initialQuery="SELECT 1 as id;"
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Run Query/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('1')).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Export Data/i }));
+
+    expect(screen.getByRole('dialog')).toBeDefined();
+    fireEvent.click(screen.getByRole('tab', { name: /sql/i }));
+    const tableNameInput = screen.getByLabelText(/table name/i) as HTMLInputElement;
+    expect(tableNameInput.value).toBe('exported_table');
+  });
+
+  /**
    * @brief Verifies extractTableNameFromSql helper with diverse SQL patterns.
    */
   describe('extractTableNameFromSql', () => {

@@ -283,7 +283,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 >
                   <option value=",">Comma (,)</option>
                   <option value=";">Semicolon (;)</option>
-                  <option value="&#9;">Tab (\t)</option>
+                  <option value={"\t"}>Tab (\t)</option>
                 </select>
               </div>
 

@@ -78,15 +78,23 @@ describe('ExportModal component', () => {
     );
 
     const delimiterSelect = screen.getByLabelText(/delimiter/i);
+    const tabOption = screen.getByRole('option', { name: /tab/i }) as HTMLOptionElement;
+    expect(tabOption.value).toBe('\t');
+
     fireEvent.change(delimiterSelect, { target: { value: ';' } });
 
     const preview = screen.getByTestId('export-preview');
     expect(preview.textContent).toContain('id;name;status');
 
+    // Switch to Tab delimiter (\t) and verify output with actual tabs
+    fireEvent.change(delimiterSelect, { target: { value: '\t' } });
+    expect(preview.textContent).toContain('id\tname\tstatus');
+    expect(preview.textContent).toContain('1\tAlice\tactive');
+
     // Toggle quote all checkbox
     const quoteCheckbox = screen.getByLabelText(/quote all fields/i);
     fireEvent.click(quoteCheckbox);
-    expect(preview.textContent).toContain('"id";"name";"status"');
+    expect(preview.textContent).toContain('"id"\t"name"\t"status"');
   });
 
   it('switches between format tabs and updates preview', () => {

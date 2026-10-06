@@ -96,6 +96,8 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
 
   const gridRef = useRef<EditableDataGridHandle | null>(null);
 
+  const detectedTableName = extractTableNameFromSql(query);
+
   // Keep latest query in ref for Monaco action callback
   const queryRef = useRef(query);
   queryRef.current = query;
@@ -377,7 +379,7 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
           <div className="flex-1 min-h-0 overflow-hidden">
             <EditableDataGrid
               ref={gridRef}
-              tableName={extractTableNameFromSql(query)}
+              tableName={detectedTableName}
               columns={result.columns}
               rows={result.rows}
               onSave={handleSave}
@@ -400,7 +402,7 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
         {/* Export Data Wizard Modal */}
         <ExportModal
           isOpen={isExportOpen}
-          tableName={extractTableNameFromSql(query)}
+          tableName={detectedTableName === 'unknown' ? 'exported_table' : detectedTableName}
           columns={result?.columns ?? []}
           rows={result?.rows ?? []}
           onClose={() => setIsExportOpen(false)}

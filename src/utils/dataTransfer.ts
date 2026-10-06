@@ -259,5 +259,7 @@ export function downloadExportFile(
   anchor.click();
   document.body.removeChild(anchor);
 
-  window.URL.revokeObjectURL(objectUrl);
+  setTimeout(() => {
+    window.URL.revokeObjectURL(objectUrl);
+  }, 1000);
 }

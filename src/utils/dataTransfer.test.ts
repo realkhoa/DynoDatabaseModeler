@@ -160,33 +160,42 @@ describe('dataTransfer utility functions', () => {
       vi.clearAllMocks();
     });
 
-    it('creates object URL and triggers anchor click to download file', () => {
-      const createObjectURLMock = vi.fn().mockReturnValue('blob:test-url');
-      const revokeObjectURLMock = vi.fn();
-      window.URL.createObjectURL = createObjectURLMock;
-      window.URL.revokeObjectURL = revokeObjectURLMock;
+    it('creates object URL, triggers anchor click to download file, and defers URL revocation', () => {
+      vi.useFakeTimers();
+      try {
+        const createObjectURLMock = vi.fn().mockReturnValue('blob:test-url');
+        const revokeObjectURLMock = vi.fn();
+        window.URL.createObjectURL = createObjectURLMock;
+        window.URL.revokeObjectURL = revokeObjectURLMock;
 
-      const clickMock = vi.fn();
-      const appendChildSpy = vi.spyOn(document.body, 'appendChild');
-      const removeChildSpy = vi.spyOn(document.body, 'removeChild');
+        const clickMock = vi.fn();
+        const appendChildSpy = vi.spyOn(document.body, 'appendChild');
+        const removeChildSpy = vi.spyOn(document.body, 'removeChild');
 
-      const originalCreateElement = document.createElement.bind(document);
-      vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
-        if (tagName === 'a') {
-          const anchor = originalCreateElement('a');
-          anchor.click = clickMock;
-          return anchor;
-        }
-        return originalCreateElement(tagName);
-      });
+        const originalCreateElement = document.createElement.bind(document);
+        vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
+          if (tagName === 'a') {
+            const anchor = originalCreateElement('a');
+            anchor.click = clickMock;
+            return anchor;
+          }
+          return originalCreateElement(tagName);
+        });
 
-      downloadExportFile('id,name\n1,Alice', 'test.csv', 'text/csv');
+        downloadExportFile('id,name\n1,Alice', 'test.csv', 'text/csv');
 
-      expect(createObjectURLMock).toHaveBeenCalledTimes(1);
-      expect(clickMock).toHaveBeenCalledTimes(1);
-      expect(appendChildSpy).toHaveBeenCalled();
-      expect(removeChildSpy).toHaveBeenCalled();
-      expect(revokeObjectURLMock).toHaveBeenCalledWith('blob:test-url');
+        expect(createObjectURLMock).toHaveBeenCalledTimes(1);
+        expect(clickMock).toHaveBeenCalledTimes(1);
+        expect(appendChildSpy).toHaveBeenCalled();
+        expect(removeChildSpy).toHaveBeenCalled();
+        // Revocation is deferred to ensure browser initiates download
+        expect(revokeObjectURLMock).not.toHaveBeenCalled();
+
+        vi.advanceTimersByTime(1000);
+        expect(revokeObjectURLMock).toHaveBeenCalledWith('blob:test-url');
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 });
