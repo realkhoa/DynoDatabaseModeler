@@ -1,3 +1,9 @@
+//! @file lib.rs
+//! @brief DynoDbModeler application core library entry point.
+
+pub mod error;
+pub mod model;
+
 /// @brief Initializes and executes the DynoDbModeler desktop application runtime.
 /// @details Sets up Tauri plugins, state management, and command handlers.
 /// @return Returns unit type `()` on normal termination or panics on critical initialization failure.
