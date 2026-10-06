@@ -1,0 +1,73 @@
+//! @file mod.rs
+//! @brief Database driver abstraction layer and driver adapter implementations.
+//! @details Defines the core DatabaseDriver trait, execution report types, query result representations,
+//! and modules for specific database engine adapters (SQLite, PostgreSQL, MySQL, MSSQL).
+
+pub mod sqlite;
+
+#[cfg(test)]
+mod sqlite_test;
+
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+use crate::error::AppError;
+use crate::model::connection::DatabaseType;
+use crate::model::schema::DatabaseSchema;
+
+/// @brief Report summarizing the execution of a multi-statement DDL migration batch.
+/// @details Encapsulates whether the batch succeeded, count of statements processed,
+/// elapsed execution time in milliseconds, and any failure message encountered.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MigrationReport {
+    /// @brief Indicates whether all migration statements completed and committed successfully.
+    pub success: bool,
+    /// @brief Count of DDL statements executed before completion or failure.
+    pub statements_executed: usize,
+    /// @brief Total elapsed execution duration in milliseconds.
+    pub execution_time_ms: u64,
+    /// @brief Error description if execution failed, or None on success.
+    pub error_message: Option<String>,
+}
+
+/// @brief Result set produced by an arbitrary SQL query execution.
+/// @details Contains column header names, serialized tabular row values, affected row count,
+/// and wall-clock execution time in milliseconds.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QueryResult {
+    /// @brief Ordered list of column names present in the query result set.
+    pub columns: Vec<String>,
+    /// @brief Two-dimensional grid of cell values encoded as JSON values.
+    pub rows: Vec<Vec<serde_json::Value>>,
+    /// @brief Number of rows affected or returned by the query.
+    pub rows_affected: u64,
+    /// @brief Total elapsed query execution duration in milliseconds.
+    pub execution_time_ms: u64,
+}
+
+/// @brief Asynchronous common trait implemented by all relational database adapters.
+/// @details Standardizes database connectivity checks, catalog schema introspection,
+/// arbitrary query execution, transactional DDL script migration, and dialect identification.
+#[async_trait]
+pub trait DatabaseDriver: Send + Sync {
+    /// @brief Tests whether the database connection can be established and is responsive.
+    /// @return Returns Ok(()) on successful ping/connection or AppError::Connection on failure.
+    async fn test_connection(&self) -> Result<(), AppError>;
+
+    /// @brief Introspects the target database schema including tables, columns, PKs, and foreign keys.
+    /// @return Returns the populated DatabaseSchema domain model or AppError::Introspection on failure.
+    async fn introspect_schema(&self) -> Result<DatabaseSchema, AppError>;
+
+    /// @brief Executes an arbitrary read or write SQL query and formats the result.
+    /// @param sql SQL statement string to execute against the connection pool.
+    /// @return Returns QueryResult containing column names, row values, and execution metrics.
+    async fn execute_query(&self, sql: &str) -> Result<QueryResult, AppError>;
+
+    /// @brief Executes a batch of DDL statements sequentially within an atomic transaction.
+    /// @param statements Slice of SQL DDL statement strings to apply in sequence.
+    /// @return Returns MigrationReport with execution statistics, or AppError::Migration if rolled back.
+    async fn execute_ddl(&self, statements: &[String]) -> Result<MigrationReport, AppError>;
+
+    /// @brief Identifies the specific relational database engine dialect handled by this driver.
+    /// @return Returns the corresponding DatabaseType enum variant.
+    fn db_type(&self) -> DatabaseType;
+}
