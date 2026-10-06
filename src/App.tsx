@@ -6,11 +6,12 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { CheckCircle2, AlertCircle, X } from 'lucide-react';
+import { CheckCircle2, AlertCircle, X, Database, Plus } from 'lucide-react';
 import { HeaderBar, WorkspaceTab } from './components/HeaderBar';
 import { Sidebar } from './components/Sidebar';
 import { ConnectionModal } from './components/ConnectionModal';
-import { ErdView } from './components/ErdView';
+import { ErdCanvas } from './components/canvas/ErdCanvas';
+import { TableDrawer } from './components/canvas/TableDrawer';
 import { SqlQueryView } from './components/SqlQueryView';
 import { SettingsView } from './components/SettingsView';
 import { api } from './api/ipc';
@@ -18,6 +19,7 @@ import type {
   ConnectionConfig,
   DatabaseSchema,
   QueryResult,
+  TableSchema,
 } from './types/database';
 
 const LOCAL_STORAGE_KEY = 'dyno_connections';
@@ -61,6 +63,8 @@ export default function App(): React.ReactElement {
   const [schema, setSchema] = useState<DatabaseSchema | null>(null);
   const [selectedTableName, setSelectedTableName] = useState<string | null>(null);
   const [isLoadingSchema, setIsLoadingSchema] = useState(false);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [drawerTable, setDrawerTable] = useState<TableSchema | null>(null);
 
   // SQL Query Tab State
   const [sqlQuery, setSqlQuery] = useState('SELECT 1 AS status, "Ready" AS message;');
@@ -208,7 +212,73 @@ export default function App(): React.ReactElement {
     }
   };
 
-  const selectedTable = schema?.tables.find((t) => t.name === selectedTableName);
+  /**
+   * @brief Handles saving table schema modifications or adding a new table to working schema.
+   * @param updatedTable Modified or newly created table schema.
+   * @param originalName Previous table name if renamed or editing existing table.
+   */
+  const handleSaveTable = useCallback(
+    (updatedTable: TableSchema, originalName?: string) => {
+      setSchema((prev) => {
+        if (!prev) {
+          return {
+            database_name: activeConnection?.database || 'database',
+            tables: [updatedTable],
+          };
+        }
+
+        if (originalName) {
+          const exists = prev.tables.some((t) => t.name === originalName);
+          if (exists) {
+            return {
+              ...prev,
+              tables: prev.tables.map((t) =>
+                t.name === originalName ? updatedTable : t
+              ),
+            };
+          }
+        }
+
+        return {
+          ...prev,
+          tables: [...prev.tables, updatedTable],
+        };
+      });
+
+      setSelectedTableName(updatedTable.name);
+      setNotification({
+        type: 'success',
+        message: `Table "${updatedTable.name}" saved.`,
+      });
+    },
+    [activeConnection]
+  );
+
+  /**
+   * @brief Handles deleting a table from the working schema.
+   * @param tableName Name of the table to remove.
+   */
+  const handleDeleteTable = useCallback(
+    (tableName: string) => {
+      setSchema((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          tables: prev.tables.filter((t) => t.name !== tableName),
+        };
+      });
+
+      if (selectedTableName === tableName) {
+        setSelectedTableName(null);
+      }
+
+      setNotification({
+        type: 'info',
+        message: `Table "${tableName}" removed from schema.`,
+      });
+    },
+    [selectedTableName]
+  );
 
   return (
     <div className="flex h-screen w-screen flex-col bg-[#1e1f22] text-[#e6e8ea] overflow-hidden font-sans">
@@ -276,14 +346,71 @@ export default function App(): React.ReactElement {
 
           {/* VIEW: ERD Canvas Tab */}
           {activeTab === 'erd' && (
-            <ErdView
-              activeConnection={activeConnection}
-              selectedTable={selectedTable}
-              onOpenNewConnection={() => {
-                setEditingConfig(null);
-                setIsModalOpen(true);
-              }}
-            />
+            !activeConnection ? (
+              <div className="flex-1 flex items-center justify-center p-8">
+                <div className="max-w-md w-full bg-[#18191c] border border-[#35373c] rounded-lg p-8 text-center shadow-xl space-y-4">
+                  <div className="w-12 h-12 bg-[#3a82f7]/10 text-[#3a82f7] rounded-full flex items-center justify-center mx-auto">
+                    <Database className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-semibold text-[#e6e8ea]">
+                      No Database Connected
+                    </h2>
+                    <p className="mt-1 text-xs text-[#8c919a]">
+                      Connect to SQLite, PostgreSQL, MySQL, or SQL Server to introspect schemas
+                      and visualize entity relationships.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingConfig(null);
+                      setIsModalOpen(true);
+                    }}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-[#3a82f7] hover:bg-[#2f6fd6] text-white rounded font-medium text-xs shadow transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Connect Database</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex-1 relative h-full w-full overflow-hidden">
+                <ErdCanvas
+                  schema={schema || { database_name: activeConnection.database, tables: [] }}
+                  onEditTable={(tableName) => {
+                    const targetTable =
+                      schema?.tables.find((t) => t.name === tableName) || null;
+                    setDrawerTable(targetTable);
+                    setIsDrawerOpen(true);
+                  }}
+                  onSelectTable={(tableName) => {
+                    setSelectedTableName(tableName);
+                  }}
+                  onAddNewTable={() => {
+                    setDrawerTable(null);
+                    setIsDrawerOpen(true);
+                  }}
+                  onTablePositionChange={(tableName, pos) => {
+                    if (schema) {
+                      setSchema({
+                        ...schema,
+                        tables: schema.tables.map((t) =>
+                          t.name === tableName ? { ...t, ui_position: pos } : t
+                        ),
+                      });
+                    }
+                  }}
+                />
+                <TableDrawer
+                  isOpen={isDrawerOpen}
+                  table={drawerTable}
+                  onClose={() => setIsDrawerOpen(false)}
+                  onSaveTable={handleSaveTable}
+                  onDeleteTable={handleDeleteTable}
+                />
+              </div>
+            )
           )}
 
           {/* VIEW: SQL Query Editor Tab */}
