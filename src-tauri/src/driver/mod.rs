@@ -3,16 +3,22 @@
 //! @details Defines the core DatabaseDriver trait, execution report types, query result representations,
 //! and modules for specific database engine adapters (SQLite, PostgreSQL, MySQL, MSSQL).
 
+pub mod factory;
+pub mod mssql;
+pub mod mysql;
+pub mod postgres;
 pub mod sqlite;
 
 #[cfg(test)]
+mod factory_test;
+#[cfg(test)]
 mod sqlite_test;
 
-use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 use crate::model::connection::DatabaseType;
 use crate::model::schema::DatabaseSchema;
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 
 /// @brief Report summarizing the execution of a multi-statement DDL migration batch.
 /// @details Encapsulates whether the batch succeeded, count of statements processed,
@@ -70,4 +76,17 @@ pub trait DatabaseDriver: Send + Sync {
     /// @brief Identifies the specific relational database engine dialect handled by this driver.
     /// @return Returns the corresponding DatabaseType enum variant.
     fn db_type(&self) -> DatabaseType;
+}
+
+/// @brief Maps foreign key referential action strings to ReferentialAction enum variants.
+/// @param action Raw rule string (e.g. CASCADE, SET NULL, RESTRICT, SET DEFAULT).
+/// @return Normalized ReferentialAction variant.
+pub fn parse_referential_action(action: &str) -> crate::model::schema::ReferentialAction {
+    match action.to_uppercase().as_str() {
+        "CASCADE" => crate::model::schema::ReferentialAction::Cascade,
+        "SET NULL" => crate::model::schema::ReferentialAction::SetNull,
+        "RESTRICT" => crate::model::schema::ReferentialAction::Restrict,
+        "SET DEFAULT" => crate::model::schema::ReferentialAction::SetDefault,
+        _ => crate::model::schema::ReferentialAction::NoAction,
+    }
 }

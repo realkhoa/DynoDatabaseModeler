@@ -1,163 +1,178 @@
 # Database Driver Subsystem (`src-tauri/src/driver`)
 
 ## 1. Overview & Purpose
-The `driver` module implements the database adapter abstraction layer for DynoDbModeler. It establishes a unified, asynchronous interface (`DatabaseDriver`) that isolates database engine differences (SQLite, PostgreSQL, MySQL, MSSQL) behind common abstractions for connection health verification, schema introspection, arbitrary SQL execution, and transactional migration DDL application.
+The `driver` subsystem implements the multi-engine database adapter abstraction layer for DynoDbModeler. It establishes a unified, asynchronous trait interface (`DatabaseDriver`) that abstracts relational database management systems (SQLite, PostgreSQL, MySQL, and Microsoft SQL Server) behind common primitives for:
+- Connection establishment and health verification (`test_connection`).
+- Metadata catalog introspection into canonical domain models (`introspect_schema`).
+- Arbitrary SQL execution returning tabular serialized JSON values (`execute_query`).
+- Atomic transactional DDL migration batch execution with rollback on failure (`execute_ddl`).
+- Dialect identification (`db_type`).
+
+A centralized factory (`DriverFactory`) dynamically selects and initializes the appropriate driver adapter based on the user's `ConnectionConfig.db_type`.
 
 ### Architectural Role
-- **Unified Adapter Contract**: Standardizes database interactions across relational database management systems through the `DatabaseDriver` trait.
-- **Catalog Introspection**: Queries native database system catalogs and pragmas to reverse-engineer tables, columns, data types, primary keys, and foreign key relations into canonical `DatabaseSchema` structures.
-- **Safe Transactional Migrations**: Executes batches of DDL migration statements atomically inside database transactions with automatic rollback on error.
-- **Embedded & Cloud Support**: Implements native support for embedded SQLite databases (in-memory and file-based) with connection pooling via `sqlx`.
+- **Unified Adapter Contract**: Standardizes database interactions across relational database engines via the `DatabaseDriver` trait.
+- **Dynamic Factory Dispatch**: `DriverFactory::create(&ConnectionConfig)` evaluates engine dialect and initializes dedicated connection pools or TDS streams.
+- **Deep Catalog Introspection**: Reverse-engineers native catalogs and schemas into canonical `DatabaseSchema` models containing tables, columns, primary keys, foreign keys, and indexes.
+- **Fail-Safe Transactional Migrations**: Applies DDL scripts atomically within isolated transactions (`BEGIN ... COMMIT`), aborting and rolling back on the first failing statement.
+- **Robust Type Normalization**: Provides dialect-specific type parsers (`parse_sqlite_type`, `parse_postgres_type`, `parse_mysql_type`, `parse_mssql_type`) to map vendor-specific types to the unified `CanonicalType` enum.
 
 ---
 
 ## 2. Prerequisites & Dependencies
-- **Rust Toolchain**: `rustc` and `cargo` 1.77+ (2021 edition).
-- **Core Crates**:
-  - `async-trait` (v0.1): Asynchronous trait definition support in Rust.
-  - `sqlx` (v0.8): Asynchronous SQL driver with `sqlite`, `runtime-tokio`, `chrono`, and `uuid` features enabled.
-  - `serde` (v1.0) & `serde_json` (v1.0): Serialization of query results and migration reports.
-  - `tokio` (v1.0): Async runtime and synchronization primitives.
+- **Rust Toolchain**: `rustc` and `cargo` 1.80+ (2021 edition).
+- **Core Dependencies**:
+  - `async-trait` (v0.1): Dynamic asynchronous trait dispatch.
+  - `sqlx` (v0.8): Async driver pool supporting `sqlite`, `postgres`, and `mysql` runtimes with `chrono` and `uuid`.
+  - `tiberius` (v0.12): Async TDS protocol driver for Microsoft SQL Server.
+  - `tokio-util` (v0.7): `TokioAsyncWriteCompatExt` adapter bridging Tokio TCP streams to futures-io for Tiberius.
+  - `serde` (v1.0) & `serde_json` (v1.0): Serialization of tabular results and migration reports over Tauri IPC.
+  - `tokio` (v1.0): Asynchronous runtime and synchronization primitives (`Mutex`, `RwLock`).
 
 ---
 
-## 3. API & Trait Reference
+## 3. Driver Architecture & Component Reference
+
+```
+                             +------------------------+
+                             |    ConnectionConfig    |
+                             +------------------------+
+                                         |
+                                         v
+                             +------------------------+
+                             |     DriverFactory      |
+                             +------------------------+
+                               /     |        |      \
+                              /      |        |       \
+                             v       v        v        v
+                      +--------+ +--------+ +-------+ +--------+
+                      | Sqlite | |Postgres| | MySql | | Mssql  |
+                      | Driver | | Driver | | Driver| | Driver |
+                      +--------+ +--------+ +-------+ +--------+
+                             \       |        |        /
+                              \      |        |       /
+                               v     v        v      v
+                             +------------------------+
+                             |   dyn DatabaseDriver   |
+                             +------------------------+
+```
 
 ### Common Trait: `DatabaseDriver`
-Implemented by all engine driver adapters (`SqliteDriver`, and future PostgreSQL, MySQL, MSSQL drivers).
+Implemented by all engine driver adapters (`SqliteDriver`, `PostgresDriver`, `MySqlDriver`, `MssqlDriver`).
 
 | Method | Signature | Description |
 | :--- | :--- | :--- |
 | `test_connection` | `async fn test_connection(&self) -> Result<(), AppError>` | Pings the database to verify credentials and connectivity. |
 | `introspect_schema` | `async fn introspect_schema(&self) -> Result<DatabaseSchema, AppError>` | Extracts tables, columns, primary keys, and foreign keys. |
-| `execute_query` | `async fn execute_query(&self, sql: &str) -> Result<QueryResult, AppError>` | Runs arbitrary SQL queries and returns columns and row values. |
+| `execute_query` | `async fn execute_query(&self, sql: &str) -> Result<QueryResult, AppError>` | Runs arbitrary SQL queries and returns column names and row values. |
 | `execute_ddl` | `async fn execute_ddl(&self, statements: &[String]) -> Result<MigrationReport, AppError>` | Sequentially applies DDL statements inside an atomic transaction. |
 | `db_type` | `fn db_type(&self) -> DatabaseType` | Returns the database engine dialect identifier (`Sqlite`, `Postgres`, etc.). |
 
-### Data Transfer Structures
+---
 
-| Struct | Field | Type | Description |
-| :--- | :--- | :--- | :--- |
-| `MigrationReport` | `success` | `bool` | Whether all statements completed and committed. |
-| | `statements_executed` | `usize` | Total count of statements applied. |
-| | `execution_time_ms` | `u64` | Elapsed execution duration in milliseconds. |
-| | `error_message` | `Option<String>` | Error message if transaction failed and rolled back. |
-| `QueryResult` | `columns` | `Vec<String>` | Column labels returned by the query. |
-| | `rows` | `Vec<Vec<serde_json::Value>>` | Tabular cell values formatted as JSON values. |
-| | `rows_affected` | `u64` | Total rows affected or returned. |
-| | `execution_time_ms` | `u64` | Elapsed query duration in milliseconds. |
+### Factory: `DriverFactory`
+Central entry point for instantiating database driver adapters.
 
-### Adapter: `SqliteDriver`
-Provides embedded SQLite support.
-- `SqliteDriver::connect(config: &ConnectionConfig) -> Result<Self, AppError>`: Establishes a connection pool. For in-memory databases (`:memory:`), enforces single-connection pooling to preserve transient in-memory tables across calls.
-- `parse_sqlite_type(t: &str) -> CanonicalType`: Maps SQLite type affinities (`INTEGER`, `TEXT`, `BLOB`, `REAL`, `BOOLEAN`) to universal canonical types.
-- `parse_referential_action(action: &str) -> ReferentialAction`: Normalizes foreign key action strings (`CASCADE`, `SET NULL`, `RESTRICT`, `SET DEFAULT`, `NO ACTION`).
+```rust
+pub struct DriverFactory;
+
+impl DriverFactory {
+    pub async fn create(config: &ConnectionConfig) -> Result<Box<dyn DatabaseDriver>, AppError>;
+}
+```
+
+- **`DatabaseType::Sqlite`**: Calls `SqliteDriver::connect(config)` (`sqlx::SqlitePool`).
+- **`DatabaseType::Postgres`**: Calls `PostgresDriver::connect(config)` (`sqlx::PgPool`).
+- **`DatabaseType::MySql`**: Calls `MySqlDriver::connect(config)` (`sqlx::MySqlPool`).
+- **`DatabaseType::Mssql`**: Calls `MssqlDriver::connect(config)` (`tiberius::Client`).
+
+---
+
+### Engine Adapters
+
+#### 1. SQLite (`SqliteDriver`)
+- **Connection**: `sqlite:<path>` or `sqlite::memory:`. For in-memory databases, pool max connections is pinned to 1 to guarantee shared state across calls.
+- **Introspection**:
+  - Tables: `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'`
+  - Columns: `PRAGMA table_info('{table}')`
+  - Foreign Keys: `PRAGMA foreign_key_list('{table}')`
+- **Type Mapper**: `parse_sqlite_type(t: &str) -> CanonicalType`
+
+#### 2. PostgreSQL (`PostgresDriver`)
+- **Connection**: `postgres://{user}:{password}@{host}:{port}/{database}?sslmode={ssl_mode}`.
+- **Introspection**:
+  - Tables: `information_schema.tables WHERE table_schema NOT IN ('pg_catalog', 'information_schema') AND table_type = 'BASE TABLE'`
+  - Columns: `information_schema.columns WHERE table_name = $1 AND table_schema = $2`
+  - Primary Keys: `information_schema.table_constraints` joined with `information_schema.key_column_usage` (`tc.constraint_type = 'PRIMARY KEY'`)
+  - Foreign Keys: `information_schema.table_constraints` joined with `information_schema.referential_constraints` and `constraint_column_usage`
+- **Type Mapper**: `parse_postgres_type(dtype: &str, max_len: Option<i32>) -> CanonicalType`
+
+#### 3. MySQL / MariaDB (`MySqlDriver`)
+- **Connection**: `mysql://{user}:{password}@{host}:{port}/{database}`.
+- **Introspection**:
+  - Tables: `information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE'`
+  - Columns: `information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?`
+  - Primary Keys: Column `COLUMN_KEY == 'PRI'`
+  - Auto-Increment: Column `EXTRA` contains `auto_increment`
+  - Foreign Keys: `information_schema.KEY_COLUMN_USAGE` joined with `information_schema.REFERENTIAL_CONSTRAINTS`
+- **Type Mapper**: `parse_mysql_type(dtype: &str, max_len: Option<i64>) -> CanonicalType`
+
+#### 4. Microsoft SQL Server (`MssqlDriver`)
+- **Connection**: Native TDS socket via `TcpStream` and `tiberius::Client::connect`. Validates that host is provided.
+- **Introspection**:
+  - Tables: `INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE'`
+  - Columns: `INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = ... AND TABLE_SCHEMA = ...`
+  - Primary Keys: `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` joined with `INFORMATION_SCHEMA.KEY_COLUMN_USAGE`
+  - Foreign Keys: `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` joined with `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS` and `INFORMATION_SCHEMA.CONSTRAINT_COLUMN_USAGE`
+- **Type Mapper**: `parse_mssql_type(dtype: &str, max_len: Option<i32>) -> CanonicalType`
 
 ---
 
 ## 4. Usage Examples
 
-### Connecting to an In-Memory SQLite Database and Running Migrations
+### Instantiating Drivers via Factory
 ```rust
-use dyno_db_modeler_lib::driver::sqlite::SqliteDriver;
-use dyno_db_modeler_lib::driver::DatabaseDriver;
+use dyno_db_modeler_lib::driver::factory::DriverFactory;
 use dyno_db_modeler_lib::model::connection::{ConnectionConfig, DatabaseType};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = ConnectionConfig {
-        id: "sqlite-memory".to_string(),
-        name: "Test In-Memory SQLite".to_string(),
-        db_type: DatabaseType::Sqlite,
-        host: None,
-        port: None,
-        database: ":memory:".to_string(),
-        username: None,
-        password: None,
-        file_path: Some(":memory:".to_string()),
+    // 1. PostgreSQL Connection
+    let pg_config = ConnectionConfig {
+        id: "pg-prod".to_string(),
+        name: "Production PG".to_string(),
+        db_type: DatabaseType::Postgres,
+        host: Some("localhost".to_string()),
+        port: Some(5432),
+        database: "store_db".to_string(),
+        username: Some("postgres".to_string()),
+        password: Some("secret".to_string()),
+        file_path: None,
         ssl: false,
     };
+    let pg_driver = DriverFactory::create(&pg_config).await?;
+    pg_driver.test_connection().await?;
 
-    let driver = SqliteDriver::connect(&config).await?;
+    // 2. Introspect Schema
+    let schema = pg_driver.introspect_schema().await?;
+    println!("Found {} tables in PostgreSQL database", schema.tables.len());
 
-    // Execute atomic DDL migration
-    let migration_report = driver.execute_ddl(&[
-        "CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);".to_string(),
-        "CREATE TABLE posts (id INTEGER PRIMARY KEY, user_id INTEGER, title TEXT, FOREIGN KEY(user_id) REFERENCES users(id));".to_string(),
+    // 3. Execute Transactional Migration Batch
+    let migration_report = pg_driver.execute_ddl(&[
+        "CREATE TABLE audit_logs (id BIGSERIAL PRIMARY KEY, message TEXT NOT NULL);".to_string(),
     ]).await?;
-
-    println!("Executed {} statements in {}ms", migration_report.statements_executed, migration_report.execution_time_ms);
-
-    // Introspect reverse-engineered catalog
-    let schema = driver.introspect_schema().await?;
-    println!("Introspected {} tables", schema.tables.len());
+    println!("Applied migration in {} ms", migration_report.execution_time_ms);
 
     Ok(())
 }
 ```
 
-### Executing Arbitrary SQL Query
-```rust
-let result = driver.execute_query("SELECT id, name FROM users").await?;
-println!("Columns: {:?}", result.columns);
-for row in result.rows {
-    println!("Row: {:?}", row);
-}
-```
-
 ---
 
-## 5. Output Structure & Schema
+## 5. Troubleshooting & Edge Cases
 
-### Introspected `DatabaseSchema`
-```json
-{
-  "database_name": "main",
-  "tables": [
-    {
-      "name": "users",
-      "schema": null,
-      "columns": [
-        {
-          "name": "id",
-          "data_type": "Integer",
-          "is_primary_key": true,
-          "is_nullable": false,
-          "is_auto_increment": true,
-          "default_value": null
-        },
-        {
-          "name": "name",
-          "data_type": "Text",
-          "is_primary_key": false,
-          "is_nullable": false,
-          "is_auto_increment": false,
-          "default_value": null
-        }
-      ],
-      "foreign_keys": [],
-      "indexes": [],
-      "ui_position": null
-    }
-  ]
-}
-```
-
-### Migration Report
-```json
-{
-  "success": true,
-  "statements_executed": 2,
-  "execution_time_ms": 5,
-  "error_message": null
-}
-```
-
----
-
-## 6. Troubleshooting & Edge Cases
-
-- **In-Memory SQLite Isolation**: SQLite in-memory databases (`:memory:`) are private to a database connection handle. `SqliteDriver::connect` restricts pool size to 1 connection when `:memory:` is used, preventing statements from executing across disparate in-memory instances.
-- **Type Affinity Fallbacks**: Unrecognized SQLite types (e.g. `GEOMETRY`, `DATETIME`) fall back to `CanonicalType::Custom(String)` without halting introspection.
-- **Foreign Key Column Inference**: When SQLite foreign keys omit the referenced column (referencing the parent table's primary key by default), introspection defaults `target_column` to `"id"`.
-- **Atomic DDL Rollback**: If any statement within `execute_ddl` encounters a syntax error or constraint failure, the transaction is immediately aborted via `tx.rollback().await`, preventing partially applied schema corruptions.
+- **PostgreSQL Schema Isolation**: Introspection automatically excludes internal Postgres system tables (`pg_catalog`, `information_schema`) to prevent cluttering application ERDs with internal metadata catalogs.
+- **MySQL Boolean Emulation**: In MySQL, `TINYINT(1)` columns are commonly used to represent booleans. `parse_mysql_type` automatically inspects `max_len == Some(1)` and assigns `CanonicalType::Boolean`, while preserving larger `TINYINT` fields as `CanonicalType::SmallInt`.
+- **MSSQL Host Requirement**: Microsoft SQL Server requires a network host address. If `config.host` is `None` or blank, `DriverFactory::create` immediately produces `AppError::Config` before initiating TCP handshakes.
+- **Connection Acquisition Timeouts**: All networked driver pools enforce a 5-second connection acquisition timeout to avoid indefinite hanging during network failures.
+- **DDL Rollback Guarantee**: `execute_ddl` encloses all statements in explicit transactions (`BEGIN ... COMMIT`). If any statement triggers a syntax error or constraint violation, the transaction is immediately rolled back and an `AppError::Migration` is returned.

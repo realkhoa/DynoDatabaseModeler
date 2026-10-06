@@ -88,7 +88,8 @@ async fn test_sqlite_driver_introspection() {
     let driver = create_test_driver().await;
 
     let create_sql = vec![
-        "CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);".to_string(),
+        "CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);"
+            .to_string(),
         concat!(
             "CREATE TABLE posts (id INTEGER PRIMARY KEY, user_id INTEGER, title TEXT, ",
             "FOREIGN KEY(user_id) REFERENCES users(id));"
@@ -96,7 +97,10 @@ async fn test_sqlite_driver_introspection() {
         .to_string(),
     ];
 
-    driver.execute_ddl(&create_sql).await.expect("Failed to create tables");
+    driver
+        .execute_ddl(&create_sql)
+        .await
+        .expect("Failed to create tables");
 
     let schema = driver
         .introspect_schema()
@@ -140,9 +144,18 @@ async fn test_sqlite_driver_execute_query() {
 
     assert_eq!(result.columns, vec!["id", "name", "price"]);
     assert_eq!(result.rows.len(), 1);
-    assert_eq!(result.rows[0][0], serde_json::Value::String("1".to_string()));
-    assert_eq!(result.rows[0][1], serde_json::Value::String("Widget".to_string()));
-    assert_eq!(result.rows[0][2], serde_json::Value::String("19.99".to_string()));
+    assert_eq!(
+        result.rows[0][0],
+        serde_json::Value::String("1".to_string())
+    );
+    assert_eq!(
+        result.rows[0][1],
+        serde_json::Value::String("Widget".to_string())
+    );
+    assert_eq!(
+        result.rows[0][2],
+        serde_json::Value::String("19.99".to_string())
+    );
 }
 
 /// @brief Tests transactional DDL execution rollback on failure.
@@ -167,7 +180,10 @@ async fn test_sqlite_driver_execute_ddl_rollback() {
     }
 
     // Verify rollback: rollback_test table should not exist
-    let schema = driver.introspect_schema().await.expect("Schema introspection should succeed");
+    let schema = driver
+        .introspect_schema()
+        .await
+        .expect("Schema introspection should succeed");
     assert!(!schema.tables.iter().any(|t| t.name == "rollback_test"));
 }
 
@@ -183,16 +199,37 @@ fn test_sqlite_type_mapping() {
     assert_eq!(parse_sqlite_type("FLOAT"), CanonicalType::Double);
     assert_eq!(parse_sqlite_type("DOUBLE"), CanonicalType::Double);
     assert_eq!(parse_sqlite_type("BOOLEAN"), CanonicalType::Boolean);
-    assert_eq!(parse_sqlite_type("DATETIME"), CanonicalType::Custom("DATETIME".to_string()));
+    assert_eq!(
+        parse_sqlite_type("DATETIME"),
+        CanonicalType::Custom("DATETIME".to_string())
+    );
 }
 
 /// @brief Unit test verifying foreign key referential action string parsing.
 #[test]
 fn test_sqlite_referential_action_mapping() {
-    assert_eq!(parse_referential_action("CASCADE"), ReferentialAction::Cascade);
-    assert_eq!(parse_referential_action("SET NULL"), ReferentialAction::SetNull);
-    assert_eq!(parse_referential_action("RESTRICT"), ReferentialAction::Restrict);
-    assert_eq!(parse_referential_action("SET DEFAULT"), ReferentialAction::SetDefault);
-    assert_eq!(parse_referential_action("NO ACTION"), ReferentialAction::NoAction);
-    assert_eq!(parse_referential_action("UNKNOWN"), ReferentialAction::NoAction);
+    assert_eq!(
+        parse_referential_action("CASCADE"),
+        ReferentialAction::Cascade
+    );
+    assert_eq!(
+        parse_referential_action("SET NULL"),
+        ReferentialAction::SetNull
+    );
+    assert_eq!(
+        parse_referential_action("RESTRICT"),
+        ReferentialAction::Restrict
+    );
+    assert_eq!(
+        parse_referential_action("SET DEFAULT"),
+        ReferentialAction::SetDefault
+    );
+    assert_eq!(
+        parse_referential_action("NO ACTION"),
+        ReferentialAction::NoAction
+    );
+    assert_eq!(
+        parse_referential_action("UNKNOWN"),
+        ReferentialAction::NoAction
+    );
 }

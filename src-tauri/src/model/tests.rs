@@ -33,10 +33,7 @@ fn create_sample_database_schema() -> DatabaseSchema {
             ],
             foreign_keys: vec![],
             indexes: vec![],
-            ui_position: Some(Point {
-                x: 100.0,
-                y: 150.0,
-            }),
+            ui_position: Some(Point { x: 100.0, y: 150.0 }),
         }],
     }
 }
@@ -47,8 +44,7 @@ fn create_sample_database_schema() -> DatabaseSchema {
 fn test_schema_serialization_roundtrip() {
     let schema = create_sample_database_schema();
     let json = serde_json::to_string(&schema).expect("Failed to serialize");
-    let deserialized: DatabaseSchema =
-        serde_json::from_str(&json).expect("Failed to deserialize");
+    let deserialized: DatabaseSchema = serde_json::from_str(&json).expect("Failed to deserialize");
 
     assert_eq!(schema.tables.len(), deserialized.tables.len());
     assert_eq!(
@@ -61,10 +57,7 @@ fn test_schema_serialization_roundtrip() {
     );
     assert_eq!(
         deserialized.tables[0].ui_position,
-        Some(Point {
-            x: 100.0,
-            y: 150.0
-        })
+        Some(Point { x: 100.0, y: 150.0 })
     );
 }
 
@@ -85,7 +78,8 @@ fn test_connection_config_serialization() {
         ssl: false,
     };
 
-    let json = serde_json::to_string(&postgres_config).expect("Failed to serialize postgres config");
+    let json =
+        serde_json::to_string(&postgres_config).expect("Failed to serialize postgres config");
     let deserialized: ConnectionConfig =
         serde_json::from_str(&json).expect("Failed to deserialize postgres config");
     assert_eq!(deserialized.id, "conn-1");
@@ -105,11 +99,15 @@ fn test_connection_config_serialization() {
         ssl: false,
     };
 
-    let sqlite_json = serde_json::to_string(&sqlite_config).expect("Failed to serialize sqlite config");
+    let sqlite_json =
+        serde_json::to_string(&sqlite_config).expect("Failed to serialize sqlite config");
     let sqlite_deserialized: ConnectionConfig =
         serde_json::from_str(&sqlite_json).expect("Failed to deserialize sqlite config");
     assert_eq!(sqlite_deserialized.db_type, DatabaseType::Sqlite);
-    assert_eq!(sqlite_deserialized.file_path, Some("/path/to/local.db".to_string()));
+    assert_eq!(
+        sqlite_deserialized.file_path,
+        Some("/path/to/local.db".to_string())
+    );
 }
 
 /// @brief Tests CanonicalType serialization and deserialization across varied type variants.
@@ -191,7 +189,10 @@ fn test_index_schema_serialization() {
 #[test]
 fn test_app_error_serialization() {
     let db_err = AppError::Database("connection pool timed out".to_string());
-    assert_eq!(db_err.to_string(), "Database error: connection pool timed out");
+    assert_eq!(
+        db_err.to_string(),
+        "Database error: connection pool timed out"
+    );
 
     let json = serde_json::to_string(&db_err).expect("Failed to serialize AppError");
     assert!(json.contains("connection pool timed out"));
