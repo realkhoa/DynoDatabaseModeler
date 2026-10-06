@@ -1,11 +1,11 @@
 # SQL Query Editor & Tabular Results Console (`src/components/query`)
 
 ## 1. Overview & Purpose
-The `src/components/query` module provides an interactive SQL query workspace within **DynoDbModeler**. Styled in the minimalist TablePlus dark aesthetic, it features:
+The `src/components/query` module provides an interactive SQL query workspace within **DynoDbModeler**. Styled in a modern minimalist dark aesthetic, it features:
 - An embedded **Monaco Editor** with SQL syntax highlighting, line numbers, automatic layout, and `vs-dark` theme.
 - Convenient keyboard shortcuts (`Ctrl+Enter` / `Cmd+Enter`) to trigger rapid query execution directly from the editor without switching focus.
 - Top toolbar controls with execution indicators, spinner states, active database target badges, and precise query execution telemetry (rows returned and duration in milliseconds).
-- A minimalist TablePlus-styled tabular results grid featuring a sticky column header row, alternating row hover highlights, and smart data cell formatters for `NULL`, boolean flags, numbers, strings, and JSON objects/arrays.
+- A clean, modern tabular results grid featuring a sticky column header row, alternating row hover highlights, and smart data cell formatters for `NULL`, boolean flags, numbers, strings, and JSON objects/arrays.
 - Prominent error banners displaying actionable dialect error diagnostics whenever execution fails.
 
 ---
@@ -13,7 +13,7 @@ The `src/components/query` module provides an interactive SQL query workspace wi
 ## 2. Prerequisites & Dependencies
 - **React 19 / TypeScript 5.7+**: Frontend component architecture and strict typing.
 - **`@monaco-editor/react`**: Web-standard Monaco code editor runtime.
-- **`lucide-react`**: TablePlus minimalist icons (`Play`, `Loader2`, `AlertCircle`, `FileCode`).
+- **`lucide-react`**: Clean minimalist icons (`Play`, `Loader2`, `AlertCircle`, `FileCode`).
 - **`src/types/database.ts`**: Core `QueryResult` and `ConnectionConfig` models.
 - **Tauri IPC (`src/api/ipc.ts`)**: Invokes backend query execution (`cmd_execute_query`).
 

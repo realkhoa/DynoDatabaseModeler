@@ -1,6 +1,6 @@
 # DynoDbModeler
 
-DynoDbModeler is a cross-platform desktop SQL management and interactive database entity-relationship (ERD) modeler built with **Tauri v2**, **Rust**, and **React 19**, featuring a sleek dark aesthetic inspired by **TablePlus**.
+DynoDbModeler is a cross-platform desktop SQL management and interactive database entity-relationship (ERD) modeler built with **Tauri v2**, **Rust**, and **React 19**, featuring a sleek, modern minimalist dark aesthetic.
 
 DynoDbModeler bridges visual database architecture and live SQL administration. It enables engineers to connect directly to relational database engines, instantly reverse-engineer live catalogs into visual schema graphs, visually modify schemas and relationships, safely review computed DDL diffs, apply atomic migrations, and execute raw SQL queries with instant data grid feedback.
 
@@ -17,7 +17,7 @@ DynoDbModeler is designed for developers, database administrators, and architect
 - **Safe Bidirectional Synchronization**: Deterministic schema diffing engine highlighting added tables, altered columns, and foreign key modifications, paired with a safe transactional DDL migration runner.
 - **Interactive SQL Query Workbench**: Multi-tab Monaco Editor with SQL syntax highlighting, keyboard execution shortcuts (`Ctrl+Enter` / `Cmd+Enter`), execution timing metrics, and responsive virtualized data grids.
 - **High-Fidelity ERD Export**: Clean schema definition export in JSON format, high-resolution SVG vector diagrams, and raster PNG renderings.
-- **TablePlus-Inspired Minimalist Dark UI**: Compact typography, high-contrast dark palette (`#1e1f22`, `#24262b`), and non-intrusive modal drawers.
+- **Modern Minimalist Dark UI**: Compact typography, high-contrast dark palette (`#1e1f22`, `#24262b`), and non-intrusive modal drawers.
 
 ---
 

@@ -1,6 +1,6 @@
 /**
  * @file DiffModal.tsx
- * @brief TablePlus-themed modal dialog for inspecting schema differences and executing safe DDL migrations.
+ * @brief Modern dark-themed modal dialog for inspecting schema differences and executing safe DDL migrations.
  * @details Displays a structured hierarchical tree of detected modifications (added/dropped tables,
  * columns, altered attributes, foreign keys), destructive warning telemetry, and an embedded Monaco SQL
  * editor for reviewing, fine-tuning, copying, or applying migration statements inside a transaction.

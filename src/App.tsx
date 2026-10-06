@@ -1,6 +1,6 @@
 /**
  * @file App.tsx
- * @brief TablePlus-themed root application shell and workspace coordinator for DynoDbModeler.
+ * @brief Modern dark-themed root application shell and workspace coordinator for DynoDbModeler.
  * @details Manages top-level state including database connections, schema introspection,
  * active navigation tabs, table selection, SQL query execution, and connection modal workflows.
  */

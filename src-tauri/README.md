@@ -1,7 +1,7 @@
 # DynoDbModeler Backend Core (`src-tauri`)
 
 ## 1. Overview & Purpose
-The `src-tauri` crate serves as the core Rust desktop backend runtime for **DynoDbModeler**, a modern TablePlus-style SQL management and ERD database modeler.
+The `src-tauri` crate serves as the core Rust desktop backend runtime for **DynoDbModeler**, a modern minimalist SQL management and ERD database modeler.
 
 It connects the Tauri 2 frontend application (Svelte/TypeScript) to four major relational database engines (**PostgreSQL**, **SQLite**, **MySQL / MariaDB**, and **Microsoft SQL Server**) through thread-safe asynchronous IPC (Inter-Process Communication) command handlers and a global connection state manager (`AppState`).
 

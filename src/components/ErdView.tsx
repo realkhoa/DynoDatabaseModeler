@@ -99,7 +99,7 @@ export const ErdView: React.FC<ErdViewProps> = ({
         </div>
 
         <div className="text-[11px] text-[#8c919a]">
-          Interactive TablePlus ERD Visualizer
+          Interactive Modern ERD Visualizer
         </div>
       </div>
 

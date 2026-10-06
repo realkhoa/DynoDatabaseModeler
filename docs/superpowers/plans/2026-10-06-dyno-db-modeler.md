@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build DynoDbModeler, a desktop database management and modeling tool in Tauri v2 + React 19 with a TablePlus aesthetic, multi-database driver support, interactive ERD canvas, and bidirectional safe schema synchronization.
+**Goal:** Build DynoDbModeler, a desktop database management and modeling tool in Tauri v2 + React 19 with a modern minimalist dark aesthetic, multi-database driver support, interactive ERD canvas, and bidirectional safe schema synchronization.
 
 **Architecture:** A Rust-based Tauri backend providing an extensible `DatabaseDriver` trait (SQLite, Postgres, MySQL, MSSQL), schema introspection, schema diff calculation, and dialect-specific DDL generation; paired with a React 19 frontend utilizing `@xyflow/react` for the ERD canvas and Monaco Editor for SQL execution and DDL diff review.
 
@@ -131,7 +131,7 @@ Create `src-tauri/Cargo.toml`:
 [package]
 name = "dyno-db-modeler"
 version = "0.1.0"
-description = "TablePlus-style SQL Management and ERD Modeler"
+description = "Modern Minimalist SQL Management and ERD Modeler"
 edition = "2021"
 
 [lib]
@@ -1948,7 +1948,7 @@ git commit -m "feat(ipc): implement Tauri commands for connection, introspection
 
 ---
 
-### Task 8: TablePlus-Themed Shell & Connection Manager UI (Frontend)
+### Task 8: Modern Minimalist Shell & Connection Manager UI (Frontend)
 
 **Files:**
 - Create: `src/types/database.ts`
@@ -1959,7 +1959,7 @@ git commit -m "feat(ipc): implement Tauri commands for connection, introspection
 - Modify: `src/App.tsx`
 
 **Interfaces:**
-- Produces: TablePlus minimalist UI shell with sidebar connection list, tables tree, active tabs (ERD Canvas / SQL Editor), and Connection Modal.
+- Produces: Modern minimalist UI shell with sidebar connection list, tables tree, active tabs (ERD Canvas / SQL Editor), and Connection Modal.
 
 - [ ] **Step 1: Define TypeScript database types matching Rust models**
 
@@ -2186,7 +2186,7 @@ Expected: PASS with 0 TypeScript and bundling errors.
 
 ```bash
 git add src/
-git commit -m "feat(ui): implement TablePlus minimalist shell and sidebar navigation"
+git commit -m "feat(ui): implement modern minimalist shell and sidebar navigation"
 ```
 
 ---
@@ -2642,7 +2642,7 @@ import { Play } from 'lucide-react';
 import { api } from '../../api/ipc';
 
 export const QueryEditorTab: React.FC = () => {
-  const [query, setQuery] = useState('SELECT 1 as id, "Hello TablePlus" as message;');
+  const [query, setQuery] = useState('SELECT 1 as id, "Hello DynoDbModeler" as message;');
   const [result, setResult] = useState<{ columns: string[]; rows: any[][]; rows_affected: number; execution_time_ms: number } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -2775,13 +2775,13 @@ Create `README.md`:
 ```markdown
 # DynoDbModeler
 
-DynoDbModeler is a cross-platform SQL management and database modeling desktop tool built with **Tauri v2**, **Rust**, and **React 19**, featuring a sleek dark aesthetic inspired by **TablePlus**.
+DynoDbModeler is a cross-platform SQL management and database modeling desktop tool built with **Tauri v2**, **Rust**, and **React 19**, featuring a sleek modern dark aesthetic.
 
 ## Features
 - **Extensible Database Connectivity**: Native async drivers for SQLite, PostgreSQL, and MySQL.
 - **Reverse Engineering**: Instant extraction of tables, primary keys, and foreign keys into an interactive ERD.
 - **Forward Engineering & Safe Sync**: Visual schema diffing, dialect DDL generation, and safe transactional migrations.
-- **TablePlus Theme**: Minimalist dark UI, compact tables, and monospace data typography.
+- **Modern Minimalist Theme**: Dark UI, compact tables, and monospace data typography.
 
 ## Prerequisites
 - Rust 1.80+ (`cargo`)

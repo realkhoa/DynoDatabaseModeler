@@ -1,6 +1,6 @@
 /**
  * @file HeaderBar.tsx
- * @brief TablePlus-styled top header navigation and status bar component.
+ * @brief Modern dark-styled top header navigation and status bar component.
  * @details Houses workspace navigation tabs (ERD Canvas, SQL Query, Settings),
  * active connection status badge, and disconnect / connection triggers.
  */
@@ -43,7 +43,7 @@ export interface HeaderBarProps {
 }
 
 /**
- * @brief TablePlus-themed header bar displaying application tabs and connection telemetry.
+ * @brief Modern dark-themed header bar displaying application tabs and connection telemetry.
  * @param props Component properties configuring active tabs and connection state.
  * @return Rendered HeaderBar element.
  */

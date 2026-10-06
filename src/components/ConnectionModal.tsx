@@ -1,6 +1,6 @@
 /**
  * @file ConnectionModal.tsx
- * @brief TablePlus-styled dark modal dialog for configuring and testing database connections.
+ * @brief Modern dark-styled modal dialog for configuring and testing database connections.
  * @details Supports SQLite, PostgreSQL, MySQL, and Microsoft SQL Server configurations
  * with real-time connectivity testing and form validation.
  */
@@ -30,7 +30,7 @@ export interface ConnectionModalProps {
 }
 
 /**
- * @brief TablePlus-themed modal dialog for creating and editing database connection parameters.
+ * @brief Modern dark-themed modal dialog for creating and editing database connection parameters.
  * @param props Component properties configuring modal lifecycle and submission callbacks.
  * @return Rendered modal dialog element or null if closed.
  */

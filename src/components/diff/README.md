@@ -12,7 +12,7 @@ The `src/components/diff` module provides an interactive review and execution di
 ## 2. Prerequisites & Dependencies
 - **React 19 / TypeScript 5.7+**: Component rendering and type safety.
 - **`@monaco-editor/react`**: Embeds Monaco SQL code editor with syntax highlighting and line numbers.
-- **`lucide-react`**: TablePlus minimalist icons (`AlertTriangle`, `Check`, `Copy`, `X`, `Loader2`, `ShieldAlert`, `FileCode`).
+- **`lucide-react`**: Clean minimalist icons (`AlertTriangle`, `Check`, `Copy`, `X`, `Loader2`, `ShieldAlert`, `FileCode`).
 - **`src/types/database.ts`**: Core `SchemaDiff`, `TableSchema`, and `ColumnSchema` models.
 - **Tauri IPC (`src/api/ipc.ts`)**: Invokes backend DDL generation (`cmd_generate_ddl`) and transaction execution (`cmd_execute_migration`).
 

@@ -128,7 +128,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </div>
 
       <div className="pt-4 border-t border-[#35373c] flex items-center justify-between text-xs text-[#8c919a]">
-        <span>DynoDbModeler v0.1.0 · TablePlus Minimalist Shell</span>
+        <span>DynoDbModeler v0.1.0 · Modern Minimalist Shell</span>
         <button
           type="button"
           onClick={onOpenNewConnection}

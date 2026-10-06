@@ -1,6 +1,6 @@
 /**
  * @file QueryEditorTab.tsx
- * @brief TablePlus-styled SQL query workspace tab with Monaco Editor and results grid.
+ * @brief Modern SQL query workspace tab with Monaco Editor and results grid.
  * @details Embeds Monaco Editor for SQL authoring, supports keyboard shortcuts (Ctrl+Enter / Cmd+Enter),
  * executes statements via Tauri IPC, and renders tabular results with sticky headers and value type formatting.
  */
@@ -24,7 +24,7 @@ export interface QueryEditorTabProps {
 }
 
 /**
- * @brief Formats an arbitrary tabular cell value for clean TablePlus-styled rendering.
+ * @brief Formats an arbitrary tabular cell value for clean tabular rendering.
  * @param val Cell value of unknown data type (string, number, boolean, object, or null/undefined).
  * @return Rendered React node with appropriate formatting.
  */
@@ -51,7 +51,7 @@ export function formatCellValue(val: unknown): React.ReactNode {
  */
 export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
   activeConnection,
-  initialQuery = 'SELECT 1 as id, "Hello TablePlus" as message;',
+  initialQuery = 'SELECT 1 as id, "Hello DynoDbModeler" as message;',
   onQuerySuccess,
 }) => {
   const [query, setQuery] = useState(initialQuery);

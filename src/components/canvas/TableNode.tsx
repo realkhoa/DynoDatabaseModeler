@@ -45,7 +45,7 @@ export interface TableNodeProps {
 }
 
 /**
- * @brief Custom React Flow node rendering a TablePlus-styled entity card.
+ * @brief Custom React Flow node rendering a sleek database entity card.
  * @param props Node props including table metadata payload and selection state.
  * @return Rendered table card element.
  */

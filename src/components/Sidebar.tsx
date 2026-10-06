@@ -1,6 +1,6 @@
 /**
  * @file Sidebar.tsx
- * @brief TablePlus-style left navigation sidebar component for DynoDbModeler.
+ * @brief Modern left navigation sidebar component for DynoDbModeler.
  * @details Displays connection selector, active database status, schema refresh trigger,
  * connection creator trigger, table search filter, and list of database tables with column counts.
  */
@@ -43,7 +43,7 @@ export interface SidebarProps {
 }
 
 /**
- * @brief TablePlus-themed sidebar component providing database and table navigation.
+ * @brief Modern dark-themed sidebar component providing database and table navigation.
  * @param props Component properties configuring connections, tables, and interaction handlers.
  * @return Rendered Sidebar element.
  */

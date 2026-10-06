@@ -2,7 +2,7 @@
 
 ## 1. Executive Summary
 
-**DynoDbModeler** is a cross-platform desktop database management and modeling application built with **Tauri v2**, **Rust**, and **React 19**. It provides a minimalist, sleek dark UI inspired by **TablePlus**, combined with visual Entity-Relationship Diagram (ERD) exploration, schema reverse-engineering, visual schema design, and bidirectional forward-engineering (safe schema diff and SQL DDL synchronization).
+**DynoDbModeler** is a cross-platform desktop database management and modeling application built with **Tauri v2**, **Rust**, and **React 19**. It provides a minimalist, sleek dark UI, combined with visual Entity-Relationship Diagram (ERD) exploration, schema reverse-engineering, visual schema design, and bidirectional forward-engineering (safe schema diff and SQL DDL synchronization).
 
 ---
 
@@ -46,7 +46,7 @@
 | Async Runtime | Tokio | Industry standard for asynchronous I/O and database connection pools |
 | Database Drivers | `sqlx` (Postgres, MySQL, SQLite), `tiberius` (MSSQL) | Native Rust async drivers with high performance, pure memory safety, and zero external runtime dependencies |
 | Frontend Framework | React 19 + TypeScript + Vite | Type-safe, reactive UI development with rich component ecosystem |
-| Styling & Design System | Tailwind CSS v4 + Lucide Icons | TablePlus-inspired minimalist dark theme (#1e1f22, #18191c, sleek borders) |
+| Styling & Design System | Tailwind CSS v4 + Lucide Icons | Modern minimalist dark theme (#1e1f22, #18191c, sleek borders) |
 | ERD Canvas Engine | `@xyflow/react` (React Flow) + Dagre | Mature node-graph engine supporting custom handles per column, smooth pan/zoom, and automated graph layout |
 | Code & SQL Editor | Monaco Editor (`@monaco-editor/react`) | Industry-standard code editor for SQL query execution and DDL diff review |
 
@@ -154,10 +154,10 @@ Each dialect implements `DialectDdlGenerator`:
 
 ---
 
-## 5. User Interface & TablePlus Styling Specifications
+## 5. User Interface & Minimalist Dark Theme Specifications
 
 ### 5.1 Color Palette & Theme Tokens
-- Background Base: `#1e1f22` (TablePlus dark canvas)
+- Background Base: `#1e1f22` (Minimalist dark canvas)
 - Sidebar Background: `#18191c`
 - Header / Toolbar Background: `#26282d`
 - Active Tab / Selected Item: `#2f3238`
