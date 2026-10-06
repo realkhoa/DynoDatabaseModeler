@@ -99,4 +99,29 @@ describe('HeaderBar component', () => {
     fireEvent.click(connectBtn);
     expect(handleOpenModal).toHaveBeenCalledTimes(1);
   });
+
+  /**
+   * @brief Verifies Review & Sync button and change count badge when connected.
+   */
+  it('renders Review & Sync button and badge when connected and triggers onOpenDiff', () => {
+    const handleOpenDiff = vi.fn();
+    render(
+      <HeaderBar
+        activeTab="erd"
+        onSelectTab={vi.fn()}
+        activeConnection={mockConnection}
+        onOpenNewConnection={vi.fn()}
+        onOpenDiff={handleOpenDiff}
+        pendingChangesCount={3}
+      />
+    );
+
+    const diffBtn = screen.getByRole('button', { name: /Review & Sync/i });
+    expect(diffBtn).toBeDefined();
+    expect(screen.getByTestId('pending-changes-badge').textContent).toBe('3');
+
+    fireEvent.click(diffBtn);
+    expect(handleOpenDiff).toHaveBeenCalledTimes(1);
+  });
 });
+

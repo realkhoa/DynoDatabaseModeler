@@ -47,16 +47,19 @@ export const DiffModal: React.FC<DiffModalProps> = ({
   onClose,
   onExecute,
 }) => {
-  const [customSql, setCustomSql] = useState<string>(() => generatedDdl.join('\n\n'));
+  const [userEditedSql, setUserEditedSql] = useState<string | null>(null);
   const [isExecuting, setIsExecuting] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // Synchronize editor buffer whenever generated DDL statements or modal visibility change
+  // Synchronously compute SQL buffer, favoring user manual edits over generated DDL
+  const customSql = userEditedSql ?? generatedDdl.join('\n\n');
+
+  // Reset user manual edits when modal is closed or new generated DDL is passed
   useEffect(() => {
-    if (isOpen) {
-      setCustomSql(generatedDdl.join('\n\n'));
+    if (!isOpen) {
+      setUserEditedSql(null);
     }
-  }, [generatedDdl, isOpen]);
+  }, [isOpen, generatedDdl]);
 
   /**
    * @brief Copies the current Monaco editor SQL buffer to clipboard with animated visual feedback.
@@ -290,7 +293,7 @@ export const DiffModal: React.FC<DiffModalProps> = ({
                 defaultLanguage="sql"
                 theme="vs-dark"
                 value={customSql}
-                onChange={(val) => setCustomSql(val || '')}
+                onChange={(val) => setUserEditedSql(val || '')}
                 options={{
                   minimap: { enabled: false },
                   fontSize: 12,

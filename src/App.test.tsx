@@ -17,7 +17,27 @@ vi.mock('./api/ipc', () => ({
     introspectSchema: vi.fn(),
     testConnection: vi.fn(),
     executeQuery: vi.fn(),
+    computeDiff: vi.fn(),
+    generateDdl: vi.fn(),
+    executeMigration: vi.fn(),
   },
+}));
+
+// Mock Monaco Editor
+vi.mock('@monaco-editor/react', () => ({
+  default: ({
+    value,
+    onChange,
+  }: {
+    value?: string;
+    onChange?: (val: string) => void;
+  }) => (
+    <textarea
+      data-testid="monaco-editor"
+      value={value}
+      onChange={(e) => onChange?.(e.target.value)}
+    />
+  ),
 }));
 
 describe('App root component', () => {
@@ -180,4 +200,80 @@ describe('App root component', () => {
       expect(screen.getByText('Disconnected')).toBeDefined();
     });
   });
+
+  /**
+   * @brief Verifies reviewing schema diff and executing safe migration workflow.
+   */
+  it('opens diff modal and executes migration successfully', async () => {
+    vi.mocked(api.connect).mockResolvedValue(true);
+    vi.mocked(api.introspectSchema).mockResolvedValue(mockSchema);
+    vi.mocked(api.computeDiff).mockResolvedValue({
+      tables_to_create: [
+        {
+          name: 'products',
+          columns: [
+            {
+              name: 'id',
+              data_type: 'Integer',
+              is_primary_key: true,
+              is_nullable: false,
+              is_auto_increment: true,
+            },
+          ],
+          foreign_keys: [],
+          indexes: [],
+        },
+      ],
+      tables_to_drop: [],
+      columns_to_add: [],
+      columns_to_drop: [],
+      columns_to_alter: [],
+      foreign_keys_to_add: [],
+      foreign_keys_to_drop: [],
+    });
+    vi.mocked(api.generateDdl).mockResolvedValue(['CREATE TABLE products (id INTEGER PRIMARY KEY);']);
+    vi.mocked(api.executeMigration).mockResolvedValue({
+      success: true,
+      statements_executed: 1,
+      execution_time_ms: 12,
+      error_message: null,
+    });
+
+    render(<App />);
+
+    connectToSampleSqlite();
+
+    await waitFor(() => {
+      expect(api.connect).toHaveBeenCalled();
+      expect(api.introspectSchema).toHaveBeenCalled();
+    });
+
+    // Switch back to ERD Canvas
+    fireEvent.click(screen.getByText('ERD Canvas'));
+
+    // Click Review & Sync button
+    const reviewSyncButtons = screen.getAllByRole('button', { name: /Review & Sync/i });
+    expect(reviewSyncButtons.length).toBeGreaterThanOrEqual(1);
+    fireEvent.click(reviewSyncButtons[0]);
+
+    await waitFor(() => {
+      expect(api.computeDiff).toHaveBeenCalled();
+      expect(api.generateDdl).toHaveBeenCalled();
+      expect(screen.getByText('Review Schema Migration')).toBeDefined();
+      expect(screen.getByText('products')).toBeDefined();
+    });
+
+    // Click Execute Migration
+    const executeBtn = screen.getByRole('button', { name: /Execute Migration/i });
+    fireEvent.click(executeBtn);
+
+    await waitFor(() => {
+      expect(api.executeMigration).toHaveBeenCalledWith([
+        'CREATE TABLE products (id INTEGER PRIMARY KEY);',
+      ]);
+      expect(screen.queryByText('Review Schema Migration')).toBeNull();
+      expect(screen.getByText(/Migration applied successfully/)).toBeDefined();
+    });
+  });
 });
+

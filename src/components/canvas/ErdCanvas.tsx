@@ -24,7 +24,7 @@ import '@xyflow/react/dist/style.css';
 import { TableNode, TableNodeData } from './TableNode';
 import { DatabaseSchema, Point } from '../../types/database';
 import { layoutElements } from '../../utils/layout';
-import { LayoutGrid, Plus } from 'lucide-react';
+import { LayoutGrid, Plus, GitCompare } from 'lucide-react';
 
 /**
  * @brief Properties accepted by the ErdCanvas diagram component.
@@ -40,6 +40,10 @@ export interface ErdCanvasProps {
   onAddNewTable?: () => void;
   /** @brief Optional callback triggered when a node position changes after dragging. */
   onTablePositionChange?: (tableName: string, position: Point) => void;
+  /** @brief Optional callback triggered to review schema diff and execute migrations. */
+  onOpenDiff?: () => void;
+  /** @brief Number of detected pending structural schema changes between live and desired schemas. */
+  pendingChangesCount?: number;
 }
 
 /**
@@ -53,6 +57,8 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
   onSelectTable,
   onAddNewTable,
   onTablePositionChange,
+  onOpenDiff,
+  pendingChangesCount = 0,
 }) => {
   // Register custom node types mapping
   const nodeTypes = useMemo(() => ({ tableNode: TableNode }), []);
@@ -188,6 +194,26 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
           >
             <Plus className="w-3.5 h-3.5 text-[#20c997]" />
             <span>Add Table</span>
+          </button>
+        )}
+
+        {onOpenDiff && (
+          <button
+            type="button"
+            onClick={onOpenDiff}
+            className="inline-flex items-center gap-1.5 bg-[#24262b] hover:bg-[#2e3138] text-[#e6e8ea] px-3 py-1.5 rounded text-xs border border-[#35373c] shadow-lg transition-colors font-medium"
+            title="Review schema differences and synchronize migrations"
+          >
+            <GitCompare className="w-3.5 h-3.5 text-[#3a82f7]" />
+            <span>Review &amp; Sync</span>
+            {pendingChangesCount > 0 && (
+              <span
+                data-testid="canvas-pending-changes-badge"
+                className="ml-0.5 px-1.5 py-0.2 rounded-full bg-[#3a82f7] text-white text-[10px] font-bold"
+              >
+                {pendingChangesCount}
+              </span>
+            )}
           </button>
         )}
 

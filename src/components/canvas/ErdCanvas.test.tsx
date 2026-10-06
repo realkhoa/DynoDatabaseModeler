@@ -135,4 +135,27 @@ describe('ErdCanvas component', () => {
 
     expect(onEditTable).toHaveBeenCalledWith('users');
   });
+
+  /**
+   * @brief Verifies Review & Sync trigger button and change badge on canvas toolbar.
+   */
+  it('triggers onOpenDiff when Review & Sync button is clicked on canvas toolbar', () => {
+    const onOpenDiff = vi.fn();
+    render(
+      <ErdCanvas
+        schema={mockSchema}
+        onEditTable={vi.fn()}
+        onOpenDiff={onOpenDiff}
+        pendingChangesCount={4}
+      />
+    );
+
+    const syncBtn = screen.getByRole('button', { name: /Review & Sync/i });
+    expect(syncBtn).toBeDefined();
+    expect(screen.getByTestId('canvas-pending-changes-badge').textContent).toBe('4');
+
+    fireEvent.click(syncBtn);
+    expect(onOpenDiff).toHaveBeenCalledTimes(1);
+  });
 });
+

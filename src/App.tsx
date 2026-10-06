@@ -5,20 +5,23 @@
  * active navigation tabs, table selection, SQL query execution, and connection modal workflows.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { CheckCircle2, AlertCircle, X, Database, Plus } from 'lucide-react';
 import { HeaderBar, WorkspaceTab } from './components/HeaderBar';
 import { Sidebar } from './components/Sidebar';
 import { ConnectionModal } from './components/ConnectionModal';
 import { ErdCanvas } from './components/canvas/ErdCanvas';
 import { TableDrawer } from './components/canvas/TableDrawer';
+import { DiffModal } from './components/diff/DiffModal';
 import { SqlQueryView } from './components/SqlQueryView';
 import { SettingsView } from './components/SettingsView';
 import { api } from './api/ipc';
+import { computePendingChangesCount } from './utils/diffCount';
 import type {
   ConnectionConfig,
   DatabaseSchema,
   QueryResult,
+  SchemaDiff,
   TableSchema,
 } from './types/database';
 
@@ -60,11 +63,23 @@ export default function App(): React.ReactElement {
   });
 
   const [activeConnection, setActiveConnection] = useState<ConnectionConfig | null>(null);
+  const [liveSchema, setLiveSchema] = useState<DatabaseSchema | null>(null);
   const [schema, setSchema] = useState<DatabaseSchema | null>(null);
   const [selectedTableName, setSelectedTableName] = useState<string | null>(null);
   const [isLoadingSchema, setIsLoadingSchema] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [drawerTable, setDrawerTable] = useState<TableSchema | null>(null);
+
+  // Schema Diff & Safe Migration State
+  const [diff, setDiff] = useState<SchemaDiff | null>(null);
+  const [generatedDdl, setGeneratedDdl] = useState<string[]>([]);
+  const [isDiffModalOpen, setIsDiffModalOpen] = useState(false);
+  const [, setIsComputingDiff] = useState(false);
+
+  // Dynamically compute pending changes count between live and desired working schemas
+  const pendingChangesCount = useMemo(() => {
+    return computePendingChangesCount(liveSchema, schema);
+  }, [liveSchema, schema]);
 
   // SQL Query Tab State
   const [sqlQuery, setSqlQuery] = useState('SELECT 1 AS status, "Ready" AS message;');
@@ -121,6 +136,7 @@ export default function App(): React.ReactElement {
 
       // Introspect schema
       const fetchedSchema = await api.introspectSchema();
+      setLiveSchema(fetchedSchema);
       setSchema(fetchedSchema);
 
       if (fetchedSchema.tables.length > 0) {
@@ -144,18 +160,22 @@ export default function App(): React.ReactElement {
 
   /**
    * @brief Refreshes schema from the currently connected database.
+   * @param showToast Optional flag specifying whether to trigger a refresh toast notification.
    */
-  const handleRefreshSchema = useCallback(async () => {
+  const handleRefreshSchema = useCallback(async (showToast = true) => {
     if (!activeConnection) return;
     setIsLoadingSchema(true);
 
     try {
       const fetchedSchema = await api.introspectSchema();
+      setLiveSchema(fetchedSchema);
       setSchema(fetchedSchema);
-      setNotification({
-        type: 'success',
-        message: `Refreshed schema (${fetchedSchema.tables.length} tables)`,
-      });
+      if (showToast) {
+        setNotification({
+          type: 'success',
+          message: `Refreshed schema (${fetchedSchema.tables.length} tables)`,
+        });
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setNotification({ type: 'error', message: `Schema refresh failed: ${msg}` });
@@ -174,9 +194,13 @@ export default function App(): React.ReactElement {
       // Ignore disconnect backend errors
     }
     setActiveConnection(null);
+    setLiveSchema(null);
     setSchema(null);
     setSelectedTableName(null);
     setQueryResult(null);
+    setDiff(null);
+    setGeneratedDdl([]);
+    setIsDiffModalOpen(false);
     setNotification({ type: 'info', message: 'Disconnected from database.' });
   }, []);
 
@@ -280,6 +304,91 @@ export default function App(): React.ReactElement {
     [selectedTableName]
   );
 
+  /**
+   * @brief Calculates schema differences between live and current working schema,
+   * generates target DDL statements, and opens the interactive DiffModal.
+   */
+  const handleOpenDiff = useCallback(async () => {
+    if (!activeConnection) {
+      setNotification({
+        type: 'info',
+        message: 'Connect to a database first to review and synchronize schema changes.',
+      });
+      return;
+    }
+
+    let currentLive = liveSchema;
+    if (!currentLive) {
+      try {
+        currentLive = await api.introspectSchema();
+        setLiveSchema(currentLive);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setNotification({
+          type: 'error',
+          message: `Failed to fetch live schema: ${msg}`,
+        });
+        return;
+      }
+    }
+
+    const currentDesired = schema || {
+      database_name: activeConnection.database,
+      tables: [],
+    };
+
+    setIsComputingDiff(true);
+    try {
+      const computedDiff = await api.computeDiff(currentLive, currentDesired);
+      const ddlStatements = await api.generateDdl(computedDiff);
+
+      setDiff(computedDiff);
+      setGeneratedDdl(ddlStatements);
+      setIsDiffModalOpen(true);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setNotification({
+        type: 'error',
+        message: `Diff calculation failed: ${msg}`,
+      });
+    } finally {
+      setIsComputingDiff(false);
+    }
+  }, [activeConnection, liveSchema, schema]);
+
+  /**
+   * @brief Executes migration SQL statements inside a safe transaction block.
+   * @param statements Ordered list of SQL DDL statements to apply.
+   */
+  const handleExecuteMigration = useCallback(
+    async (statements: string[]) => {
+      try {
+        const report = await api.executeMigration(statements);
+        if (!report.success) {
+          throw new Error(
+            report.error_message || 'Migration failed during transaction execution.'
+          );
+        }
+
+        setNotification({
+          type: 'success',
+          message: `Migration applied successfully (${report.statements_executed} statements in ${report.execution_time_ms}ms).`,
+        });
+
+        // Refresh live schema from database and synchronize canvas state
+        await handleRefreshSchema(false);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setNotification({
+          type: 'error',
+          message: `Migration execution failed: ${msg}`,
+        });
+        throw err;
+      }
+    },
+    [handleRefreshSchema]
+  );
+
   return (
     <div className="flex h-screen w-screen flex-col bg-[#1e1f22] text-[#e6e8ea] overflow-hidden font-sans">
       {/* Top HeaderBar */}
@@ -292,6 +401,8 @@ export default function App(): React.ReactElement {
           setEditingConfig(null);
           setIsModalOpen(true);
         }}
+        onOpenDiff={handleOpenDiff}
+        pendingChangesCount={pendingChangesCount}
       />
 
       {/* Main Workspace (Sidebar + Canvas / Editor) */}
@@ -401,6 +512,8 @@ export default function App(): React.ReactElement {
                       });
                     }
                   }}
+                  onOpenDiff={handleOpenDiff}
+                  pendingChangesCount={pendingChangesCount}
                 />
                 <TableDrawer
                   isOpen={isDrawerOpen}
@@ -456,6 +569,15 @@ export default function App(): React.ReactElement {
         }}
         onConnect={handleConnect}
         initialConfig={editingConfig}
+      />
+
+      {/* Visual Schema Diff & Interactive Safe Migration Modal */}
+      <DiffModal
+        isOpen={isDiffModalOpen}
+        diff={diff}
+        generatedDdl={generatedDdl}
+        onClose={() => setIsDiffModalOpen(false)}
+        onExecute={handleExecuteMigration}
       />
     </div>
   );

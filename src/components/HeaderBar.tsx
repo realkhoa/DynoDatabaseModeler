@@ -13,6 +13,7 @@ import {
   Unplug,
   Database,
   Plus,
+  GitCompare,
 } from 'lucide-react';
 import type { ConnectionConfig } from '../types/database';
 
@@ -35,6 +36,10 @@ export interface HeaderBarProps {
   onDisconnect?: () => void;
   /** @brief Callback triggered to open the new connection modal dialog. */
   onOpenNewConnection: () => void;
+  /** @brief Optional callback triggered to review schema diff and sync migrations. */
+  onOpenDiff?: () => void;
+  /** @brief Number of detected pending structural schema changes between live and desired schemas. */
+  pendingChangesCount?: number;
 }
 
 /**
@@ -48,6 +53,8 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   activeConnection,
   onDisconnect,
   onOpenNewConnection,
+  onOpenDiff,
+  pendingChangesCount = 0,
 }) => {
   return (
     <header className="h-11 bg-[#18191c] border-b border-[#35373c] flex items-center justify-between px-3 select-none shrink-0 text-xs">
@@ -106,28 +113,50 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
       {/* Connection Status & Actions */}
       <div className="flex items-center space-x-2 ml-auto">
         {activeConnection ? (
-          <div className="flex items-center space-x-2 bg-[#1e1f22] border border-[#35373c] px-2.5 py-1 rounded">
-            <span
-              className="w-2 h-2 rounded-full bg-[#20c997] animate-pulse"
-              title="Connected"
-            />
-            <span className="font-medium text-[#e6e8ea] truncate max-w-[140px]">
-              {activeConnection.name}
-            </span>
-            <span className="text-[10px] uppercase font-mono px-1 rounded bg-[#2b2d30] text-[#8c919a]">
-              {activeConnection.db_type}
-            </span>
-            {onDisconnect && (
+          <div className="flex items-center space-x-2">
+            {onOpenDiff && (
               <button
                 type="button"
-                onClick={onDisconnect}
-                title="Disconnect from database"
-                aria-label="Disconnect database"
-                className="p-1 hover:bg-[#35373c] text-[#8c919a] hover:text-red-400 rounded transition-colors ml-1"
+                onClick={onOpenDiff}
+                className="flex items-center space-x-1.5 px-2.5 py-1 bg-[#24262b] hover:bg-[#2f3238] border border-[#35373c] text-[#e6e8ea] rounded font-medium shadow-xs transition-colors cursor-pointer"
+                title="Review schema differences and synchronize migrations"
               >
-                <Unplug className="w-3.5 h-3.5" />
+                <GitCompare className="w-3.5 h-3.5 text-[#3a82f7]" />
+                <span>Review &amp; Sync</span>
+                {pendingChangesCount > 0 && (
+                  <span
+                    data-testid="pending-changes-badge"
+                    className="ml-1 px-1.5 py-0.2 rounded-full bg-[#3a82f7] text-white text-[10px] font-bold"
+                  >
+                    {pendingChangesCount}
+                  </span>
+                )}
               </button>
             )}
+
+            <div className="flex items-center space-x-2 bg-[#1e1f22] border border-[#35373c] px-2.5 py-1 rounded">
+              <span
+                className="w-2 h-2 rounded-full bg-[#20c997] animate-pulse"
+                title="Connected"
+              />
+              <span className="font-medium text-[#e6e8ea] truncate max-w-[140px]">
+                {activeConnection.name}
+              </span>
+              <span className="text-[10px] uppercase font-mono px-1 rounded bg-[#2b2d30] text-[#8c919a]">
+                {activeConnection.db_type}
+              </span>
+              {onDisconnect && (
+                <button
+                  type="button"
+                  onClick={onDisconnect}
+                  title="Disconnect from database"
+                  aria-label="Disconnect database"
+                  className="p-1 hover:bg-[#35373c] text-[#8c919a] hover:text-red-400 rounded transition-colors ml-1"
+                >
+                  <Unplug className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
         ) : (
           <div className="flex items-center space-x-2">
