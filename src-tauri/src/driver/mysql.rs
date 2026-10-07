@@ -8,7 +8,7 @@ use sqlx::{mysql::MySqlPoolOptions, mysql::MySqlRow, Column, MySqlPool, Row};
 use std::time::Instant;
 
 pub use super::parse_referential_action;
-use super::{DatabaseDriver, MigrationReport, QueryResult, RowUpdatePayload};
+use super::{DatabaseDriver, ExecutionPlanNode, MigrationReport, QueryResult, RowUpdatePayload};
 use crate::error::AppError;
 use crate::model::connection::{ConnectionConfig, DatabaseType};
 use crate::model::schema::*;
@@ -324,6 +324,44 @@ impl DatabaseDriver for MySqlDriver {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         Ok(total_affected)
+    }
+
+    /// @brief Generates an execution plan tree for the provided SQL query via EXPLAIN.
+    /// @param sql SQL statement string to analyze.
+    /// @return Returns the root ExecutionPlanNode or AppError on query failure.
+    async fn explain_query(&self, sql: &str) -> Result<ExecutionPlanNode, AppError> {
+        let clean_sql = sql.trim().trim_end_matches(';');
+        let basic_sql = format!("EXPLAIN {}", clean_sql);
+        let rows = sqlx::query(&basic_sql)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| AppError::Database(format!("EXPLAIN failed: {}", e)))?;
+
+        let mut root = ExecutionPlanNode::new("Query Execution Plan", None, 0.0, 0, None);
+        let mut total_cost = 0.0;
+        for row in rows {
+            let table: Option<String> = row.try_get::<String, _>("table").ok();
+            let access_type: String = row
+                .try_get::<String, _>("type")
+                .unwrap_or_else(|_| "ALL".to_string());
+            let rows_est: u64 = row
+                .try_get::<i64, _>("rows")
+                .map(|v| v as u64)
+                .unwrap_or(0);
+            let cost = if access_type == "ALL" { 100.0 } else { 20.0 };
+            total_cost += cost;
+            let extra: Option<String> = row.try_get::<String, _>("Extra").ok();
+            let step = ExecutionPlanNode::new(
+                format!("Access: {}", access_type),
+                table,
+                cost,
+                rows_est,
+                extra,
+            );
+            root.children.push(step);
+        }
+        root.cost = total_cost;
+        Ok(root)
     }
 
     /// @brief Returns the database type dialect for MySQL.

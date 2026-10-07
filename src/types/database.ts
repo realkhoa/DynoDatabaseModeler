@@ -256,6 +256,27 @@ export interface VirtualRelationship {
   note?: string;
 }
 
+/**
+ * @brief Represents a hierarchical node in a database query execution plan.
+ * @details Models operation type, affected relation, estimated cost, row count, and execution time.
+ */
+export interface ExecutionPlanNode {
+  /** @brief Type of execution step or algorithm (e.g., 'Seq Scan', 'Index Scan', 'Nested Loop', 'Scan Table'). */
+  node_type: string;
+  /** @brief Target database relation (table or index) accessed, if applicable. */
+  relation_name?: string;
+  /** @brief Relative or absolute optimizer cost assigned to this operation. */
+  cost: number;
+  /** @brief Actual execution duration in milliseconds if available. */
+  actual_time_ms?: number;
+  /** @brief Estimated or processed row count. */
+  rows: number;
+  /** @brief Additional details, scan filters, or execution predicates. */
+  detail?: string;
+  /** @brief Child operations feeding rows into this operation. */
+  children: ExecutionPlanNode[];
+}
+
 
 /**
  * @brief Formats a CanonicalType variant into a human-readable display string.

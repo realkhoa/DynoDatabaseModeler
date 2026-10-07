@@ -7,12 +7,13 @@
 
 import React, { useState, useRef, useCallback } from 'react';
 import Editor, { OnMount } from '@monaco-editor/react';
-import { Play, Loader2, AlertCircle, FileCode, CheckCircle2, Eye, Download } from 'lucide-react';
+import { Play, Loader2, AlertCircle, FileCode, CheckCircle2, Eye, Download, Zap } from 'lucide-react';
 import { api } from '../../api/ipc';
-import type { ConnectionConfig, QueryResult, RowUpdatePayload } from '../../types/database';
+import type { ConnectionConfig, QueryResult, RowUpdatePayload, ExecutionPlanNode } from '../../types/database';
 import { EditableDataGrid, EditableDataGridHandle } from './EditableDataGrid';
 import { ValueInspectorDrawer } from './ValueInspectorDrawer';
 import { ExportModal } from './ExportModal';
+import { ExplainPlanModal } from './ExplainPlanModal';
 
 /**
  * @brief Properties accepted by the QueryEditorTab component.
@@ -93,6 +94,10 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
   const [selectedCell, setSelectedCell] = useState<SelectedCellState | null>(null);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
+  const [explainPlan, setExplainPlan] = useState<ExecutionPlanNode | null>(null);
+  const [isExplainOpen, setIsExplainOpen] = useState(false);
+  const [isExplaining, setIsExplaining] = useState(false);
+  const [explainError, setExplainError] = useState<string | null>(null);
 
   const gridRef = useRef<EditableDataGridHandle | null>(null);
 
@@ -217,6 +222,28 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
     [onQuerySuccess]
   );
 
+  /**
+   * @brief Analyzes query execution plan via backend explainQuery command and displays ExplainPlanModal.
+   */
+  const handleExplain = useCallback(async () => {
+    const sqlToExplain = queryRef.current.trim();
+    if (!sqlToExplain) return;
+
+    setIsExplainOpen(true);
+    setIsExplaining(true);
+    setExplainError(null);
+
+    try {
+      const plan = await api.explainQuery(sqlToExplain);
+      setExplainPlan(plan);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setExplainError(msg || 'Failed to analyze query execution plan');
+    } finally {
+      setIsExplaining(false);
+    }
+  }, []);
+
 
   /**
    * @brief Configures Monaco Editor keyboard shortcuts on editor mount.
@@ -270,6 +297,22 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
               <Play className="w-3.5 h-3.5 fill-current" />
             )}
             <span>{isLoading ? 'Running...' : 'Run Query (Ctrl+Enter)'}</span>
+          </button>
+
+          <button
+            type="button"
+            data-testid="explain-plan-btn"
+            onClick={handleExplain}
+            disabled={isExplaining || !query.trim()}
+            className="flex items-center space-x-1.5 bg-[#26282d] hover:bg-[#35373c] text-[#e6e8ea] px-3 py-1 rounded font-semibold border border-[#35373c] disabled:opacity-50 transition-colors shadow-xs cursor-pointer"
+            title="Analyze query execution plan (EXPLAIN)"
+          >
+            {isExplaining ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
+            ) : (
+              <Zap className="w-3.5 h-3.5 text-amber-400" />
+            )}
+            <span>Explain Plan</span>
           </button>
 
           {activeConnection && (
@@ -406,6 +449,16 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
           columns={result?.columns ?? []}
           rows={result?.rows ?? []}
           onClose={() => setIsExportOpen(false)}
+        />
+
+        {/* Visual EXPLAIN Query Execution Plan Modal */}
+        <ExplainPlanModal
+          isOpen={isExplainOpen}
+          onClose={() => setIsExplainOpen(false)}
+          query={query}
+          plan={explainPlan}
+          isLoading={isExplaining}
+          error={explainError}
         />
 
         {/* Empty / Initial Placeholder */}

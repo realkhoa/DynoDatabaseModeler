@@ -10,7 +10,7 @@ use crate::diff::compute_schema_diff;
 use crate::diff::ddl::generate_ddl;
 use crate::diff::model::SchemaDiff;
 use crate::driver::factory::DriverFactory;
-use crate::driver::{MigrationReport, QueryResult, RowUpdatePayload};
+use crate::driver::{ExecutionPlanNode, MigrationReport, QueryResult, RowUpdatePayload};
 use crate::error::AppError;
 use crate::model::connection::ConnectionConfig;
 use crate::model::schema::DatabaseSchema;
@@ -130,5 +130,19 @@ pub async fn cmd_update_rows(
     state: State<'_, AppState>,
 ) -> Result<u64, AppError> {
     state.update_rows(payload).await
+}
+
+/// @brief Generates an execution plan tree for the provided SQL query against the active database.
+/// @param sql SQL statement string to explain and analyze.
+/// @param state Tauri managed handle to shared AppState.
+/// @return ExecutionPlanNode representing root node of execution plan tree.
+/// @throws AppError::Connection if no active database session exists.
+/// @throws AppError::Query on SQL explain syntax or execution error.
+#[tauri::command]
+pub async fn cmd_explain_query(
+    sql: String,
+    state: State<'_, AppState>,
+) -> Result<ExecutionPlanNode, AppError> {
+    state.explain_query(&sql).await
 }
 

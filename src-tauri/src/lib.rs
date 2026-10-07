@@ -28,6 +28,7 @@ pub fn run() {
             commands::cmd_execute_query,
             commands::cmd_disconnect,
             commands::cmd_update_rows,
+            commands::cmd_explain_query,
         ])
         .setup(|_app| Ok(()))
         .run(tauri::generate_context!())

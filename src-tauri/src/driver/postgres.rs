@@ -8,7 +8,7 @@ use sqlx::{postgres::PgPoolOptions, postgres::PgRow, Column, PgPool, Row};
 use std::time::Instant;
 
 pub use super::parse_referential_action;
-use super::{DatabaseDriver, MigrationReport, QueryResult, RowUpdatePayload};
+use super::{DatabaseDriver, ExecutionPlanNode, MigrationReport, QueryResult, RowUpdatePayload};
 use crate::error::AppError;
 use crate::model::connection::{ConnectionConfig, DatabaseType};
 use crate::model::schema::*;
@@ -353,11 +353,71 @@ impl DatabaseDriver for PostgresDriver {
         Ok(total_affected)
     }
 
+    /// @brief Generates an execution plan tree for the provided SQL query via EXPLAIN (FORMAT JSON).
+    /// @param sql SQL statement string to analyze.
+    /// @return Returns the root ExecutionPlanNode or AppError on query failure.
+    async fn explain_query(&self, sql: &str) -> Result<ExecutionPlanNode, AppError> {
+        let clean_sql = sql.trim().trim_end_matches(';');
+        let explain_sql = format!("EXPLAIN (FORMAT JSON) {}", clean_sql);
+        let rows = sqlx::query(&explain_sql)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| AppError::Database(format!("EXPLAIN failed: {}", e)))?;
+
+        if let Some(first_row) = rows.first() {
+            let val_opt: Option<serde_json::Value> = first_row
+                .try_get::<serde_json::Value, _>(0)
+                .ok()
+                .or_else(|| {
+                    first_row
+                        .try_get::<String, _>(0)
+                        .ok()
+                        .and_then(|s| serde_json::from_str(&s).ok())
+                });
+            if let Some(val) = val_opt {
+                if let Some(plan_arr) = val.as_array() {
+                    if let Some(first_item) = plan_arr.first() {
+                        if let Some(plan_obj) = first_item.get("Plan") {
+                            return Ok(parse_pg_plan_node(plan_obj));
+                        }
+                    }
+                }
+            }
+        }
+        Ok(ExecutionPlanNode::new("Query Plan", None, 0.0, 0, None))
+    }
+
     /// @brief Returns the database dialect type for PostgreSQL.
     /// @return Returns DatabaseType::Postgres.
     fn db_type(&self) -> DatabaseType {
         DatabaseType::Postgres
     }
+}
+
+/// @brief Recursively parses a PostgreSQL EXPLAIN JSON plan node into an ExecutionPlanNode.
+/// @param val Reference to JSON Value representing the node.
+/// @return Populated ExecutionPlanNode instance.
+fn parse_pg_plan_node(val: &serde_json::Value) -> ExecutionPlanNode {
+    let node_type = val
+        .get("Node Type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Plan Node")
+        .to_string();
+    let relation = val
+        .get("Relation Name")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let cost = val.get("Total Cost").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let rows = val.get("Plan Rows").and_then(|v| v.as_u64()).unwrap_or(0);
+    let actual_time = val.get("Actual Total Time").and_then(|v| v.as_f64());
+    let mut node = ExecutionPlanNode::new(node_type, relation, cost, rows, None);
+    node.actual_time_ms = actual_time;
+    if let Some(children_arr) = val.get("Plans").and_then(|v| v.as_array()) {
+        for child in children_arr {
+            node.children.push(parse_pg_plan_node(child));
+        }
+    }
+    node
 }
 
 /// @brief Formats an identifier for PostgreSQL quoting (supporting dot-separated schema paths).

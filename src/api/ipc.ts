@@ -9,6 +9,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type {
   ConnectionConfig,
   DatabaseSchema,
+  ExecutionPlanNode,
   MigrationReport,
   QueryResult,
   RowUpdatePayload,
@@ -97,6 +98,15 @@ export const api = {
    */
   updateRows: (updates: RowUpdatePayload[]): Promise<number> => {
     return invoke<number>('cmd_update_rows', { updates });
+  },
+
+  /**
+   * @brief Generates an execution plan tree for the provided SQL query against the active database.
+   * @param sql SQL statement string to analyze and explain.
+   * @return Promise resolving to ExecutionPlanNode tree representing optimizer operations.
+   */
+  explainQuery: (sql: string): Promise<ExecutionPlanNode> => {
+    return invoke<ExecutionPlanNode>('cmd_explain_query', { sql });
   },
 };
 

@@ -3,6 +3,7 @@
 //! @details Defines the core DatabaseDriver trait, execution report types, query result representations,
 //! and modules for specific database engine adapters (SQLite, PostgreSQL, MySQL, MSSQL).
 
+pub mod explain_model;
 pub mod factory;
 pub mod mssql;
 pub mod mutation_model;
@@ -10,8 +11,11 @@ pub mod mysql;
 pub mod postgres;
 pub mod sqlite;
 
+pub use explain_model::ExecutionPlanNode;
 pub use mutation_model::RowUpdatePayload;
 
+#[cfg(test)]
+mod explain_test;
 #[cfg(test)]
 mod factory_test;
 #[cfg(test)]
@@ -82,6 +86,11 @@ pub trait DatabaseDriver: Send + Sync {
     /// @param updates List of row update payloads specifying tables, PKs, and modified column values.
     /// @return Returns the total count of rows affected across all updates, or AppError on failure/rollback.
     async fn update_rows(&self, updates: Vec<RowUpdatePayload>) -> Result<u64, AppError>;
+
+    /// @brief Generates an execution plan tree for the provided SQL query.
+    /// @param sql SQL statement to analyze and explain.
+    /// @return Returns the root ExecutionPlanNode or AppError on query failure.
+    async fn explain_query(&self, sql: &str) -> Result<ExecutionPlanNode, AppError>;
 
     /// @brief Identifies the specific relational database engine dialect handled by this driver.
     /// @return Returns the corresponding DatabaseType enum variant.

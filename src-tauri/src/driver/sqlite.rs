@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use sqlx::{sqlite::SqlitePoolOptions, Column, Row, SqlitePool};
 use std::time::Instant;
 
-use super::{DatabaseDriver, MigrationReport, QueryResult, RowUpdatePayload};
+use super::{DatabaseDriver, ExecutionPlanNode, MigrationReport, QueryResult, RowUpdatePayload};
 use crate::error::AppError;
 use crate::model::connection::{ConnectionConfig, DatabaseType};
 use crate::model::schema::*;
@@ -310,6 +310,116 @@ impl DatabaseDriver for SqliteDriver {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         Ok(total_affected)
+    }
+
+    /// @brief Generates an execution plan tree for the provided SQL query via EXPLAIN QUERY PLAN.
+    /// @param sql SQL statement string to analyze.
+    /// @return Returns the root ExecutionPlanNode or AppError on query failure.
+    async fn explain_query(&self, sql: &str) -> Result<ExecutionPlanNode, AppError> {
+        let clean_sql = sql.trim().trim_end_matches(';');
+        let explain_sql = format!("EXPLAIN QUERY PLAN {}", clean_sql);
+        let rows = sqlx::query(&explain_sql)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| AppError::Database(format!("EXPLAIN failed: {}", e)))?;
+
+        struct RawPlanItem {
+            id: i64,
+            parent: i64,
+            detail: String,
+        }
+
+        let mut items = Vec::new();
+        for row in rows {
+            let id: i64 = row.try_get::<i64, _>("id").unwrap_or(0);
+            let parent: i64 = row.try_get::<i64, _>("parent").unwrap_or(0);
+            let detail: String = row.try_get::<String, _>("detail").unwrap_or_default();
+            items.push(RawPlanItem { id, parent, detail });
+        }
+
+        if items.is_empty() {
+            return Ok(ExecutionPlanNode::new(
+                "Execution Plan",
+                None,
+                0.0,
+                0,
+                Some("No operations planned".to_string()),
+            ));
+        }
+
+        fn extract_relation(detail: &str) -> Option<String> {
+            let words: Vec<&str> = detail.split_whitespace().collect();
+            for i in 0..words.len() {
+                if (words[i] == "TABLE" || words[i] == "SCAN" || words[i] == "SEARCH") && i + 1 < words.len() {
+                    let candidate = words[i + 1].trim_matches(|c: char| !c.is_alphanumeric() && c != '_');
+                    if candidate != "TABLE" && candidate != "SUBQUERY" && candidate != "USING" && !candidate.is_empty() {
+                        return Some(candidate.to_string());
+                    }
+                }
+            }
+            None
+        }
+
+        fn item_to_node(detail: &str) -> ExecutionPlanNode {
+            let (node_type, rel, cost) = if detail.contains("SCAN TABLE") || detail.contains("SCAN ") {
+                (String::from("Scan Table"), extract_relation(detail), 100.0)
+            } else if detail.contains("SEARCH TABLE") || detail.contains("SEARCH ") {
+                (String::from("Index Search"), extract_relation(detail), 15.0)
+            } else if detail.contains("USE TEMP B-TREE") {
+                (String::from("Sort (Temp B-Tree)"), None, 45.0)
+            } else {
+                (String::from("Execution Step"), None, 10.0)
+            };
+            ExecutionPlanNode::new(node_type, rel, cost, 0, Some(detail.to_string()))
+        }
+
+        use std::collections::HashMap;
+        let mut node_map: HashMap<i64, ExecutionPlanNode> = HashMap::new();
+        let mut children_map: HashMap<i64, Vec<i64>> = HashMap::new();
+        let mut root_ids = Vec::new();
+
+        for item in &items {
+            node_map.insert(item.id, item_to_node(&item.detail));
+            if item.parent == 0 || !items.iter().any(|other| other.id == item.parent) {
+                root_ids.push(item.id);
+            } else {
+                children_map.entry(item.parent).or_default().push(item.id);
+            }
+        }
+
+        fn build_subtree(
+            id: i64,
+            node_map: &mut HashMap<i64, ExecutionPlanNode>,
+            children_map: &HashMap<i64, Vec<i64>>,
+        ) -> Option<ExecutionPlanNode> {
+            let mut node = node_map.remove(&id)?;
+            if let Some(child_ids) = children_map.get(&id) {
+                for child_id in child_ids {
+                    if let Some(child_node) = build_subtree(*child_id, node_map, children_map) {
+                        node.children.push(child_node);
+                    }
+                }
+            }
+            Some(node)
+        }
+
+        if root_ids.len() == 1 {
+            let root_id = root_ids[0];
+            let root_node = build_subtree(root_id, &mut node_map, &children_map)
+                .unwrap_or_else(|| ExecutionPlanNode::new("Query Plan", None, 0.0, 0, None));
+            Ok(root_node)
+        } else {
+            let mut root = ExecutionPlanNode::new("Query Execution Plan", None, 0.0, 0, None);
+            let mut total_cost = 0.0;
+            for root_id in root_ids {
+                if let Some(child) = build_subtree(root_id, &mut node_map, &children_map) {
+                    total_cost += child.cost;
+                    root.children.push(child);
+                }
+            }
+            root.cost = total_cost;
+            Ok(root)
+        }
     }
 
     /// @brief Returns the database type dialect enum associated with this driver.

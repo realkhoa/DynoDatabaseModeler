@@ -10,7 +10,7 @@ use tokio::sync::RwLock;
 use crate::diff::ddl::generate_ddl;
 use crate::diff::model::SchemaDiff;
 use crate::driver::factory::DriverFactory;
-use crate::driver::{DatabaseDriver, MigrationReport, QueryResult, RowUpdatePayload};
+use crate::driver::{DatabaseDriver, ExecutionPlanNode, MigrationReport, QueryResult, RowUpdatePayload};
 use crate::error::AppError;
 use crate::model::connection::ConnectionConfig;
 use crate::model::schema::DatabaseSchema;
@@ -139,6 +139,21 @@ impl AppState {
         let lock = self.active_driver.read().await;
         if let Some(driver) = lock.as_ref() {
             driver.update_rows(updates).await
+        } else {
+            Err(AppError::Connection(
+                "No active database connection".to_string(),
+            ))
+        }
+    }
+
+    /// @brief Generates an execution plan tree for the provided SQL query against the active database.
+    /// @param sql SQL statement string to analyze.
+    /// @return ExecutionPlanNode representing root plan operation.
+    /// @throws AppError::Connection if no database connection is currently active.
+    pub async fn explain_query(&self, sql: &str) -> Result<ExecutionPlanNode, AppError> {
+        let lock = self.active_driver.read().await;
+        if let Some(driver) = lock.as_ref() {
+            driver.explain_query(sql).await
         } else {
             Err(AppError::Connection(
                 "No active database connection".to_string(),

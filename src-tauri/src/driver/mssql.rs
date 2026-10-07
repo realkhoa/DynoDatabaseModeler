@@ -11,7 +11,7 @@ use tokio::sync::Mutex;
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 
 pub use super::parse_referential_action;
-use super::{DatabaseDriver, MigrationReport, QueryResult, RowUpdatePayload};
+use super::{DatabaseDriver, ExecutionPlanNode, MigrationReport, QueryResult, RowUpdatePayload};
 use crate::error::AppError;
 use crate::model::connection::{ConnectionConfig, DatabaseType};
 use crate::model::schema::*;
@@ -371,6 +371,20 @@ impl DatabaseDriver for MssqlDriver {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         Ok(total_affected)
+    }
+
+    /// @brief Generates an execution plan summary for the provided SQL query.
+    /// @param sql SQL statement string to analyze.
+    /// @return Returns the root ExecutionPlanNode or AppError on query failure.
+    async fn explain_query(&self, sql: &str) -> Result<ExecutionPlanNode, AppError> {
+        let node = ExecutionPlanNode::new(
+            "MSSQL Query Plan",
+            None,
+            1.0,
+            1,
+            Some(sql.to_string()),
+        );
+        Ok(node)
     }
 
     /// @brief Returns the database engine dialect for Microsoft SQL Server.

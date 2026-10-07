@@ -13,6 +13,7 @@ vi.mock('../../api/ipc', () => ({
   api: {
     executeQuery: vi.fn(),
     updateRows: vi.fn(),
+    explainQuery: vi.fn(),
   },
 }));
 
@@ -403,6 +404,36 @@ describe('QueryEditorTab component', () => {
     fireEvent.click(screen.getByRole('tab', { name: /sql/i }));
     const tableNameInput = screen.getByLabelText(/table name/i) as HTMLInputElement;
     expect(tableNameInput.value).toBe('exported_table');
+  });
+
+  /**
+   * @brief Verifies Explain Plan button triggers api.explainQuery and displays ExplainPlanModal.
+   */
+  it('triggers api.explainQuery and opens ExplainPlanModal when clicking Explain Plan', async () => {
+    vi.mocked(api.explainQuery).mockResolvedValue({
+      node_type: 'Seq Scan',
+      relation_name: 'users',
+      cost: 50.0,
+      rows: 100,
+      children: [],
+    });
+
+    render(
+      <QueryEditorTab
+        activeConnection={mockConnection}
+        initialQuery="SELECT * FROM users;"
+      />
+    );
+
+    const explainBtn = screen.getByTestId('explain-plan-btn');
+    fireEvent.click(explainBtn);
+
+    expect(api.explainQuery).toHaveBeenCalledWith('SELECT * FROM users;');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('explain-plan-modal')).toBeDefined();
+      expect(screen.getByText('Seq Scan')).toBeDefined();
+    });
   });
 
   /**
