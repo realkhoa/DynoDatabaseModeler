@@ -8,7 +8,7 @@
 /**
  * @brief Supported relational database engine types.
  */
-export type DatabaseType = 'Sqlite' | 'Postgres' | 'MySql' | 'Mssql';
+export type DatabaseType = 'Sqlite' | 'Postgres' | 'MySql' | 'Mssql' | 'DuckDb';
 
 /**
  * @brief Configuration parameters for establishing a database connection.
@@ -357,6 +357,7 @@ export function getDefaultPort(dbType: DatabaseType): number {
     case 'Mssql':
       return 1433;
     case 'Sqlite':
+    case 'DuckDb':
     default:
       return 0;
   }

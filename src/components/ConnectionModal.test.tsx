@@ -187,4 +187,46 @@ describe('ConnectionModal component', () => {
       );
     });
   });
+
+  /**
+   * @brief Verifies selecting DuckDB engine displays file path picker and submits embedded config.
+   */
+  it('configures DuckDB embedded connection with database file path', async () => {
+    const handleConnect = vi.fn().mockResolvedValue(undefined);
+    const handleClose = vi.fn();
+
+    render(
+      <ConnectionModal
+        isOpen={true}
+        onClose={handleClose}
+        onConnect={handleConnect}
+      />
+    );
+
+    const duckDbBtn = screen.getByRole('button', { name: 'DuckDB' });
+    fireEvent.click(duckDbBtn);
+
+    const nameInput = screen.getByLabelText(/Connection Name/i);
+    expect((nameInput as HTMLInputElement).value).toBe('Local DuckDB');
+
+    const filePathInput = screen.getByPlaceholderText(/\/path\/to\/analytics\.duckdb or :memory:/i);
+    fireEvent.change(filePathInput, { target: { value: 'analytics.duckdb' } });
+
+    const connectBtn = screen.getByRole('button', { name: 'Connect' });
+    fireEvent.click(connectBtn);
+
+    await waitFor(() => {
+      expect(handleConnect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Local DuckDB',
+          db_type: 'DuckDb',
+          database: 'analytics.duckdb',
+          file_path: 'analytics.duckdb',
+          port: undefined,
+          host: undefined,
+        })
+      );
+      expect(handleClose).toHaveBeenCalled();
+    });
+  });
 });

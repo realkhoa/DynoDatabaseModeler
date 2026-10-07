@@ -48,6 +48,7 @@ describe('database type helpers', () => {
     expect(getDefaultPort('MySql')).toBe(3306);
     expect(getDefaultPort('Mssql')).toBe(1433);
     expect(getDefaultPort('Sqlite')).toBe(0);
+    expect(getDefaultPort('DuckDb')).toBe(0);
   });
 
   /**

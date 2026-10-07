@@ -1,7 +1,7 @@
 # Database Driver Subsystem (`src-tauri/src/driver`)
 
 ## 1. Overview & Purpose
-The `driver` subsystem implements the multi-engine database adapter abstraction layer for DynoDbModeler. It establishes a unified, asynchronous trait interface (`DatabaseDriver`) that abstracts relational database management systems (SQLite, PostgreSQL, MySQL, and Microsoft SQL Server) behind common primitives for:
+The `driver` subsystem implements the multi-engine database adapter abstraction layer for DynoDbModeler. It establishes a unified, asynchronous trait interface (`DatabaseDriver`) that abstracts relational database management systems (SQLite, PostgreSQL, MySQL, Microsoft SQL Server, and DuckDB) behind common primitives for:
 - Connection establishment and health verification (`test_connection`).
 - Metadata catalog introspection into canonical domain models (`introspect_schema`).
 - Arbitrary SQL execution returning tabular serialized JSON values (`execute_query`).
@@ -16,7 +16,7 @@ A centralized factory (`DriverFactory`) dynamically selects and initializes the 
 - **Dynamic Factory Dispatch**: `DriverFactory::create(&ConnectionConfig)` evaluates engine dialect and initializes dedicated connection pools or TDS streams.
 - **Deep Catalog Introspection**: Reverse-engineers native catalogs and schemas into canonical `DatabaseSchema` models containing tables, columns, primary keys, foreign keys, and indexes.
 - **Fail-Safe Transactional Migrations**: Applies DDL scripts atomically within isolated transactions (`BEGIN ... COMMIT`), aborting and rolling back on the first failing statement.
-- **Robust Type Normalization**: Provides dialect-specific type parsers (`parse_sqlite_type`, `parse_postgres_type`, `parse_mysql_type`, `parse_mssql_type`) to map vendor-specific types to the unified `CanonicalType` enum.
+- **Robust Type Normalization**: Provides dialect-specific type parsers (`parse_sqlite_type`, `parse_postgres_type`, `parse_mysql_type`, `parse_mssql_type`, `parse_duckdb_type`) to map vendor-specific types to the unified `CanonicalType` enum.
 
 ---
 
@@ -26,6 +26,7 @@ A centralized factory (`DriverFactory`) dynamically selects and initializes the 
   - `async-trait` (v0.1): Dynamic asynchronous trait dispatch.
   - `sqlx` (v0.8): Async driver pool supporting `sqlite`, `postgres`, and `mysql` runtimes with `chrono` and `uuid`.
   - `tiberius` (v0.12): Async TDS protocol driver for Microsoft SQL Server.
+  - `duckdb` (v1.1): Embedded analytical column-oriented database driver (bundled).
   - `tokio-util` (v0.7): `TokioAsyncWriteCompatExt` adapter bridging Tokio TCP streams to futures-io for Tiberius.
   - `serde` (v1.0) & `serde_json` (v1.0): Serialization of tabular results and migration reports over Tauri IPC.
   - `tokio` (v1.0): Asynchronous runtime and synchronization primitives (`Mutex`, `RwLock`).
@@ -59,7 +60,7 @@ A centralized factory (`DriverFactory`) dynamically selects and initializes the 
 ```
 
 ### Common Trait: `DatabaseDriver`
-Implemented by all engine driver adapters (`SqliteDriver`, `PostgresDriver`, `MySqlDriver`, `MssqlDriver`).
+Implemented by all engine driver adapters (`SqliteDriver`, `PostgresDriver`, `MySqlDriver`, `MssqlDriver`, `DuckDbDriver`).
 
 | Method | Signature | Description |
 | :--- | :--- | :--- |
@@ -84,6 +85,7 @@ impl DriverFactory {
 ```
 
 - **`DatabaseType::Sqlite`**: Calls `SqliteDriver::connect(config)` (`sqlx::SqlitePool`).
+- **`DatabaseType::DuckDb`**: Calls `DuckDbDriver::connect(config)` (`duckdb::Connection`).
 - **`DatabaseType::Postgres`**: Calls `PostgresDriver::connect(config)` (`sqlx::PgPool`).
 - **`DatabaseType::MySql`**: Calls `MySqlDriver::connect(config)` (`sqlx::MySqlPool`).
 - **`DatabaseType::Mssql`**: Calls `MssqlDriver::connect(config)` (`tiberius::Client`).
@@ -127,6 +129,14 @@ impl DriverFactory {
   - Primary Keys: `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` joined with `INFORMATION_SCHEMA.KEY_COLUMN_USAGE`
   - Foreign Keys: `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` joined with `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS` and `INFORMATION_SCHEMA.CONSTRAINT_COLUMN_USAGE`
 - **Type Mapper**: `parse_mssql_type(dtype: &str, max_len: Option<i32>) -> CanonicalType`
+
+#### 5. DuckDB (`DuckDbDriver`)
+- **Connection**: `duckdb::Connection::open` for file-based database or `open_in_memory()` when `:memory:` or empty.
+- **Introspection**:
+  - Tables: `information_schema.tables WHERE table_schema NOT IN ('pg_catalog', 'information_schema') AND table_type = 'BASE TABLE'`
+  - Columns: `information_schema.columns WHERE table_name = ? AND table_schema = ?`
+  - Primary Keys & Nullability: `PRAGMA table_info('{table}')`
+- **Type Mapper**: `parse_duckdb_type(dtype: &str) -> CanonicalType`
 
 ---
 

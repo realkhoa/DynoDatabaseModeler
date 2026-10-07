@@ -139,6 +139,10 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
       if (!name || name.startsWith('Local ')) setName('Local SQLite');
       if (!database) setDatabase('dyno_dev.db');
       if (!filePath) setFilePath('dyno_dev.db');
+    } else if (newType === 'DuckDb') {
+      if (!name || name.startsWith('Local ')) setName('Local DuckDB');
+      if (!database) setDatabase('dyno_analytics.duckdb');
+      if (!filePath) setFilePath('dyno_analytics.duckdb');
     } else if (newType === 'Postgres') {
       if (!name || name.startsWith('Local ')) setName('Local Postgres');
       if (!username) setUsername('postgres');
@@ -157,19 +161,20 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
    */
   const buildConfig = (): ConnectionConfig => {
     const id = initialConfig?.id || `conn-${Date.now()}`;
+    const isEmbedded = dbType === 'Sqlite' || dbType === 'DuckDb';
     return {
       id,
       name: name.trim() || `${dbType} Connection`,
       db_type: dbType,
-      host: dbType !== 'Sqlite' ? host.trim() : undefined,
-      port: dbType !== 'Sqlite' ? Number(port) : undefined,
-      database: dbType === 'Sqlite' ? (filePath.trim() || database.trim() || ':memory:') : database.trim(),
-      username: dbType !== 'Sqlite' && username.trim() ? username.trim() : undefined,
-      password: dbType !== 'Sqlite' && password ? password : undefined,
-      file_path: dbType === 'Sqlite' ? (filePath.trim() || database.trim() || ':memory:') : undefined,
-      ssl,
+      host: !isEmbedded ? host.trim() : undefined,
+      port: !isEmbedded ? Number(port) : undefined,
+      database: isEmbedded ? (filePath.trim() || database.trim() || ':memory:') : database.trim(),
+      username: !isEmbedded && username.trim() ? username.trim() : undefined,
+      password: !isEmbedded && password ? password : undefined,
+      file_path: isEmbedded ? (filePath.trim() || database.trim() || ':memory:') : undefined,
+      ssl: !isEmbedded ? ssl : false,
       ssh_tunnel:
-        dbType !== 'Sqlite' && sshEnabled && sshHost.trim()
+        !isEmbedded && sshEnabled && sshHost.trim()
           ? {
               enabled: true,
               host: sshHost.trim(),
@@ -223,13 +228,16 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
       return;
     }
 
-    if (dbType !== 'Sqlite' && !database.trim()) {
+    const isEmbedded = dbType === 'Sqlite' || dbType === 'DuckDb';
+    if (!isEmbedded && !database.trim()) {
       setValidationError('Database name is required.');
       return;
     }
 
-    if (dbType === 'Sqlite' && !filePath.trim() && !database.trim()) {
-      setValidationError('Database path or :memory: is required for SQLite.');
+    if (isEmbedded && !filePath.trim() && !database.trim()) {
+      setValidationError(
+        `Database path or :memory: is required for ${dbType === 'DuckDb' ? 'DuckDB' : 'SQLite'}.`
+      );
       return;
     }
 

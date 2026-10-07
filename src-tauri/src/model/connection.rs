@@ -17,6 +17,8 @@ pub enum DatabaseType {
     MySql,
     /// @brief Microsoft SQL Server relational database engine.
     Mssql,
+    /// @brief Embedded DuckDB analytical database engine.
+    DuckDb,
 }
 
 /// @brief Comprehensive connection configuration parameters for database sessions.

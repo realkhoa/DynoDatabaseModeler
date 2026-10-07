@@ -79,7 +79,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     )}
                   </div>
                   <p className="text-[11px] text-[#8c919a] font-mono mt-0.5">
-                    {conn.db_type === 'Sqlite'
+                    {conn.db_type === 'Sqlite' || conn.db_type === 'DuckDb'
                       ? conn.database
                       : `${conn.host}:${conn.port}/${conn.database}`}
                   </p>

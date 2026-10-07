@@ -3,6 +3,7 @@
 //! @details Defines the core DatabaseDriver trait, execution report types, query result representations,
 //! and modules for specific database engine adapters (SQLite, PostgreSQL, MySQL, MSSQL).
 
+pub mod duckdb;
 pub mod explain_model;
 pub mod factory;
 pub mod mssql;
@@ -12,10 +13,13 @@ pub mod postgres;
 pub mod sqlite;
 pub mod tunnel;
 
+pub use duckdb::DuckDbDriver;
 pub use explain_model::ExecutionPlanNode;
 pub use mutation_model::RowUpdatePayload;
 pub use tunnel::{SshAuthType, SshTunnel, SshTunnelConfig};
 
+#[cfg(test)]
+mod duckdb_test;
 #[cfg(test)]
 mod explain_test;
 #[cfg(test)]

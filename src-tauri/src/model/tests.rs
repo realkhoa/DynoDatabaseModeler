@@ -110,6 +110,25 @@ fn test_connection_config_serialization() {
         sqlite_deserialized.file_path,
         Some("/path/to/local.db".to_string())
     );
+
+    let duckdb_config = ConnectionConfig {
+        id: "conn-duck".to_string(),
+        name: "Local DuckDB".to_string(),
+        db_type: DatabaseType::DuckDb,
+        host: None,
+        port: None,
+        database: "analytics.duckdb".to_string(),
+        username: None,
+        password: None,
+        file_path: Some("/data/analytics.duckdb".to_string()),
+        ssl: false,
+        ssh_tunnel: None,
+    };
+    let duckdb_json =
+        serde_json::to_string(&duckdb_config).expect("Failed to serialize duckdb config");
+    let duckdb_deserialized: ConnectionConfig =
+        serde_json::from_str(&duckdb_json).expect("Failed to deserialize duckdb config");
+    assert_eq!(duckdb_deserialized.db_type, DatabaseType::DuckDb);
 }
 
 /// @brief Tests CanonicalType serialization and deserialization across varied type variants.

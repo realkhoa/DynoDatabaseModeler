@@ -11,7 +11,7 @@ DynoDbModeler bridges visual database architecture and live SQL administration. 
 DynoDbModeler is designed for developers, database administrators, and architects who need a fast, native, and visually elegant database companion without the bloat of traditional heavyweight IDEs.
 
 ### Key Capabilities
-- **Native Multi-Database Connectivity**: Direct asynchronous drivers for **SQLite**, **PostgreSQL**, **MySQL / MariaDB**, and **Microsoft SQL Server (MSSQL)**.
+- **Native Multi-Database Connectivity**: Direct asynchronous drivers for **SQLite**, **PostgreSQL**, **MySQL / MariaDB**, **Microsoft SQL Server (MSSQL)**, and **DuckDB** (analytical embedded).
 - **Reverse Engineering**: Instant live catalog introspection converting foreign keys, primary keys, and data types into an interactive ERD graph.
 - **Visual Schema Modeler**: Drag-and-drop table cards powered by `@xyflow/react` with animated foreign key relation handles, inline column search, and one-click Dagre hierarchical auto-layout.
 - **Safe Bidirectional Synchronization**: Deterministic schema diffing engine highlighting added tables, altered columns, and foreign key modifications, paired with a safe transactional DDL migration runner.
@@ -55,7 +55,8 @@ DynoDbModeler employs a modern multi-process desktop architecture leveraging Tau
 │  │  - Schema comparator     │  │  - SqliteDriver (sqlx)             │  │
 │  │  - Dialect DDL compilers │  │  - PostgresDriver (sqlx)           │  │
 │  │    (Postgres, SQLite,    │  │  - MySqlDriver (sqlx)              │  │
-│  │     MySQL, MSSQL)        │  │  - MssqlDriver (tiberius)          │  │
+│  │     MySQL, MSSQL, DuckDB)│  │  - MssqlDriver (tiberius)          │  │
+│  │                          │  │  - DuckDbDriver (duckdb)           │  │
 │  └──────────────────────────┘  └────────────────────────────────────┘  │
 └────────────────────────────────────────────────────────────────────────┘
 ```

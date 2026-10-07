@@ -133,11 +133,12 @@ export const ConnectionFormFields: React.FC<ConnectionFormFieldsProps> = ({
         <label className="block text-[11px] font-semibold text-[#8c919a] uppercase tracking-wider mb-1.5">
           Database Engine
         </label>
-        <div className="grid grid-cols-4 gap-1.5 bg-[#18191c] p-1 rounded-md border border-[#35373c]">
+        <div className="grid grid-cols-5 gap-1.5 bg-[#18191c] p-1 rounded-md border border-[#35373c]">
           {(
             [
               { type: 'Postgres', label: 'PostgreSQL' },
               { type: 'Sqlite', label: 'SQLite' },
+              { type: 'DuckDb', label: 'DuckDB' },
               { type: 'MySql', label: 'MySQL' },
               { type: 'Mssql', label: 'SQL Server' },
             ] as const
@@ -176,8 +177,8 @@ export const ConnectionFormFields: React.FC<ConnectionFormFieldsProps> = ({
         />
       </div>
 
-      {/* SQLite Specific Fields */}
-      {dbType === 'Sqlite' ? (
+      {/* Embedded Database File Fields (SQLite / DuckDB) */}
+      {dbType === 'Sqlite' || dbType === 'DuckDb' ? (
         <div>
           <label
             htmlFor="conn-file-path"
@@ -193,11 +194,16 @@ export const ConnectionFormFields: React.FC<ConnectionFormFieldsProps> = ({
               setFilePath(e.target.value);
               setDatabase(e.target.value);
             }}
-            placeholder="/path/to/database.db or :memory:"
+            placeholder={
+              dbType === 'DuckDb'
+                ? '/path/to/analytics.duckdb or :memory:'
+                : '/path/to/database.db or :memory:'
+            }
             className="w-full bg-[#18191c] border border-[#35373c] rounded px-3 py-1.5 font-mono text-[#e6e8ea] focus:outline-none focus:border-[#3a82f7]"
           />
           <p className="mt-1 text-[11px] text-[#8c919a]">
-            Use <code className="text-[#3a82f7]">:memory:</code> for an isolated in-memory SQLite database.
+            Use <code className="text-[#3a82f7]">:memory:</code> for an isolated in-memory{' '}
+            {dbType === 'DuckDb' ? 'DuckDB' : 'SQLite'} database.
           </p>
         </div>
       ) : (

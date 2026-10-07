@@ -61,5 +61,6 @@ pub fn generate_ddl(diff: &SchemaDiff, dialect: DatabaseType) -> Vec<String> {
         DatabaseType::Sqlite => SqliteDdlGenerator::generate(diff),
         DatabaseType::MySql => MySqlDdlGenerator::generate(diff),
         DatabaseType::Mssql => MssqlDdlGenerator::generate(diff),
+        DatabaseType::DuckDb => PostgresDdlGenerator::generate(diff),
     }
 }
