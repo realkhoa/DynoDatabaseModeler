@@ -24,6 +24,8 @@ import '@xyflow/react/dist/style.css';
 
 import { TableNode, TableNodeData } from './TableNode';
 import { CrowsFootEdge } from './CrowsFootEdge';
+import { StickyNoteNode, StickyNoteColor } from './StickyNoteNode';
+import { GroupNode } from './GroupNode';
 import { DatabaseSchema, Point, ErdNotationStyle, VirtualRelationship } from '../../types/database';
 import {
   loadVirtualRelationships,
@@ -41,6 +43,9 @@ import {
   Image as ImageIcon,
   FileCode,
   Network,
+  StickyNote as StickyNoteIcon,
+  Layers as LayersIcon,
+  Search,
 } from 'lucide-react';
 import {
   exportSchemaAsJson,
@@ -66,6 +71,10 @@ export interface ErdCanvasProps {
   onOpenDiff?: () => void;
   /** @brief Number of detected pending structural schema changes between live and desired schemas. */
   pendingChangesCount?: number;
+  /** @brief ERD edge notation visualization style ('crows-foot' | 'simple'). Defaults to 'crows-foot'. */
+  notationStyle?: ErdNotationStyle;
+  /** @brief Optional callback triggered when edge notation style is toggled. */
+  onNotationStyleChange?: (style: ErdNotationStyle) => void;
 }
 
 /**
@@ -81,6 +90,8 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
   onTablePositionChange,
   onOpenDiff,
   pendingChangesCount = 0,
+  notationStyle: notationStyleProp,
+  onNotationStyleChange,
 }) => {
   // Register custom node types mapping
   const nodeTypes = useMemo(() => ({ tableNode: TableNode }), []);
@@ -88,7 +99,28 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
   const edgeTypes = useMemo(() => ({ crowsFoot: CrowsFootEdge }), []);
 
   // ERD notation style state: Crow's Foot vs Simple smoothstep
-  const [notationStyle, setNotationStyle] = useState<ErdNotationStyle>('crows-foot');
+  const [internalNotation, setInternalNotation] = useState<ErdNotationStyle>(
+    notationStyleProp ?? 'crows-foot'
+  );
+  const activeNotation = notationStyleProp ?? internalNotation;
+
+  useEffect(() => {
+    if (notationStyleProp !== undefined) {
+      setInternalNotation(notationStyleProp);
+    }
+  }, [notationStyleProp]);
+
+  /**
+   * @brief Toggles ERD edge notation style between Crow's Foot and Simple.
+   */
+  const handleToggleNotation = useCallback(() => {
+    const nextStyle: ErdNotationStyle =
+      activeNotation === 'crows-foot' ? 'simple' : 'crows-foot';
+    if (onNotationStyleChange) {
+      onNotationStyleChange(nextStyle);
+    }
+    setInternalNotation(nextStyle);
+  }, [activeNotation, onNotationStyleChange]);
 
   // Virtual relationships persisted per database schema
   const [virtualRels, setVirtualRels] = useState<VirtualRelationship[]>(() =>
@@ -149,12 +181,10 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
           target: fk.target_table,
           targetHandle: `${fk.target_column}-target`,
           animated: false,
-          type: notationStyle === 'crows-foot' ? 'crowsFoot' : 'smoothstep',
+          type: activeNotation === 'crows-foot' ? 'crowsFoot' : 'smoothstep',
           data: {
             cardinality: 'one-to-many',
-            sourceCardinality: 'many',
-            targetCardinality: 'one',
-            label: fk.constraint_name,
+            label: fk.constraint_name || undefined,
           },
           style: { stroke: '#20c997', strokeWidth: 1.5 },
         });
@@ -170,11 +200,9 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
         target: vr.targetTable,
         targetHandle: `${vr.targetColumn}-target`,
         animated: true,
-        type: notationStyle === 'crows-foot' ? 'crowsFoot' : 'smoothstep',
+        type: activeNotation === 'crows-foot' ? 'crowsFoot' : 'smoothstep',
         data: {
           cardinality: 'one-to-many',
-          sourceCardinality: 'many',
-          targetCardinality: 'one',
           label: vr.name || 'Virtual FK',
         },
         style: { stroke: '#a855f7', strokeWidth: 1.5, strokeDasharray: '4,4' },
@@ -182,7 +210,7 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
     });
 
     return edges;
-  }, [schema, notationStyle, virtualRels]);
+  }, [schema, activeNotation, virtualRels]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<TableNodeData>>(
     buildNodesFromSchema()
@@ -417,20 +445,20 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
         <button
           type="button"
           data-testid="notation-toggle-btn"
-          onClick={() =>
-            setNotationStyle((prev) =>
-              prev === 'crows-foot' ? 'simple' : 'crows-foot'
-            )
-          }
+          onClick={handleToggleNotation}
           className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs border border-[#35373c] shadow-lg transition-colors font-medium cursor-pointer ${
-            notationStyle === 'crows-foot'
+            activeNotation === 'crows-foot'
               ? 'bg-[#20c997]/15 text-[#20c997] border-[#20c997]/40'
               : 'bg-[#24262b] hover:bg-[#2e3138] text-[#e6e8ea]'
           }`}
           title="Toggle ERD notation between Crow's Foot and Simple"
         >
           <Network className="w-3.5 h-3.5" />
-          <span>{notationStyle === 'crows-foot' ? "Crow's Foot" : 'Simple'}</span>
+          <span>
+            {activeNotation === 'crows-foot'
+              ? "Notation: Crow's Foot"
+              : 'Notation: Simple'}
+          </span>
         </button>
 
         {/* Export Dropdown */}

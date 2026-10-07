@@ -19,7 +19,7 @@ import type { CardinalityType } from '../../types/database';
 /**
  * @brief Custom edge payload data defining Crow's Foot cardinality properties.
  */
-export interface CrowsFootEdgeData {
+export interface CrowsFootEdgeData extends Record<string, unknown> {
   /** @brief High-level cardinality association (e.g., 'one-to-many'). */
   cardinality?: CardinalityType;
   /** @brief Specific symbol to render at source handle endpoint ('one' | 'zero-or-one' | 'many'). */

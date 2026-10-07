@@ -40,6 +40,11 @@ describe('virtualRelations utilities', () => {
     expect(loaded).toEqual([sampleRel]);
   });
 
+  it('saves and loads virtual relationships correctly', () => {
+    saveVirtualRelationships('test_db', [sampleRel]);
+    expect(loadVirtualRelationships('test_db')).toEqual([sampleRel]);
+  });
+
   it('removes virtual relationship by id', () => {
     addVirtualRelationship('test_db', sampleRel);
     const updated = removeVirtualRelationship('test_db', 'vr_orders_users');

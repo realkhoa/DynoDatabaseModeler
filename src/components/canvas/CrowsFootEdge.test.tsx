@@ -165,4 +165,56 @@ describe('CrowsFootEdge component', () => {
     const edgePath = screen.getByTestId('crowsfoot-edge-path');
     expect(edgePath.getAttribute('stroke')).toBe('#20c997');
   });
+
+  /**
+   * @brief Verifies rotation angle calculation for all docking positions.
+   */
+  it('calculates correct marker rotation angles across all handle positions', async () => {
+    const { getMarkerRotation } = await import('./CrowsFootEdge');
+
+    expect(getMarkerRotation(Position.Left)).toBe(0);
+    expect(getMarkerRotation(Position.Right)).toBe(180);
+    expect(getMarkerRotation(Position.Top)).toBe(90);
+    expect(getMarkerRotation(Position.Bottom)).toBe(270);
+    expect(getMarkerRotation(undefined)).toBe(0);
+  });
+
+  /**
+   * @brief Verifies cardinality symbol resolution across all standard CardinalityType variants.
+   */
+  it('resolves correct default endpoint symbols for all cardinality types', async () => {
+    const { resolveCardinalities } = await import('./CrowsFootEdge');
+
+    expect(resolveCardinalities({ cardinality: 'one-to-one' })).toEqual({
+      source: 'one',
+      target: 'one',
+    });
+    expect(resolveCardinalities({ cardinality: 'one-to-many' })).toEqual({
+      source: 'one',
+      target: 'many',
+    });
+    expect(resolveCardinalities({ cardinality: 'many-to-many' })).toEqual({
+      source: 'many',
+      target: 'many',
+    });
+    expect(resolveCardinalities({ cardinality: 'zero-to-one' })).toEqual({
+      source: 'zero-or-one',
+      target: 'one',
+    });
+    expect(resolveCardinalities({ cardinality: 'zero-to-many' })).toEqual({
+      source: 'zero-or-one',
+      target: 'zero-or-many',
+    });
+    // Respects explicit overrides
+    expect(
+      resolveCardinalities({
+        cardinality: 'one-to-many',
+        sourceCardinality: 'zero-or-one',
+        targetCardinality: 'one',
+      })
+    ).toEqual({
+      source: 'zero-or-one',
+      target: 'one',
+    });
+  });
 });

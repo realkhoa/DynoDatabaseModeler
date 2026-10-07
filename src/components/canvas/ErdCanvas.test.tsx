@@ -198,6 +198,50 @@ describe('ErdCanvas component', () => {
     fireEvent.click(exportPngBtn);
     expect(exportErdAsPng).toHaveBeenCalled();
   });
+
+  /**
+   * @brief Verifies toggling ERD notation style between Crow's Foot and Simple.
+   */
+  it('toggles notation style between Crow\'s Foot and Simple edge notations', () => {
+    const onNotationStyleChange = vi.fn();
+    render(
+      <ErdCanvas
+        schema={mockSchema}
+        onEditTable={vi.fn()}
+        onNotationStyleChange={onNotationStyleChange}
+      />
+    );
+
+    // Initial state: Crow's Foot
+    const toggleBtn = screen.getByTestId('notation-toggle-btn');
+    expect(toggleBtn.textContent).toContain("Notation: Crow's Foot");
+
+    // Click toggle button -> switches to Simple
+    fireEvent.click(toggleBtn);
+    expect(toggleBtn.textContent).toContain('Notation: Simple');
+    expect(onNotationStyleChange).toHaveBeenCalledWith('simple');
+
+    // Click toggle button again -> switches back to Crow's Foot
+    fireEvent.click(toggleBtn);
+    expect(toggleBtn.textContent).toContain("Notation: Crow's Foot");
+    expect(onNotationStyleChange).toHaveBeenCalledWith('crows-foot');
+  });
+
+  /**
+   * @brief Verifies respecting controlled notationStyle prop.
+   */
+  it('respects controlled notationStyle prop', () => {
+    render(
+      <ErdCanvas
+        schema={mockSchema}
+        onEditTable={vi.fn()}
+        notationStyle="simple"
+      />
+    );
+
+    const toggleBtn = screen.getByTestId('notation-toggle-btn');
+    expect(toggleBtn.textContent).toContain('Notation: Simple');
+  });
 });
 
 
