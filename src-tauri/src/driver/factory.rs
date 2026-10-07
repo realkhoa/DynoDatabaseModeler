@@ -20,21 +20,37 @@ impl DriverFactory {
     /// @param config Connection parameters specifying database type, endpoint, credentials, or file paths.
     /// @return Returns a boxed DatabaseDriver trait object or AppError on connection or configuration failure.
     pub async fn create(config: &ConnectionConfig) -> Result<Box<dyn DatabaseDriver>, AppError> {
-        match config.db_type {
+        let mut final_config = config.clone();
+        if let Some(ref tunnel_cfg) = config.ssh_tunnel {
+            if tunnel_cfg.enabled && config.db_type != DatabaseType::Sqlite {
+                let target_port = config.port.unwrap_or(match config.db_type {
+                    DatabaseType::Postgres => 5432,
+                    DatabaseType::MySql => 3306,
+                    DatabaseType::Mssql => 1433,
+                    DatabaseType::Sqlite => 0,
+                });
+                let remote_host = config.host.as_deref().unwrap_or("127.0.0.1");
+                let tunnel = crate::driver::tunnel::SshTunnel::establish(tunnel_cfg, remote_host, target_port).await?;
+                final_config.host = Some("127.0.0.1".to_string());
+                final_config.port = Some(tunnel.local_port);
+            }
+        }
+
+        match final_config.db_type {
             DatabaseType::Sqlite => {
-                let driver = SqliteDriver::connect(config).await?;
+                let driver = SqliteDriver::connect(&final_config).await?;
                 Ok(Box::new(driver))
             }
             DatabaseType::Postgres => {
-                let driver = PostgresDriver::connect(config).await?;
+                let driver = PostgresDriver::connect(&final_config).await?;
                 Ok(Box::new(driver))
             }
             DatabaseType::MySql => {
-                let driver = MySqlDriver::connect(config).await?;
+                let driver = MySqlDriver::connect(&final_config).await?;
                 Ok(Box::new(driver))
             }
             DatabaseType::Mssql => {
-                let driver = MssqlDriver::connect(config).await?;
+                let driver = MssqlDriver::connect(&final_config).await?;
                 Ok(Box::new(driver))
             }
         }

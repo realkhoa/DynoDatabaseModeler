@@ -20,6 +20,7 @@ fn create_test_config(id: &str) -> ConnectionConfig {
         password: None,
         file_path: Some(":memory:".to_string()),
         ssl: false,
+        ssh_tunnel: None,
     }
 }
 

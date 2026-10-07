@@ -10,9 +10,11 @@ pub mod mutation_model;
 pub mod mysql;
 pub mod postgres;
 pub mod sqlite;
+pub mod tunnel;
 
 pub use explain_model::ExecutionPlanNode;
 pub use mutation_model::RowUpdatePayload;
+pub use tunnel::{SshAuthType, SshTunnel, SshTunnelConfig};
 
 #[cfg(test)]
 mod explain_test;
@@ -22,6 +24,8 @@ mod factory_test;
 mod mutation_test;
 #[cfg(test)]
 mod sqlite_test;
+#[cfg(test)]
+mod tunnel_test;
 
 use crate::error::AppError;
 use crate::model::connection::DatabaseType;

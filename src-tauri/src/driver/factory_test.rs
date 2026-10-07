@@ -33,6 +33,7 @@ fn create_test_config(
         password: Some("secret".to_string()),
         file_path: None,
         ssl: false,
+        ssh_tunnel: None,
     }
 }
 

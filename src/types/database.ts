@@ -34,6 +34,35 @@ export interface ConnectionConfig {
   file_path?: string;
   /** @brief Flag specifying whether SSL/TLS encryption is enforced. */
   ssl: boolean;
+  /** @brief Optional SSH bastion tunnel configuration for remote networks. */
+  ssh_tunnel?: SshTunnelConfig;
+}
+
+/**
+ * @brief Authentication methods for SSH bastion jump servers.
+ */
+export type SshAuthType = 'Password' | 'PrivateKey' | 'Agent';
+
+/**
+ * @brief Configuration parameters for SSH bastion port forwarding.
+ */
+export interface SshTunnelConfig {
+  /** @brief Whether SSH tunnel is enabled for this connection. */
+  enabled: boolean;
+  /** @brief Bastion server hostname or IP address. */
+  host: string;
+  /** @brief Bastion SSH port (typically 22). */
+  port: number;
+  /** @brief SSH username. */
+  username: string;
+  /** @brief SSH authentication method. */
+  auth_type: SshAuthType;
+  /** @brief Plaintext password if using Password authentication. */
+  password?: string;
+  /** @brief Absolute file path to private key if using PrivateKey authentication. */
+  private_key_path?: string;
+  /** @brief Passphrase for encrypted private key. */
+  passphrase?: string;
 }
 
 /**

@@ -76,6 +76,7 @@ fn test_connection_config_serialization() {
         password: Some("secret".to_string()),
         file_path: None,
         ssl: false,
+        ssh_tunnel: None,
     };
 
     let json =
@@ -97,6 +98,7 @@ fn test_connection_config_serialization() {
         password: None,
         file_path: Some("/path/to/local.db".to_string()),
         ssl: false,
+        ssh_tunnel: None,
     };
 
     let sqlite_json =

@@ -23,6 +23,7 @@ fn create_in_memory_config() -> ConnectionConfig {
         password: None,
         file_path: Some(":memory:".to_string()),
         ssl: false,
+        ssh_tunnel: None,
     }
 }
 

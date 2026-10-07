@@ -49,6 +49,13 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
   const [password, setPassword] = useState('');
   const [filePath, setFilePath] = useState('');
   const [ssl, setSsl] = useState(false);
+  const [sshEnabled, setSshEnabled] = useState(false);
+  const [sshHost, setSshHost] = useState('');
+  const [sshPort, setSshPort] = useState(22);
+  const [sshUsername, setSshUsername] = useState('');
+  const [sshAuthType, setSshAuthType] = useState<'Password' | 'PrivateKey'>('Password');
+  const [sshPassword, setSshPassword] = useState('');
+  const [sshKeyPath, setSshKeyPath] = useState('');
 
   // Status feedback states
   const [isTesting, setIsTesting] = useState(false);
@@ -69,6 +76,25 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
       setPassword(initialConfig.password || '');
       setFilePath(initialConfig.file_path || '');
       setSsl(initialConfig.ssl || false);
+      if (initialConfig.ssh_tunnel) {
+        setSshEnabled(initialConfig.ssh_tunnel.enabled);
+        setSshHost(initialConfig.ssh_tunnel.host || '');
+        setSshPort(initialConfig.ssh_tunnel.port || 22);
+        setSshUsername(initialConfig.ssh_tunnel.username || '');
+        setSshAuthType(
+          initialConfig.ssh_tunnel.auth_type === 'PrivateKey' ? 'PrivateKey' : 'Password'
+        );
+        setSshPassword(initialConfig.ssh_tunnel.password || '');
+        setSshKeyPath(initialConfig.ssh_tunnel.private_key_path || '');
+      } else {
+        setSshEnabled(false);
+        setSshHost('');
+        setSshPort(22);
+        setSshUsername('');
+        setSshAuthType('Password');
+        setSshPassword('');
+        setSshKeyPath('');
+      }
     } else {
       setName('Local Postgres');
       setDbType('Postgres');
@@ -79,6 +105,13 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
       setPassword('');
       setFilePath('');
       setSsl(false);
+      setSshEnabled(false);
+      setSshHost('');
+      setSshPort(22);
+      setSshUsername('');
+      setSshAuthType('Password');
+      setSshPassword('');
+      setSshKeyPath('');
     }
     setTestStatus('idle');
     setTestMessage('');
@@ -135,6 +168,18 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
       password: dbType !== 'Sqlite' && password ? password : undefined,
       file_path: dbType === 'Sqlite' ? (filePath.trim() || database.trim() || ':memory:') : undefined,
       ssl,
+      ssh_tunnel:
+        dbType !== 'Sqlite' && sshEnabled && sshHost.trim()
+          ? {
+              enabled: true,
+              host: sshHost.trim(),
+              port: Number(sshPort) || 22,
+              username: sshUsername.trim(),
+              auth_type: sshAuthType,
+              password: sshAuthType === 'Password' ? sshPassword : undefined,
+              private_key_path: sshAuthType === 'PrivateKey' ? sshKeyPath.trim() : undefined,
+            }
+          : undefined,
     };
   };
 
@@ -248,6 +293,20 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
             setFilePath={setFilePath}
             ssl={ssl}
             setSsl={setSsl}
+            sshEnabled={sshEnabled}
+            setSshEnabled={setSshEnabled}
+            sshHost={sshHost}
+            setSshHost={setSshHost}
+            sshPort={sshPort}
+            setSshPort={setSshPort}
+            sshUsername={sshUsername}
+            setSshUsername={setSshUsername}
+            sshAuthType={sshAuthType}
+            setSshAuthType={setSshAuthType}
+            sshPassword={sshPassword}
+            setSshPassword={setSshPassword}
+            sshKeyPath={sshKeyPath}
+            setSshKeyPath={setSshKeyPath}
             validationError={validationError}
             testStatus={testStatus}
             testMessage={testMessage}

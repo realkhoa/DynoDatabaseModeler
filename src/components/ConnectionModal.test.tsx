@@ -141,4 +141,50 @@ describe('ConnectionModal component', () => {
       expect(handleClose).toHaveBeenCalled();
     });
   });
+
+  /**
+   * @brief Verifies SSH Bastion Tunnel toggle reveals fields and includes config in submission.
+   */
+  it('configures SSH bastion tunnel and includes in submitted config', async () => {
+    const handleConnect = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <ConnectionModal
+        isOpen={true}
+        onClose={vi.fn()}
+        onConnect={handleConnect}
+      />
+    );
+
+    const dbInput = screen.getByPlaceholderText('Database name');
+    fireEvent.change(dbInput, { target: { value: 'remote_db' } });
+
+    const sshToggle = screen.getByTestId('ssh-tunnel-enable');
+    fireEvent.click(sshToggle);
+
+    expect(screen.getByTestId('ssh-tunnel-host')).toBeDefined();
+    const sshHostInput = screen.getByTestId('ssh-tunnel-host');
+    fireEvent.change(sshHostInput, { target: { value: 'jump.company.com' } });
+
+    const sshUserInput = screen.getByTestId('ssh-tunnel-user');
+    fireEvent.change(sshUserInput, { target: { value: 'tunnel_user' } });
+
+    const connectBtn = screen.getByRole('button', { name: 'Connect' });
+    fireEvent.click(connectBtn);
+
+    await waitFor(() => {
+      expect(handleConnect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          database: 'remote_db',
+          ssh_tunnel: expect.objectContaining({
+            enabled: true,
+            host: 'jump.company.com',
+            port: 22,
+            username: 'tunnel_user',
+            auth_type: 'Password',
+          }),
+        })
+      );
+    });
+  });
 });

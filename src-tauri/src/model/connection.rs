@@ -43,4 +43,6 @@ pub struct ConnectionConfig {
     pub file_path: Option<String>,
     /// @brief Flag specifying whether SSL/TLS encryption is enforced.
     pub ssl: bool,
+    /// @brief Optional SSH bastion tunnel configuration for forwarding remote connections.
+    pub ssh_tunnel: Option<crate::driver::tunnel::SshTunnelConfig>,
 }
