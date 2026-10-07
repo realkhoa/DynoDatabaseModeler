@@ -225,6 +225,16 @@ export interface RowUpdatePayload {
   updated_values: Record<string, any>;
 }
 
+/**
+ * @brief Cardinality classification for entity-relationship associations.
+ */
+export type CardinalityType = 'one-to-one' | 'one-to-many' | 'many-to-many' | 'zero-to-one' | 'zero-to-many';
+
+/**
+ * @brief Visual notation style for Entity-Relationship Diagrams.
+ */
+export type ErdNotationStyle = 'crows-foot' | 'simple';
+
 
 /**
  * @brief Formats a CanonicalType variant into a human-readable display string.

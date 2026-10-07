@@ -22,7 +22,8 @@ import {
 import '@xyflow/react/dist/style.css';
 
 import { TableNode, TableNodeData } from './TableNode';
-import { DatabaseSchema, Point } from '../../types/database';
+import { CrowsFootEdge } from './CrowsFootEdge';
+import { DatabaseSchema, Point, ErdNotationStyle } from '../../types/database';
 import { layoutElements } from '../../utils/layout';
 import {
   LayoutGrid,
@@ -33,6 +34,7 @@ import {
   FileJson,
   Image as ImageIcon,
   FileCode,
+  Network,
 } from 'lucide-react';
 import {
   exportSchemaAsJson,
@@ -76,6 +78,11 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
 }) => {
   // Register custom node types mapping
   const nodeTypes = useMemo(() => ({ tableNode: TableNode }), []);
+  // Register custom edge types mapping
+  const edgeTypes = useMemo(() => ({ crowsFoot: CrowsFootEdge }), []);
+
+  // ERD notation style state: Crow's Foot vs Simple smoothstep
+  const [notationStyle, setNotationStyle] = useState<ErdNotationStyle>('crows-foot');
 
   /**
    * @brief Constructs React Flow node models from current schema tables while preserving user drag positions.
@@ -129,14 +136,20 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
           sourceHandle: `${fk.source_column}-source`,
           target: fk.target_table,
           targetHandle: `${fk.target_column}-target`,
-          animated: true,
-          type: 'smoothstep',
-          style: { stroke: '#3a82f7', strokeWidth: 2 },
+          animated: false,
+          type: notationStyle === 'crows-foot' ? 'crowsFoot' : 'smoothstep',
+          data: {
+            cardinality: 'one-to-many',
+            sourceCardinality: 'many',
+            targetCardinality: 'one',
+            label: fk.constraint_name,
+          },
+          style: { stroke: '#20c997', strokeWidth: 1.5 },
         });
       });
     });
     return edges;
-  }, [schema]);
+  }, [schema, notationStyle]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<TableNodeData>>(
     buildNodesFromSchema()
@@ -325,6 +338,26 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
           <span>Auto Layout</span>
         </button>
 
+        {/* Notation Style Toggle */}
+        <button
+          type="button"
+          data-testid="notation-toggle-btn"
+          onClick={() =>
+            setNotationStyle((prev) =>
+              prev === 'crows-foot' ? 'simple' : 'crows-foot'
+            )
+          }
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs border border-[#35373c] shadow-lg transition-colors font-medium cursor-pointer ${
+            notationStyle === 'crows-foot'
+              ? 'bg-[#20c997]/15 text-[#20c997] border-[#20c997]/40'
+              : 'bg-[#24262b] hover:bg-[#2e3138] text-[#e6e8ea]'
+          }`}
+          title="Toggle ERD notation between Crow's Foot and Simple"
+        >
+          <Network className="w-3.5 h-3.5" />
+          <span>{notationStyle === 'crows-foot' ? "Crow's Foot" : 'Simple'}</span>
+        </button>
+
         {/* Export Dropdown */}
         <div className="relative" ref={exportMenuRef}>
           <button
@@ -381,6 +414,7 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={handleNodeClick}
