@@ -22,7 +22,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
-import { TableNode, TableNodeData } from './TableNode';
+import { TableNode } from './TableNode';
 import { CrowsFootEdge } from './CrowsFootEdge';
 import { StickyNoteNode, StickyNoteColor } from './StickyNoteNode';
 import { GroupNode } from './GroupNode';
@@ -94,7 +94,14 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
   onNotationStyleChange,
 }) => {
   // Register custom node types mapping
-  const nodeTypes = useMemo(() => ({ tableNode: TableNode }), []);
+  const nodeTypes = useMemo(
+    () => ({
+      tableNode: TableNode,
+      stickyNote: StickyNoteNode,
+      domainGroup: GroupNode,
+    }),
+    []
+  );
   // Register custom edge types mapping
   const edgeTypes = useMemo(() => ({ crowsFoot: CrowsFootEdge }), []);
 
@@ -127,13 +134,95 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
     loadVirtualRelationships(schema.database_name)
   );
 
+  // Schema table filtering string query
+  const [tableFilter, setTableFilter] = useState('');
+
+  // Auxiliary canvas nodes (sticky notes, domain group containers)
+  const [extraNodes, setExtraNodes] = useState<Node[]>([]);
+
+  /**
+   * @brief Updates text content of a sticky note node.
+   */
+  const handleUpdateNoteText = useCallback((id: string, text: string) => {
+    setExtraNodes((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, data: { ...n.data, text } } : n))
+    );
+  }, []);
+
+  /**
+   * @brief Updates color variant of a sticky note node.
+   */
+  const handleUpdateNoteColor = useCallback((id: string, color: StickyNoteColor) => {
+    setExtraNodes((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, data: { ...n.data, color } } : n))
+    );
+  }, []);
+
+  /**
+   * @brief Updates label of a domain group node.
+   */
+  const handleUpdateGroupLabel = useCallback((id: string, label: string) => {
+    setExtraNodes((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, data: { ...n.data, label } } : n))
+    );
+  }, []);
+
+  /**
+   * @brief Deletes an auxiliary note or group node from canvas.
+   */
+  const handleDeleteExtraNode = useCallback((id: string) => {
+    setExtraNodes((prev) => prev.filter((n) => n.id !== id));
+  }, []);
+
+  /**
+   * @brief Adds a new sticky note to the canvas.
+   */
+  const handleAddStickyNote = useCallback(() => {
+    const newId = `note_${Date.now()}`;
+    const newNote: Node = {
+      id: newId,
+      type: 'stickyNote',
+      position: { x: 100 + Math.random() * 40, y: 100 + Math.random() * 40 },
+      data: {
+        id: newId,
+        title: 'Note',
+        text: 'New annotation note',
+        color: 'yellow',
+        onChangeText: handleUpdateNoteText,
+        onChangeColor: handleUpdateNoteColor,
+        onDelete: handleDeleteExtraNode,
+      },
+    };
+    setExtraNodes((prev) => [...prev, newNote]);
+  }, [handleUpdateNoteText, handleUpdateNoteColor, handleDeleteExtraNode]);
+
+  /**
+   * @brief Adds a new domain group container frame to the canvas.
+   */
+  const handleAddGroup = useCallback(() => {
+    const newId = `group_${Date.now()}`;
+    const newGroup: Node = {
+      id: newId,
+      type: 'domainGroup',
+      position: { x: 60 + Math.random() * 30, y: 60 + Math.random() * 30 },
+      data: {
+        id: newId,
+        label: 'Domain Group',
+        color: '#3b82f6',
+        onChangeLabel: handleUpdateGroupLabel,
+        onDelete: handleDeleteExtraNode,
+      },
+    };
+    setExtraNodes((prev) => [...prev, newGroup]);
+  }, [handleUpdateGroupLabel, handleDeleteExtraNode]);
+
   /**
    * @brief Constructs React Flow node models from current schema tables while preserving user drag positions.
    * @param existingNodes Optional array of previous node instances to retain coordinates from.
-   * @return Array of React Flow TableNode objects.
+   * @return Array of React Flow TableNode and extra auxiliary objects.
    */
   const buildNodesFromSchema = useCallback(
-    (existingNodes?: Node<TableNodeData>[]): Node<TableNodeData>[] => {
+    (existingNodes?: Node[]): Node[] => {
       const positionMap = new Map<string, Point>();
       if (existingNodes) {
         existingNodes.forEach((n) => {
@@ -141,7 +230,12 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
         });
       }
 
-      return schema.tables.map((table, idx) => {
+      const query = tableFilter.toLowerCase().trim();
+      const filteredTables = schema.tables.filter((t) =>
+        query ? t.name.toLowerCase().includes(query) : true
+      );
+
+      const tableNodes: Node[] = filteredTables.map((table, idx) => {
         const defaultX = (idx % 3) * 300 + 40;
         const defaultY = Math.floor(idx / 3) * 280 + 40;
         const savedPos = positionMap.get(table.name) || table.ui_position;
@@ -159,8 +253,46 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
           },
         };
       });
+
+      const boundExtraNodes = extraNodes.map((n) => {
+        if (n.type === 'stickyNote') {
+          return {
+            ...n,
+            position: positionMap.get(n.id) || n.position,
+            data: {
+              ...n.data,
+              onChangeText: handleUpdateNoteText,
+              onChangeColor: handleUpdateNoteColor,
+              onDelete: handleDeleteExtraNode,
+            },
+          };
+        }
+        if (n.type === 'domainGroup') {
+          return {
+            ...n,
+            position: positionMap.get(n.id) || n.position,
+            data: {
+              ...n.data,
+              onChangeLabel: handleUpdateGroupLabel,
+              onDelete: handleDeleteExtraNode,
+            },
+          };
+        }
+        return n;
+      });
+
+      return [...boundExtraNodes, ...tableNodes];
     },
-    [schema, onEditTable]
+    [
+      schema,
+      tableFilter,
+      extraNodes,
+      onEditTable,
+      handleUpdateNoteText,
+      handleUpdateNoteColor,
+      handleUpdateGroupLabel,
+      handleDeleteExtraNode,
+    ]
   );
 
   /**
@@ -169,9 +301,18 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
    */
   const buildEdgesFromSchema = useCallback((): Edge[] => {
     const edges: Edge[] = [];
+    const query = tableFilter.toLowerCase().trim();
+    const visibleTableNames = new Set(
+      schema.tables
+        .filter((t) => (query ? t.name.toLowerCase().includes(query) : true))
+        .map((t) => t.name)
+    );
+
     // 1. Physical database foreign keys
     schema.tables.forEach((table) => {
+      if (!visibleTableNames.has(table.name)) return;
       table.foreign_keys.forEach((fk, fkIdx) => {
+        if (!visibleTableNames.has(fk.target_table)) return;
         const edgeId =
           fk.constraint_name || `fk_${table.name}_${fk.source_column}_${fkIdx}`;
         edges.push({
@@ -193,6 +334,7 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
 
     // 2. Logical virtual relationships (diagram-only, purple dashed)
     virtualRels.forEach((vr) => {
+      if (!visibleTableNames.has(vr.sourceTable) || !visibleTableNames.has(vr.targetTable)) return;
       edges.push({
         id: `vr_${vr.id}`,
         source: vr.sourceTable,
@@ -210,9 +352,9 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
     });
 
     return edges;
-  }, [schema, activeNotation, virtualRels]);
+  }, [schema, activeNotation, virtualRels, tableFilter]);
 
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node<TableNodeData>>(
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>(
     buildNodesFromSchema()
   );
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>(
@@ -280,7 +422,7 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
    */
   const handleNodeClick: NodeMouseHandler = useCallback(
     (_event, node) => {
-      if (onSelectTable) {
+      if (node.type === 'tableNode' && onSelectTable) {
         onSelectTable(node.id);
       }
     },
@@ -292,7 +434,9 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
    */
   const handleNodeDoubleClick: NodeMouseHandler = useCallback(
     (_event, node) => {
-      onEditTable(node.id);
+      if (node.type === 'tableNode') {
+        onEditTable(node.id);
+      }
     },
     [onEditTable]
   );
@@ -300,9 +444,9 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
   /**
    * @brief Captures node drag stop event to notify parent of coordinate updates.
    */
-  const handleNodeDragStop: OnNodeDrag<Node<TableNodeData>> = useCallback(
+  const handleNodeDragStop: OnNodeDrag<Node> = useCallback(
     (_event, node) => {
-      if (onTablePositionChange) {
+      if (node.type === 'tableNode' && onTablePositionChange) {
         onTablePositionChange(node.id, {
           x: node.position.x,
           y: node.position.y,
@@ -400,6 +544,43 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
     >
       {/* Top Floating Control Bar */}
       <div className="absolute top-3 right-4 z-10 flex items-center space-x-2">
+        {/* Table Filter Input */}
+        <div className="relative flex items-center">
+          <Search className="w-3.5 h-3.5 text-[#8c919a] absolute left-2.5 pointer-events-none" />
+          <input
+            type="text"
+            data-testid="erd-table-filter-input"
+            value={tableFilter}
+            onChange={(e) => setTableFilter(e.target.value)}
+            placeholder="Filter tables..."
+            className="bg-[#24262b] hover:bg-[#2e3138] focus:bg-[#1e1f22] text-[#e6e8ea] placeholder-[#8c919a] pl-8 pr-2.5 py-1.5 rounded text-xs border border-[#35373c] focus:border-[#3a82f7] focus:outline-none transition-colors w-32 focus:w-44 shadow-lg font-medium"
+          />
+        </div>
+
+        {/* Add Sticky Note Button */}
+        <button
+          type="button"
+          data-testid="add-note-btn"
+          onClick={handleAddStickyNote}
+          className="inline-flex items-center gap-1.5 bg-[#24262b] hover:bg-[#2e3138] text-[#e6e8ea] px-3 py-1.5 rounded text-xs border border-[#35373c] shadow-lg transition-colors font-medium cursor-pointer"
+          title="Add sticky note annotation"
+        >
+          <StickyNoteIcon className="w-3.5 h-3.5 text-amber-400" />
+          <span>Add Note</span>
+        </button>
+
+        {/* Add Group Container Button */}
+        <button
+          type="button"
+          data-testid="add-group-btn"
+          onClick={handleAddGroup}
+          className="inline-flex items-center gap-1.5 bg-[#24262b] hover:bg-[#2e3138] text-[#e6e8ea] px-3 py-1.5 rounded text-xs border border-[#35373c] shadow-lg transition-colors font-medium cursor-pointer"
+          title="Add domain group container"
+        >
+          <LayersIcon className="w-3.5 h-3.5 text-[#3a82f7]" />
+          <span>Add Group</span>
+        </button>
+
         {onAddNewTable && (
           <button
             type="button"

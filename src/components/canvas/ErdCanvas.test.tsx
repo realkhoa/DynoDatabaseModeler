@@ -242,6 +242,38 @@ describe('ErdCanvas component', () => {
     const toggleBtn = screen.getByTestId('notation-toggle-btn');
     expect(toggleBtn.textContent).toContain('Notation: Simple');
   });
+
+  /**
+   * @brief Verifies adding sticky note and domain group container on the canvas.
+   */
+  it('adds sticky note and group container to the canvas via toolbar buttons', () => {
+    render(<ErdCanvas schema={mockSchema} onEditTable={vi.fn()} />);
+
+    const addNoteBtn = screen.getByTestId('add-note-btn');
+    fireEvent.click(addNoteBtn);
+    expect(screen.getByTestId('sticky-note-node')).toBeDefined();
+
+    const addGroupBtn = screen.getByTestId('add-group-btn');
+    fireEvent.click(addGroupBtn);
+    expect(screen.getByTestId('group-node')).toBeDefined();
+  });
+
+  /**
+   * @brief Verifies filtering tables dynamically using the search input.
+   */
+  it('filters tables dynamically when typing into the filter input', () => {
+    render(<ErdCanvas schema={mockSchema} onEditTable={vi.fn()} />);
+
+    expect(screen.getByText('users')).toBeDefined();
+    expect(screen.getByText('orders')).toBeDefined();
+
+    const filterInput = screen.getByTestId('erd-table-filter-input') as HTMLInputElement;
+    fireEvent.change(filterInput, { target: { value: 'order' } });
+
+    // 'orders' remains visible, 'users' is filtered out
+    expect(screen.getByText('orders')).toBeDefined();
+    expect(screen.queryByText('users')).toBeNull();
+  });
 });
 
 
