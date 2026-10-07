@@ -235,6 +235,27 @@ export type CardinalityType = 'one-to-one' | 'one-to-many' | 'many-to-many' | 'z
  */
 export type ErdNotationStyle = 'crows-foot' | 'simple';
 
+/**
+ * @brief Logical, non-enforced entity relationship between table columns.
+ * @details Allows diagramming associations in ERD without creating physical database foreign key constraints.
+ */
+export interface VirtualRelationship {
+  /** @brief Unique identifier for the virtual relationship. */
+  id: string;
+  /** @brief Source table name holding the logical referencing key. */
+  sourceTable: string;
+  /** @brief Column name in the source table. */
+  sourceColumn: string;
+  /** @brief Target table name holding the referenced primary/unique key. */
+  targetTable: string;
+  /** @brief Column name in the target table. */
+  targetColumn: string;
+  /** @brief Optional logical relationship label or alias. */
+  name?: string;
+  /** @brief Optional documentation note explaining the association. */
+  note?: string;
+}
+
 
 /**
  * @brief Formats a CanonicalType variant into a human-readable display string.

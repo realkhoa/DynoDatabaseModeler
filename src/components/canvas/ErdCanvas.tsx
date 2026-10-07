@@ -18,12 +18,18 @@ import {
   Edge,
   NodeMouseHandler,
   OnNodeDrag,
+  OnConnect,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
 import { TableNode, TableNodeData } from './TableNode';
 import { CrowsFootEdge } from './CrowsFootEdge';
-import { DatabaseSchema, Point, ErdNotationStyle } from '../../types/database';
+import { DatabaseSchema, Point, ErdNotationStyle, VirtualRelationship } from '../../types/database';
+import {
+  loadVirtualRelationships,
+  addVirtualRelationship,
+  removeVirtualRelationship,
+} from '../../utils/virtualRelations';
 import { layoutElements } from '../../utils/layout';
 import {
   LayoutGrid,
@@ -84,6 +90,11 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
   // ERD notation style state: Crow's Foot vs Simple smoothstep
   const [notationStyle, setNotationStyle] = useState<ErdNotationStyle>('crows-foot');
 
+  // Virtual relationships persisted per database schema
+  const [virtualRels, setVirtualRels] = useState<VirtualRelationship[]>(() =>
+    loadVirtualRelationships(schema.database_name)
+  );
+
   /**
    * @brief Constructs React Flow node models from current schema tables while preserving user drag positions.
    * @param existingNodes Optional array of previous node instances to retain coordinates from.
@@ -126,6 +137,7 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
    */
   const buildEdgesFromSchema = useCallback((): Edge[] => {
     const edges: Edge[] = [];
+    // 1. Physical database foreign keys
     schema.tables.forEach((table) => {
       table.foreign_keys.forEach((fk, fkIdx) => {
         const edgeId =
@@ -148,8 +160,29 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
         });
       });
     });
+
+    // 2. Logical virtual relationships (diagram-only, purple dashed)
+    virtualRels.forEach((vr) => {
+      edges.push({
+        id: `vr_${vr.id}`,
+        source: vr.sourceTable,
+        sourceHandle: `${vr.sourceColumn}-source`,
+        target: vr.targetTable,
+        targetHandle: `${vr.targetColumn}-target`,
+        animated: true,
+        type: notationStyle === 'crows-foot' ? 'crowsFoot' : 'smoothstep',
+        data: {
+          cardinality: 'one-to-many',
+          sourceCardinality: 'many',
+          targetCardinality: 'one',
+          label: vr.name || 'Virtual FK',
+        },
+        style: { stroke: '#a855f7', strokeWidth: 1.5, strokeDasharray: '4,4' },
+      });
+    });
+
     return edges;
-  }, [schema, notationStyle]);
+  }, [schema, notationStyle, virtualRels]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<TableNodeData>>(
     buildNodesFromSchema()
@@ -158,11 +191,53 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
     buildEdgesFromSchema()
   );
 
-  // Re-synchronize nodes and edges when schema or edit callback updates
+  // Re-synchronize nodes and edges when schema or virtual relationships change
   useEffect(() => {
     setNodes((prev) => buildNodesFromSchema(prev));
+    setVirtualRels(loadVirtualRelationships(schema.database_name));
+  }, [schema, buildNodesFromSchema, setNodes]);
+
+  useEffect(() => {
     setEdges(buildEdgesFromSchema());
-  }, [schema, buildNodesFromSchema, buildEdgesFromSchema, setNodes, setEdges]);
+  }, [buildEdgesFromSchema, setEdges]);
+
+  /**
+   * @brief Handles interactive edge connections between table column handles, creating a virtual relationship.
+   */
+  const handleConnect: OnConnect = useCallback(
+    (params) => {
+      if (!params.source || !params.target || !params.sourceHandle || !params.targetHandle) return;
+      const sourceCol = params.sourceHandle.replace(/-source$/, '');
+      const targetCol = params.targetHandle.replace(/-target$/, '');
+      const newRel: VirtualRelationship = {
+        id: `vr_${params.source}_${sourceCol}_${params.target}_${targetCol}_${Date.now()}`,
+        sourceTable: params.source,
+        sourceColumn: sourceCol,
+        targetTable: params.target,
+        targetColumn: targetCol,
+        name: 'Virtual FK',
+      };
+      const updated = addVirtualRelationship(schema.database_name, newRel);
+      setVirtualRels(updated);
+    },
+    [schema.database_name]
+  );
+
+  /**
+   * @brief Removes virtual relationships when their corresponding canvas edge is deleted.
+   */
+  const handleEdgesDelete = useCallback(
+    (deletedEdges: Edge[]) => {
+      deletedEdges.forEach((e) => {
+        if (e.id.startsWith('vr_')) {
+          const rawId = e.id.replace(/^vr_/, '');
+          removeVirtualRelationship(schema.database_name, rawId);
+        }
+      });
+      setVirtualRels(loadVirtualRelationships(schema.database_name));
+    },
+    [schema.database_name]
+  );
 
   /**
    * @brief Applies Dagre hierarchical auto-layout across all canvas table nodes.
@@ -417,6 +492,8 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
         edgeTypes={edgeTypes}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onConnect={handleConnect}
+        onEdgesDelete={handleEdgesDelete}
         onNodeClick={handleNodeClick}
         onNodeDoubleClick={handleNodeDoubleClick}
         onNodeDragStop={handleNodeDragStop}
