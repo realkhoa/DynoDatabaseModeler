@@ -12,6 +12,7 @@ import type {
   ExecutionPlanNode,
   MigrationReport,
   QueryResult,
+  QueryHistoryRecord,
   RowUpdatePayload,
   SchemaDiff,
 } from '../types/database';
@@ -108,5 +109,54 @@ export const api = {
   explainQuery: (sql: string): Promise<ExecutionPlanNode> => {
     return invoke<ExecutionPlanNode>('cmd_explain_query', { sql });
   },
+
+  /**
+   * @brief Records a query execution event into local persistent SQLite history.
+   * @param query SQL query string.
+   * @param durationMs Execution duration in milliseconds.
+   * @param rowsCount Number of affected or returned rows.
+   * @param status Status string ("success" or "error").
+   * @return Promise resolving to saved QueryHistoryRecord.
+   */
+  recordQueryHistory: (
+    query: string,
+    durationMs: number,
+    rowsCount: number,
+    status: string,
+  ): Promise<QueryHistoryRecord> => {
+    return invoke<QueryHistoryRecord>('cmd_record_query_history', {
+      query,
+      durationMs,
+      rowsCount,
+      status,
+    });
+  },
+
+  /**
+   * @brief Retrieves latest query execution records.
+   * @param limit Maximum number of records to retrieve (default 100).
+   * @return Promise resolving to list of QueryHistoryRecord items.
+   */
+  getQueryHistory: (limit?: number): Promise<QueryHistoryRecord[]> => {
+    return invoke<QueryHistoryRecord[]>('cmd_get_query_history', { limit });
+  },
+
+  /**
+   * @brief Toggles favorite bookmark status for a query record.
+   * @param id History record primary key ID.
+   * @return Promise resolving to updated boolean favorite status.
+   */
+  toggleFavoriteQuery: (id: number): Promise<boolean> => {
+    return invoke<boolean>('cmd_toggle_favorite_query', { id });
+  },
+
+  /**
+   * @brief Clears non-favorite query history records.
+   * @return Promise resolving when history is cleared.
+   */
+  clearQueryHistory: (): Promise<void> => {
+    return invoke<void>('cmd_clear_query_history');
+  },
 };
+
 

@@ -20,6 +20,10 @@ vi.mock('./api/ipc', () => ({
     computeDiff: vi.fn(),
     generateDdl: vi.fn(),
     executeMigration: vi.fn(),
+    recordQueryHistory: vi.fn().mockResolvedValue({ id: 1 }),
+    getQueryHistory: vi.fn().mockResolvedValue([]),
+    toggleFavoriteQuery: vi.fn().mockResolvedValue(true),
+    clearQueryHistory: vi.fn().mockResolvedValue(undefined),
   },
 }));
 

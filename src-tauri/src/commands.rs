@@ -15,6 +15,7 @@ use crate::error::AppError;
 use crate::model::connection::ConnectionConfig;
 use crate::model::schema::DatabaseSchema;
 use crate::state::AppState;
+use crate::storage::QueryHistoryRecord;
 
 /// @brief Tests database connectivity for the supplied configuration without altering active state.
 /// @details Instantiates a transient driver and verifies connectivity handshake and ping.
@@ -145,4 +146,62 @@ pub async fn cmd_explain_query(
 ) -> Result<ExecutionPlanNode, AppError> {
     state.explain_query(&sql).await
 }
+
+/// @brief Records a query execution event into local persistent SQLite history.
+/// @param query Executed SQL statement text.
+/// @param duration_ms Wall-clock execution time in milliseconds.
+/// @param rows_count Number of rows affected or returned.
+/// @param status Status string ("success" or "error").
+/// @param state Tauri managed handle to shared AppState.
+/// @return Populated QueryHistoryRecord instance.
+/// @throws AppError on SQLite persistence error.
+#[tauri::command]
+pub async fn cmd_record_query_history(
+    query: String,
+    duration_ms: u64,
+    rows_count: u64,
+    status: String,
+    state: State<'_, AppState>,
+) -> Result<QueryHistoryRecord, AppError> {
+    state
+        .record_query_history(&query, duration_ms, rows_count, &status)
+        .await
+}
+
+/// @brief Retrieves the latest recorded query execution history records.
+/// @param limit Maximum number of records to retrieve (defaults to 100).
+/// @param state Tauri managed handle to shared AppState.
+/// @return Vector of QueryHistoryRecord instances ordered latest first.
+/// @throws AppError on SQLite query error.
+#[tauri::command]
+pub async fn cmd_get_query_history(
+    limit: Option<usize>,
+    state: State<'_, AppState>,
+) -> Result<Vec<QueryHistoryRecord>, AppError> {
+    let limit = limit.unwrap_or(100);
+    state.get_query_history(limit).await
+}
+
+/// @brief Toggles favorite or bookmark status for a query history entry.
+/// @param id Primary key ID of the history record.
+/// @param state Tauri managed handle to shared AppState.
+/// @return Updated boolean favorite status.
+/// @throws AppError if record is not found or SQLite update fails.
+#[tauri::command]
+pub async fn cmd_toggle_favorite_query(
+    id: i64,
+    state: State<'_, AppState>,
+) -> Result<bool, AppError> {
+    state.toggle_favorite_query(id).await
+}
+
+/// @brief Clears non-favorite query history records from persistent storage.
+/// @param state Tauri managed handle to shared AppState.
+/// @return Unit `Ok(())` on successful deletion.
+/// @throws AppError on SQLite delete error.
+#[tauri::command]
+pub async fn cmd_clear_query_history(state: State<'_, AppState>) -> Result<(), AppError> {
+    state.clear_query_history().await
+}
+
 

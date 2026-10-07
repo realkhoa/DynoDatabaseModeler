@@ -24,6 +24,8 @@ pub struct AppState {
     active_driver: Arc<RwLock<Option<Box<dyn DatabaseDriver>>>>,
     /// @brief Thread-safe handle to the active database connection configuration.
     active_config: Arc<RwLock<Option<ConnectionConfig>>>,
+    /// @brief Thread-safe handle to the internal SQLite pool for persistent query history.
+    storage_pool: Arc<RwLock<Option<sqlx::SqlitePool>>>,
 }
 
 impl AppState {
@@ -159,5 +161,68 @@ impl AppState {
                 "No active database connection".to_string(),
             ))
         }
+    }
+
+    /// @brief Ensures the internal history SQLite database is initialized.
+    /// @return Returns active SQLite connection pool for local storage.
+    pub async fn get_or_init_storage(&self) -> Result<sqlx::SqlitePool, AppError> {
+        let mut lock = self.storage_pool.write().await;
+        if let Some(pool) = lock.as_ref() {
+            return Ok(pool.clone());
+        }
+
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(5)
+            .connect("sqlite::memory:")
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to connect history storage: {}", e)))?;
+
+        crate::storage::history::init_history_schema(&pool).await?;
+
+        *lock = Some(pool.clone());
+        Ok(pool)
+    }
+
+    /// @brief Records a query execution record in local history storage.
+    /// @param query Executed SQL statement text.
+    /// @param duration_ms Wall-clock execution time in milliseconds.
+    /// @param rows_count Number of affected or returned rows.
+    /// @param status Status string ("success" or "error").
+    /// @return QueryHistoryRecord instance.
+    pub async fn record_query_history(
+        &self,
+        query: &str,
+        duration_ms: u64,
+        rows_count: u64,
+        status: &str,
+    ) -> Result<crate::storage::QueryHistoryRecord, AppError> {
+        let pool = self.get_or_init_storage().await?;
+        crate::storage::history::record_query(&pool, query, duration_ms, rows_count, status).await
+    }
+
+    /// @brief Retrieves the latest query execution records.
+    /// @param limit Maximum number of records to return.
+    /// @return Vector of QueryHistoryRecord instances ordered latest first.
+    pub async fn get_query_history(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<crate::storage::QueryHistoryRecord>, AppError> {
+        let pool = self.get_or_init_storage().await?;
+        crate::storage::history::get_history(&pool, limit).await
+    }
+
+    /// @brief Toggles the favorite status of a query history record.
+    /// @param id Primary key ID of the record.
+    /// @return Updated favorite boolean state.
+    pub async fn toggle_favorite_query(&self, id: i64) -> Result<bool, AppError> {
+        let pool = self.get_or_init_storage().await?;
+        crate::storage::history::toggle_favorite(&pool, id).await
+    }
+
+    /// @brief Clears non-favorite query history records.
+    /// @return Ok(()) on successful cleanup.
+    pub async fn clear_query_history(&self) -> Result<(), AppError> {
+        let pool = self.get_or_init_storage().await?;
+        crate::storage::history::clear_history(&pool).await
     }
 }

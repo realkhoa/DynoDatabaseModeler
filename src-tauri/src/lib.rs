@@ -7,6 +7,7 @@ pub mod driver;
 pub mod error;
 pub mod model;
 pub mod state;
+pub mod storage;
 
 #[cfg(test)]
 mod commands_test;
@@ -29,6 +30,10 @@ pub fn run() {
             commands::cmd_disconnect,
             commands::cmd_update_rows,
             commands::cmd_explain_query,
+            commands::cmd_record_query_history,
+            commands::cmd_get_query_history,
+            commands::cmd_toggle_favorite_query,
+            commands::cmd_clear_query_history,
         ])
         .setup(|_app| Ok(()))
         .run(tauri::generate_context!())

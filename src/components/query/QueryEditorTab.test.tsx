@@ -14,6 +14,10 @@ vi.mock('../../api/ipc', () => ({
     executeQuery: vi.fn(),
     updateRows: vi.fn(),
     explainQuery: vi.fn(),
+    recordQueryHistory: vi.fn().mockResolvedValue({ id: 1 }),
+    getQueryHistory: vi.fn().mockResolvedValue([]),
+    toggleFavoriteQuery: vi.fn().mockResolvedValue(true),
+    clearQueryHistory: vi.fn().mockResolvedValue(undefined),
   },
 }));
 
@@ -433,6 +437,64 @@ describe('QueryEditorTab component', () => {
     await waitFor(() => {
       expect(screen.getByTestId('explain-plan-modal')).toBeDefined();
       expect(screen.getByText('Seq Scan')).toBeDefined();
+    });
+  });
+
+  /**
+   * @brief Verifies that running a query records history in the persistent storage.
+   */
+  it('records query execution history when running query', async () => {
+    vi.mocked(api.executeQuery).mockResolvedValue({
+      columns: ['id'],
+      rows: [[1]],
+      rows_affected: 0,
+      execution_time_ms: 15,
+    });
+
+    render(
+      <QueryEditorTab
+        activeConnection={mockConnection}
+        initialQuery="SELECT * FROM customers;"
+      />
+    );
+
+    const runBtn = screen.getByRole('button', { name: /Run Query/i });
+    fireEvent.click(runBtn);
+
+    await waitFor(() => {
+      expect(api.recordQueryHistory).toHaveBeenCalledWith(
+        'SELECT * FROM customers;',
+        expect.any(Number),
+        1,
+        'success'
+      );
+    });
+  });
+
+  /**
+   * @brief Verifies History button opens QueryHistoryModal.
+   */
+  it('opens QueryHistoryModal when clicking History button in toolbar', async () => {
+    vi.mocked(api.getQueryHistory).mockResolvedValue([
+      {
+        id: 1,
+        query_text: 'SELECT 1;',
+        executed_at: '2026-10-06T12:00:00Z',
+        duration_ms: 5,
+        rows_count: 1,
+        status: 'success',
+        is_favorite: false,
+      },
+    ]);
+
+    render(<QueryEditorTab activeConnection={mockConnection} />);
+
+    const historyBtn = screen.getByTestId('query-history-btn');
+    fireEvent.click(historyBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('Query Execution History')).toBeDefined();
+      expect(screen.getByText('SELECT 1;')).toBeDefined();
     });
   });
 

@@ -332,3 +332,24 @@ export function getDefaultPort(dbType: DatabaseType): number {
       return 0;
   }
 }
+
+/**
+ * @brief Persistent SQL query execution history record.
+ */
+export interface QueryHistoryRecord {
+  /** @brief Unique database identifier. */
+  id: number;
+  /** @brief SQL query statement text. */
+  query_text: string;
+  /** @brief ISO 8601 execution timestamp. */
+  executed_at: string;
+  /** @brief Wall-clock execution duration in milliseconds. */
+  duration_ms: number;
+  /** @brief Number of affected or returned rows. */
+  rows_count: number;
+  /** @brief Execution status ("success" or "error"). */
+  status: string;
+  /** @brief Whether query is pinned as a favorite/snippet. */
+  is_favorite: boolean;
+}
+

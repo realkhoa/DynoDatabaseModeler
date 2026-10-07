@@ -7,13 +7,14 @@
 
 import React, { useState, useRef, useCallback } from 'react';
 import Editor, { OnMount } from '@monaco-editor/react';
-import { Play, Loader2, AlertCircle, FileCode, CheckCircle2, Eye, Download, Zap } from 'lucide-react';
+import { Play, Loader2, AlertCircle, FileCode, CheckCircle2, Eye, Download, Zap, History } from 'lucide-react';
 import { api } from '../../api/ipc';
 import type { ConnectionConfig, QueryResult, RowUpdatePayload, ExecutionPlanNode } from '../../types/database';
 import { EditableDataGrid, EditableDataGridHandle } from './EditableDataGrid';
 import { ValueInspectorDrawer } from './ValueInspectorDrawer';
 import { ExportModal } from './ExportModal';
 import { ExplainPlanModal } from './ExplainPlanModal';
+import { QueryHistoryModal } from './QueryHistoryModal';
 
 /**
  * @brief Properties accepted by the QueryEditorTab component.
@@ -98,6 +99,7 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
   const [isExplainOpen, setIsExplainOpen] = useState(false);
   const [isExplaining, setIsExplaining] = useState(false);
   const [explainError, setExplainError] = useState<string | null>(null);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
   const gridRef = useRef<EditableDataGridHandle | null>(null);
 
@@ -106,6 +108,15 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
   // Keep latest query in ref for Monaco action callback
   const queryRef = useRef(query);
   queryRef.current = query;
+
+  /**
+   * @brief Selects a query from execution history modal and populates the editor.
+   * @param historySql Selected SQL query string.
+   */
+  const handleSelectHistoryQuery = useCallback((historySql: string) => {
+    setQuery(historySql);
+    queryRef.current = historySql;
+  }, []);
 
   /**
    * @brief Handles cell selection in the results data grid.
@@ -173,15 +184,24 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
     setIsLoading(true);
     setError(null);
     setSaveStatus(null);
+    const startTime = Date.now();
 
     try {
       const res = await api.executeQuery(sqlToRun);
+      const durationMs = Date.now() - startTime;
       setResult(res);
+      api
+        .recordQueryHistory(sqlToRun, durationMs, res.rows.length, 'success')
+        .catch((e) => console.error('Failed to log query history:', e));
       if (onQuerySuccess) {
         onQuerySuccess(res);
       }
     } catch (err: unknown) {
+      const durationMs = Date.now() - startTime;
       const msg = err instanceof Error ? err.message : String(err);
+      api
+        .recordQueryHistory(sqlToRun, durationMs, 0, 'error')
+        .catch((e) => console.error('Failed to log query history:', e));
       setError(msg || 'Execution failed');
       setResult(null);
     } finally {
@@ -313,6 +333,17 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
               <Zap className="w-3.5 h-3.5 text-amber-400" />
             )}
             <span>Explain Plan</span>
+          </button>
+
+          <button
+            type="button"
+            data-testid="query-history-btn"
+            onClick={() => setIsHistoryOpen(true)}
+            className="flex items-center space-x-1.5 bg-[#26282d] hover:bg-[#35373c] text-[#e6e8ea] px-3 py-1 rounded font-semibold border border-[#35373c] transition-colors shadow-xs cursor-pointer"
+            title="View query execution history"
+          >
+            <History className="w-3.5 h-3.5 text-blue-400" />
+            <span>History</span>
           </button>
 
           {activeConnection && (
@@ -459,6 +490,13 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
           plan={explainPlan}
           isLoading={isExplaining}
           error={explainError}
+        />
+
+        {/* Persistent Query Execution History Modal */}
+        <QueryHistoryModal
+          isOpen={isHistoryOpen}
+          onClose={() => setIsHistoryOpen(false)}
+          onSelectQuery={handleSelectHistoryQuery}
         />
 
         {/* Empty / Initial Placeholder */}
