@@ -754,6 +754,7 @@ export default function App(): React.ReactElement {
           {(activeTab === 'sql' || (activeTab as string) === 'query') && (
             <QueryEditorTab
               activeConnection={activeConnection}
+              schema={schema}
               initialQuery={activeSqlQuery || undefined}
               autoRun={autoRunQuery}
               onQuerySuccess={() => {

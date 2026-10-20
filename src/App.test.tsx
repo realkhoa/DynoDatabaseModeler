@@ -29,21 +29,54 @@ vi.mock('./api/ipc', () => ({
   },
 }));
 
+const { mockRegisterCompletionItemProvider } = vi.hoisted(() => {
+  const mockRegisterCompletionItemProvider = vi.fn().mockImplementation(() => ({
+    dispose: vi.fn(),
+  }));
+  return { mockRegisterCompletionItemProvider };
+});
+
 // Mock Monaco Editor
 vi.mock('@monaco-editor/react', () => ({
   default: ({
     value,
     onChange,
+    onMount,
   }: {
     value?: string;
     onChange?: (val: string) => void;
-  }) => (
-    <textarea
-      data-testid="monaco-editor"
-      value={value}
-      onChange={(e) => onChange?.(e.target.value)}
-    />
-  ),
+    onMount?: (editor: unknown, monaco: unknown) => void;
+  }) => {
+    if (onMount) {
+      const mockEditor = {
+        addCommand: vi.fn(),
+      };
+      const mockMonaco = {
+        KeyMod: { CtrlCmd: 2048 },
+        KeyCode: { Enter: 3 },
+        languages: {
+          CompletionItemKind: {
+            Keyword: 13,
+            Function: 2,
+            Class: 6,
+            Field: 4,
+          },
+          CompletionItemInsertTextRule: {
+            InsertAsSnippet: 4,
+          },
+          registerCompletionItemProvider: mockRegisterCompletionItemProvider,
+        },
+      };
+      onMount(mockEditor, mockMonaco);
+    }
+    return (
+      <textarea
+        data-testid="monaco-editor"
+        value={value}
+        onChange={(e) => onChange?.(e.target.value)}
+      />
+    );
+  },
 }));
 
 describe('App root component', () => {
@@ -293,7 +326,9 @@ describe('App root component', () => {
    * @brief Verifies workspace orchestration when viewing table data from sidebar.
    * Switches to SQL tab, builds paginated SELECT query, and automatically executes it.
    */
-  it('navigates to SQL query tab with paginated query and auto-executes when viewing table data from sidebar', async () => {
+  it(
+    'navigates to SQL query tab with paginated query and auto-executes when viewing table data from sidebar',
+    async () => {
     vi.mocked(api.connect).mockResolvedValue(true);
     vi.mocked(api.introspectSchema).mockResolvedValue(mockSchema);
     vi.mocked(api.executeQuery).mockResolvedValue({
@@ -446,5 +481,65 @@ describe('App root component', () => {
       );
     });
   });
-});
+  /**
+   * @brief Verifies active database schema is forwarded to QueryEditorTab for SQL autocompletion.
+   */
+  it('forwards active database schema to QueryEditorTab for SQL autocompletion', async () => {
+    vi.mocked(api.connect).mockResolvedValue(true);
+    vi.mocked(api.introspectSchema).mockResolvedValue(mockSchema);
 
+    render(<App />);
+
+    connectToSampleSqlite();
+
+    await waitFor(() => {
+      expect(api.connect).toHaveBeenCalled();
+      expect(api.introspectSchema).toHaveBeenCalled();
+    });
+
+    // Switch to SQL Query tab
+    fireEvent.click(screen.getByText('SQL Query'));
+    expect(screen.getByText('SQL Query Console')).toBeDefined();
+
+    // Verify completion provider was registered with 'sql' language
+    expect(mockRegisterCompletionItemProvider).toHaveBeenCalledWith(
+      'sql',
+      expect.objectContaining({
+        triggerCharacters: ['.', ' '],
+        provideCompletionItems: expect.any(Function),
+      })
+    );
+
+    // Retrieve registered completion provider and query completions
+    const registrationCall = mockRegisterCompletionItemProvider.mock.calls.find(
+      (call: unknown[]) => call[0] === 'sql'
+    );
+    expect(registrationCall).toBeDefined();
+
+    const provider = registrationCall![1] as {
+      provideCompletionItems: (
+        model: {
+          getWordUntilPosition: () => { startColumn: number; endColumn: number };
+          getValueInRange: () => string;
+        },
+        position: { lineNumber: number; column: number }
+      ) => { suggestions: Array<{ label: string; detail?: string }> };
+    };
+
+    const mockModel = {
+      getWordUntilPosition: () => ({ startColumn: 1, endColumn: 1 }),
+      getValueInRange: () => 'SELECT * FROM ',
+    };
+    const result = provider.provideCompletionItems(mockModel, {
+      lineNumber: 1,
+      column: 15,
+    });
+
+    // Schema table 'customers' should be suggested with high priority
+    const tableSuggestion = result.suggestions.find(
+      (s: { label: string }) => s.label === 'customers'
+    );
+    expect(tableSuggestion).toBeDefined();
+    expect(tableSuggestion?.detail).toContain('2 columns');
+  });
+});
