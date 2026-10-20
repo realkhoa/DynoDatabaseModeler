@@ -17,7 +17,7 @@ import type { DatabaseType } from '../types/database';
  * @param dbType Relational database engine dialect.
  * @return Safely escaped identifier string.
  */
-export function escapeIdentifier(ident: string, dbType?: DatabaseType): string {
+export function escapeIdentifier(ident: string, dbType: DatabaseType = 'Sqlite'): string {
   const parts = ident.split('.').map((p) => p.trim().replace(/^["`\[]|["`\]]$/g, ''));
 
   switch (dbType) {
