@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import {
   QueryEditorTab,
   formatCellValue,
@@ -12,14 +12,39 @@ import {
   updateQueryPagination,
 } from './QueryEditorTab';
 import { api } from '../../api/ipc';
+import { formatSql } from '../../utils/sqlFormatter';
 import type { ConnectionConfig, DatabaseSchema } from '../../types/database';
 
-const { mockCompletionDispose, mockRegisterCompletionItemProvider } = vi.hoisted(() => {
+const {
+  mockCompletionDispose,
+  mockRegisterCompletionItemProvider,
+  mockFormattingDispose,
+  mockRegisterFormattingProvider,
+  mockEditorSelection,
+  mockEditorSelectionText,
+  mockSelectionListeners,
+} = vi.hoisted(() => {
   const mockCompletionDispose = vi.fn();
   const mockRegisterCompletionItemProvider = vi.fn().mockImplementation(() => ({
     dispose: mockCompletionDispose,
   }));
-  return { mockCompletionDispose, mockRegisterCompletionItemProvider };
+  const mockFormattingDispose = vi.fn();
+  const mockRegisterFormattingProvider = vi.fn().mockImplementation(() => ({
+    dispose: mockFormattingDispose,
+  }));
+  const mockEditorSelection = { current: null as any };
+  const mockEditorSelectionText = { current: '' };
+  const mockSelectionListeners = { list: [] as Array<() => void> };
+
+  return {
+    mockCompletionDispose,
+    mockRegisterCompletionItemProvider,
+    mockFormattingDispose,
+    mockRegisterFormattingProvider,
+    mockEditorSelection,
+    mockEditorSelectionText,
+    mockSelectionListeners,
+  };
 });
 
 vi.mock('../../api/ipc', () => ({
@@ -54,12 +79,34 @@ vi.mock('@monaco-editor/react', () => ({
     if (onMount) {
       const mockEditor = {
         addCommand: vi.fn(),
+        onDidChangeCursorSelection: vi.fn((cb: () => void) => {
+          mockSelectionListeners.list.push(cb);
+          return {
+            dispose: vi.fn(() => {
+              mockSelectionListeners.list = mockSelectionListeners.list.filter(
+                (l) => l !== cb
+              );
+            }),
+          };
+        }),
+        getSelection: vi.fn(() => mockEditorSelection.current),
+        getModel: vi.fn(() => ({
+          getValue: vi.fn(() => value ?? ''),
+          getValueInRange: vi.fn(() => mockEditorSelectionText.current),
+          getFullModelRange: vi.fn(() => ({
+            startLineNumber: 1,
+            startColumn: 1,
+            endLineNumber: 1,
+            endColumn: 100,
+          })),
+        })),
       };
       const mockMonaco = {
         KeyMod: { CtrlCmd: 2048 },
         KeyCode: { Enter: 3 },
         languages: {
           registerCompletionItemProvider: mockRegisterCompletionItemProvider,
+          registerDocumentFormattingEditProvider: mockRegisterFormattingProvider,
         },
       };
       onMount(mockEditor, mockMonaco);
@@ -79,6 +126,9 @@ vi.mock('@monaco-editor/react', () => ({
 describe('QueryEditorTab component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockEditorSelection.current = null;
+    mockEditorSelectionText.current = '';
+    mockSelectionListeners.list = [];
     Object.defineProperty(navigator, 'clipboard', {
       value: {
         writeText: vi.fn().mockResolvedValue(undefined),
@@ -1000,6 +1050,338 @@ describe('QueryEditorTab component', () => {
         (s: any) => s.label === 'customers'
       );
       expect(hasCustomersAfter).toBe(true);
+    });
+  });
+
+  describe('SQL Worksheets, Run Selection, and Formatter', () => {
+    /**
+     * @brief Verifies that highlighting text in Monaco editor switches Run button to Run Selection
+     * and executes only the highlighted SQL snippet.
+     */
+    it('switches to Run Selection when text is highlighted and executes only selected snippet', async () => {
+      vi.mocked(api.executeQuery).mockResolvedValue({
+        columns: ['id'],
+        rows: [[1]],
+        rows_affected: 1,
+        execution_time_ms: 5,
+      });
+
+      render(
+        <QueryEditorTab
+          activeConnection={mockConnection}
+          initialQuery="SELECT 1; SELECT 2;"
+        />
+      );
+
+      // Initially no selection
+      expect(screen.getByRole('button', { name: /Run Query/i })).toBeDefined();
+
+      // Simulate text selection in Monaco
+      act(() => {
+        mockEditorSelection.current = {
+          isEmpty: () => false,
+          startLineNumber: 1,
+          startColumn: 1,
+          endLineNumber: 1,
+          endColumn: 9,
+        };
+        mockEditorSelectionText.current = 'SELECT 1;';
+        mockSelectionListeners.list.forEach((cb) => cb());
+      });
+
+      // Should now show Run Selection
+      const runSelectionBtn = await screen.findByRole('button', { name: /Run Selection/i });
+      expect(runSelectionBtn).toBeDefined();
+
+      // Click Run Selection
+      fireEvent.click(runSelectionBtn);
+
+      await waitFor(() => {
+        expect(api.executeQuery).toHaveBeenCalledWith(
+          expect.stringContaining('SELECT 1')
+        );
+      });
+
+      // Clear selection
+      act(() => {
+        mockEditorSelection.current = { isEmpty: () => true };
+        mockEditorSelectionText.current = '';
+        mockSelectionListeners.list.forEach((cb) => cb());
+      });
+
+      expect(await screen.findByRole('button', { name: /Run Query/i })).toBeDefined();
+    });
+
+    /**
+     * @brief Verifies Format SQL button beautifies the current editor SQL buffer.
+     */
+    it('formats active query when Format button is clicked in toolbar', async () => {
+      render(
+        <QueryEditorTab
+          activeConnection={mockConnection}
+          initialQuery="select id,name from users where id=1;"
+        />
+      );
+
+      const formatBtn = screen.getByTestId('format-sql-btn');
+      expect(formatBtn).toBeDefined();
+
+      fireEvent.click(formatBtn);
+
+      const editor = screen.getByTestId('monaco-sql-editor') as HTMLTextAreaElement;
+      const expected = formatSql('select id,name from users where id=1;');
+      expect(editor.value).toBe(expected);
+    });
+
+    /**
+     * @brief Verifies Monaco document formatting provider is registered on mount.
+     */
+    it('registers Monaco document formatting edit provider on mount and disposes on unmount', () => {
+      const { unmount } = render(
+        <QueryEditorTab activeConnection={mockConnection} />
+      );
+
+      expect(mockRegisterFormattingProvider).toHaveBeenCalledWith(
+        'sql',
+        expect.objectContaining({
+          provideDocumentFormattingEdits: expect.any(Function),
+        })
+      );
+
+      const [, provider] = mockRegisterFormattingProvider.mock.calls[0];
+      const mockModel = {
+        getValue: vi.fn().mockReturnValue('select 1;'),
+        getFullModelRange: vi.fn().mockReturnValue({
+          startLineNumber: 1,
+          startColumn: 1,
+          endLineNumber: 1,
+          endColumn: 9,
+        }),
+      };
+
+      const edits = provider.provideDocumentFormattingEdits(mockModel);
+      expect(edits).toEqual([
+        {
+          range: { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 9 },
+          text: formatSql('select 1;'),
+        },
+      ]);
+
+      unmount();
+      expect(mockFormattingDispose).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * @brief Verifies worksheet tabs rendering, adding new tab, and switching tabs.
+     */
+    it('manages multi-tab worksheets: renders initial tab, adds new tab, and switches between them', async () => {
+      vi.mocked(api.executeQuery).mockResolvedValue({
+        columns: ['val'],
+        rows: [['first result']],
+        rows_affected: 1,
+        execution_time_ms: 10,
+      });
+
+      render(
+        <QueryEditorTab
+          activeConnection={mockConnection}
+          initialQuery="SELECT 'first';"
+        />
+      );
+
+      // Initial tab Query 1
+      expect(screen.getByText('Query 1')).toBeDefined();
+
+      // Execute query on Query 1
+      fireEvent.click(screen.getByRole('button', { name: /Run Query/i }));
+      await waitFor(() => {
+        expect(screen.getByText('first result')).toBeDefined();
+      });
+
+      // Add a new worksheet tab
+      const addBtn = screen.getByTestId('add-worksheet-btn');
+      act(() => {
+        fireEvent.click(addBtn);
+      });
+
+      // Query 2 is added and active
+      expect(screen.getByText('Query 2')).toBeDefined();
+      const editor = screen.getByTestId('monaco-sql-editor') as HTMLTextAreaElement;
+      expect(editor.value).toBe('');
+
+      // Type new query into Query 2
+      act(() => {
+        fireEvent.change(editor, { target: { value: "SELECT 'second';" } });
+      });
+
+      // Switch back to Query 1
+      act(() => {
+        fireEvent.click(screen.getByText('Query 1'));
+      });
+
+      // Query 1 restored
+      expect((screen.getByTestId('monaco-sql-editor') as HTMLTextAreaElement).value).toBe("SELECT 'first';");
+      expect(screen.getByText('first result')).toBeDefined();
+
+      // Switch back to Query 2
+      act(() => {
+        fireEvent.click(screen.getByText('Query 2'));
+      });
+      expect((screen.getByTestId('monaco-sql-editor') as HTMLTextAreaElement).value).toBe("SELECT 'second';");
+    });
+
+    /**
+     * @brief Verifies double-clicking a worksheet tab allows inline renaming.
+     */
+    it('allows inline renaming of worksheet tab title', async () => {
+      render(<QueryEditorTab activeConnection={mockConnection} />);
+
+      const tabTitle = screen.getByText('Query 1');
+      fireEvent.doubleClick(tabTitle);
+
+      const input = screen.getByDisplayValue('Query 1') as HTMLInputElement;
+      fireEvent.change(input, { target: { value: 'Analytics Query' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+
+      expect(screen.getByText('Analytics Query')).toBeDefined();
+    });
+
+    /**
+     * @brief Verifies closing a worksheet tab removes it and activates remaining neighbor.
+     */
+    it('closes worksheet tab and activates neighbor, and hides close button when only one tab', async () => {
+      render(<QueryEditorTab activeConnection={mockConnection} />);
+
+      // Initially only 1 tab: close button should not exist
+      expect(screen.queryByTestId('close-worksheet-btn')).toBeNull();
+
+      // Add Query 2
+      act(() => {
+        fireEvent.click(screen.getByTestId('add-worksheet-btn'));
+      });
+      expect(screen.getByText('Query 2')).toBeDefined();
+
+      // Close buttons should now be visible
+      const closeButtons = screen.getAllByTestId('close-worksheet-btn');
+      expect(closeButtons.length).toBe(2);
+
+      // Close Query 2
+      act(() => {
+        fireEvent.click(closeButtons[1]);
+      });
+
+      // Query 2 is removed, Query 1 is active again
+      expect(screen.queryByText('Query 2')).toBeNull();
+      expect(screen.getByText('Query 1')).toBeDefined();
+      expect(screen.queryByTestId('close-worksheet-btn')).toBeNull();
+    });
+
+    /**
+     * @brief Verifies prompting user confirmation when switching tabs with unsaved edits in grid.
+     */
+    it('prompts confirmation when switching tabs if grid has dirty unsaved modifications', async () => {
+      vi.mocked(api.getPrimaryKeys).mockResolvedValue(['id']);
+      vi.mocked(api.executeQuery).mockResolvedValue({
+        columns: ['id', 'name'],
+        rows: [[1, 'Initial Name']],
+        rows_affected: 1,
+        execution_time_ms: 10,
+      });
+
+      const confirmSpy = vi.spyOn(window, 'confirm');
+
+      render(
+        <QueryEditorTab
+          activeConnection={mockConnection}
+          initialQuery="SELECT id, name FROM users;"
+        />
+      );
+
+      // Run query to populate grid
+      fireEvent.click(screen.getByRole('button', { name: /Run Query/i }));
+      await waitFor(() => {
+        expect(screen.getByText('Initial Name')).toBeDefined();
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('grid-edit-mode').textContent).toContain('Editable');
+      });
+
+      // Add a second tab Query 2
+      fireEvent.click(screen.getByTestId('add-worksheet-btn'));
+      expect(screen.getByText('Query 2')).toBeDefined();
+
+      // Switch back to Query 1
+      fireEvent.click(screen.getByText('Query 1'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('grid-edit-mode').textContent).toContain('Editable');
+      });
+
+      // Edit cell in Query 1
+      const cell = screen.getByText('Initial Name').closest('td')!;
+      fireEvent.doubleClick(cell);
+      const cellInput = await screen.findByDisplayValue('Initial Name');
+      fireEvent.change(cellInput, { target: { value: 'Dirty Name' } });
+      fireEvent.blur(cellInput);
+
+      // Attempt to switch to Query 2, but cancel confirm
+      confirmSpy.mockReturnValueOnce(false);
+      fireEvent.click(screen.getByText('Query 2'));
+
+      expect(confirmSpy).toHaveBeenCalled();
+      // Should still be on Query 1
+      expect(screen.getByText('Dirty Name')).toBeDefined();
+
+      // Attempt to switch to Query 2, and confirm
+      confirmSpy.mockReturnValueOnce(true);
+      fireEvent.click(screen.getByText('Query 2'));
+
+      expect(confirmSpy).toHaveBeenCalledTimes(2);
+      // Now on Query 2
+      expect(screen.queryByText('Dirty Name')).toBeNull();
+      confirmSpy.mockRestore();
+    });
+
+    /**
+     * @brief Verifies that passing a new initialQuery with a table query opens or focuses a dedicated tab.
+     */
+    it('creates or focuses a dedicated table worksheet tab when receiving initialQuery with table', async () => {
+      const { rerender } = render(
+        <QueryEditorTab
+          activeConnection={mockConnection}
+          initialQuery="SELECT 1 as test;"
+        />
+      );
+
+      expect(screen.getByText('Query 1')).toBeDefined();
+
+      // Parent updates initialQuery to inspect 'products' table
+      rerender(
+        <QueryEditorTab
+          activeConnection={mockConnection}
+          initialQuery="SELECT * FROM products LIMIT 50 OFFSET 0;"
+        />
+      );
+
+      // Dedicated tab 'products' should be created and active
+      expect(screen.getByText('products')).toBeDefined();
+      const editor = screen.getByTestId('monaco-sql-editor') as HTMLTextAreaElement;
+      expect(editor.value).toBe('SELECT * FROM products LIMIT 50 OFFSET 0;');
+
+      // If parent updates with the same table, it should focus the existing tab instead of creating a duplicate
+      rerender(
+        <QueryEditorTab
+          activeConnection={mockConnection}
+          initialQuery="SELECT * FROM products WHERE price > 100;"
+        />
+      );
+
+      const productTabs = screen.getAllByText('products');
+      expect(productTabs.length).toBe(1);
+      expect((screen.getByTestId('monaco-sql-editor') as HTMLTextAreaElement).value).toBe(
+        'SELECT * FROM products WHERE price > 100;'
+      );
     });
   });
 });

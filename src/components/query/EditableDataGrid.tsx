@@ -57,6 +57,11 @@ export interface EditableDataGridHandle {
    * @param newValue New value to set for the cell.
    */
   updateCell: (rowIndex: number, colIndex: number, newValue: any) => void;
+  /**
+   * @brief Retrieves the current number of pending unsaved dirty cell modifications.
+   * @return Count of modified cells.
+   */
+  getDirtyCount?: () => number;
 }
 
 /**
@@ -226,7 +231,7 @@ export const EditableDataGrid = React.forwardRef<EditableDataGridHandle, Editabl
       }
     }, [editingCell]);
 
-    // Expose programmatic updateCell method via ref
+    // Expose programmatic updateCell and getDirtyCount methods via ref
     useImperativeHandle(
       ref,
       () => ({
@@ -252,8 +257,9 @@ export const EditableDataGrid = React.forwardRef<EditableDataGridHandle, Editabl
             return next;
           });
         },
+        getDirtyCount: () => Object.keys(dirtyCells).length,
       }),
-      [rows]
+      [rows, dirtyCells]
     );
 
     /**
