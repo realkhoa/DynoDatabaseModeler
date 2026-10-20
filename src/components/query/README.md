@@ -3,6 +3,13 @@
 ## 1. Overview & Purpose
 The `src/components/query` module provides an interactive SQL query workspace and comprehensive data transfer toolkit within **DynoDbModeler**. Styled in a modern minimalist dark aesthetic, it features:
 - An embedded **Monaco Editor** with SQL syntax highlighting, line numbers, automatic layout, and `vs-dark` theme.
+- **Intelligent Schema-Aware SQL Autocompletion Engine (`src/utils/sqlCompletion.ts`)**:
+  - Context-sensitive suggestions for standard ANSI SQL keywords and aggregate/scalar functions (`COUNT`, `SUM`, `AVG`, `COALESCE`, `NOW`, etc.).
+  - Schema-aware table completions displaying column counts and rich Markdown documentation listing all columns and data types.
+  - Schema-aware column completions with normalized data types (`VARCHAR(255)`, `INTEGER`, etc.), primary key badges (`[PK]`), and nullability indicators.
+  - **Dot-Triggered Table Column Filtering**: When typing `<table_name>.`, automatically restricts completion suggestions strictly to columns belonging to that table, sorting Primary Key columns first.
+  - **Clause-Aware Priority Sorting**: Automatically boosts table suggestions to top priority (`sortText: '0_'`) following table reference clauses (`FROM`, `JOIN`, `INTO`, `UPDATE`, `TABLE`).
+  - Zero memory leaks and zero duplicate popups through lifecycle-managed Monaco completion provider registration with dynamic `schemaRef` synchronization.
 - Convenient keyboard shortcuts (`Ctrl+Enter` / `Cmd+Enter`) to trigger rapid query execution directly from the editor without switching focus.
 - Top toolbar controls with execution indicators, spinner states, active database target badges, and precise query execution telemetry (rows returned and duration in milliseconds).
 - **Safe Limit Query Interceptor**: Automatically caps unbounded `SELECT` statements with a configurable row limit (100, 500, 1000, or Off; default: 500 rows) to eliminate UI freezes, IPC latency, and memory spikes when querying large enterprise tables. Displays a visual telemetry badge when applied.
@@ -16,9 +23,10 @@ The `src/components/query` module provides an interactive SQL query workspace an
 
 ## 2. Prerequisites & Dependencies
 - **React 19 / TypeScript 5.7+**: Frontend component architecture and strict typing.
-- **`@monaco-editor/react`**: Web-standard Monaco code editor runtime.
+- **`@monaco-editor/react` & `monaco-editor`**: Web-standard Monaco code editor runtime and language services.
 - **`lucide-react`**: Clean minimalist icons (`Play`, `Loader2`, `AlertCircle`, `FileCode`, `Download`, `Eye`, `Copy`, `Check`, `FileSpreadsheet`, `FileJson`, `Database`, `ShieldCheck`, `ShieldAlert`, `ChevronLeft`, `ChevronRight`, `ChevronsLeft`, `ChevronsRight`, `RotateCw`).
-- **`src/types/database.ts`**: Core `QueryResult` and `ConnectionConfig` models.
+- **`src/types/database.ts`**: Core `QueryResult`, `DatabaseSchema`, `TableSchema`, and `ConnectionConfig` models.
+- **`src/utils/sqlCompletion.ts`**: Pure functional SQL autocompletion engine (`formatCanonicalType`, `detectCompletionContext`, `getTableCompletions`, `getColumnCompletions`, `buildSqlCompletions`).
 - **`src/utils/sqlPagination.ts`**: Dialect-aware pagination generators (`LIMIT/OFFSET` vs `OFFSET/FETCH NEXT`), identifier escaping, safe query limit interception, and background count queries.
 - **`src/utils/dataTransfer.ts`**: High-performance serialization engines (CSV RFC 4180, JSON, Markdown, SQL INSERT).
 - **Tauri IPC (`src/api/ipc.ts`)**: Invokes backend query execution (`cmd_execute_query`) and mutation persistence (`cmd_update_rows`).
@@ -31,6 +39,7 @@ The `src/components/query` module provides an interactive SQL query workspace an
 | Property | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
 | `activeConnection` | `ConnectionConfig \| null` | No | Currently active database session profile displayed in the target badge. |
+| `schema` | `DatabaseSchema \| null` | No | Introspected database schema containing tables and columns used to power autocompletion. |
 | `initialQuery` | `string` | No | Initial SQL statement loaded into the editor buffer (defaults to sample query). |
 | `onQuerySuccess` | `(result: QueryResult) => void` | No | Optional callback invoked upon successful query completion. |
 | `autoRun` | `boolean` | No | When `true`, automatically executes the query on mount or when `initialQuery` changes. |
@@ -71,6 +80,18 @@ export interface DataPaginationState {
 | `onClose` | `() => void` | Yes | Callback invoked to close the drawer. |
 | `onApplyEdit` | `(newValue: any) => void` | No | Callback invoked to commit edited value back into the data grid. |
 
+### SQL Completion Utilities (`src/utils/sqlCompletion.ts`)
+- **`formatCanonicalType(type: CanonicalType): string`**:
+  Normalizes canonical data types to clean uppercase strings (e.g. `INTEGER`, `VARCHAR(255)`, `DECIMAL(10, 2)`).
+- **`detectCompletionContext(lineTextBeforeCursor: string): CompletionContextResult`**:
+  Analyzes cursor context to return `dot_column`, `from_table`, or `general` mode.
+- **`getTableCompletions(tables: TableSchema[], range?: any, kind?: number, sortPrefix?: string): SqlCompletionItem[]`**:
+  Builds Monaco completions for all schema tables with column count details and Markdown documentation.
+- **`getColumnCompletions(tables: TableSchema[], targetTable?: string, range?: any, kind?: number): SqlCompletionItem[]`**:
+  Generates column completions; when `targetTable` is supplied, filters strictly to that table and prioritizes Primary Keys.
+- **`buildSqlCompletions(lineContent: string, schema: DatabaseSchema | null, wordRange: any, monaco: any): SqlCompletionItem[]`**:
+  Orchestrates context-aware suggestion assembly for Monaco Editor.
+
 ### SQL Pagination Utilities (`src/utils/sqlPagination.ts`)
 - **`escapeIdentifier(ident: string, dbType?: DatabaseType): string`**:
   Escapes identifiers safely for Postgres/SQLite/DuckDB (`""`), MySQL (`` ` ``), and MSSQL (`[]`).
@@ -87,30 +108,21 @@ export interface DataPaginationState {
 
 ## 4. Usage Examples
 
-### Configuring Paginated DataGrid
+### SQL Autocompletion in QueryEditorTab
 ```tsx
-import React, { useState } from 'react';
-import { EditableDataGrid } from './components/query/EditableDataGrid';
+import React from 'react';
+import { QueryEditorTab } from './components/query/QueryEditorTab';
+import type { DatabaseSchema, ConnectionConfig } from './types/database';
 
-export const TableRowsViewer: React.FC = () => {
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(50);
-
+export const MyQueryConsole: React.FC<{
+  connection: ConnectionConfig;
+  schema: DatabaseSchema;
+}> = ({ connection, schema }) => {
   return (
-    <EditableDataGrid
-      columns={['id', 'username', 'email']}
-      rows={[[1, 'john_doe', 'john@example.com']]}
-      pagination={{
-        currentPage: page,
-        pageSize: pageSize,
-        totalRows: 1250,
-        onPageChange: (newPage) => setPage(newPage),
-        onPageSizeChange: (newSize) => {
-          setPageSize(newSize);
-          setPage(0);
-        },
-        onRefresh: () => console.log('Reloading data...'),
-      }}
+    <QueryEditorTab
+      activeConnection={connection}
+      schema={schema}
+      initialQuery="SELECT * FROM users LIMIT 50;"
     />
   );
 };
@@ -139,3 +151,4 @@ export interface QueryResult {
 - **No Active Connection**: Running queries without an active connection will return backend error diagnostics; the toolbar displays a helper hint recommending connection to a target database.
 - **Safe Limit on Large Tables**: When querying tables with millions of rows, the default Safe Limit (500 rows) automatically intercepts the query, preventing browser freezes and memory exhaustion. Toggle to "Off" in the toolbar if you specifically require unbounded raw data retrieval.
 - **Server Count Fallback**: If `SELECT COUNT(*)` fails due to lack of permission on a complex view, `totalRows` gracefully falls back to `null`, displaying "Showing N rows" with Previous/Next buttons continuing to operate seamlessly.
+- **Autocomplete on Disconnected State**: If no database is connected (`schema === null`), the completion engine gracefully provides standard SQL keywords and aggregate functions without error.
