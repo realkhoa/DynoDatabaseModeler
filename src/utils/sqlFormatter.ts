@@ -9,31 +9,21 @@
  * @brief Ordered list of major SQL clauses for line breaking and indentation.
  */
 export const MAJOR_CLAUSES: readonly string[] = [
-  'SELECT',
-  'FROM',
-  'WHERE',
-  'GROUP BY',
-  'HAVING',
-  'ORDER BY',
-  'LIMIT',
-  'OFFSET',
-  'LEFT OUTER JOIN',
-  'RIGHT OUTER JOIN',
-  'FULL OUTER JOIN',
-  'INNER JOIN',
-  'LEFT JOIN',
-  'RIGHT JOIN',
-  'FULL JOIN',
-  'CROSS JOIN',
-  'JOIN',
-  'INSERT INTO',
-  'VALUES',
-  'UPDATE',
-  'SET',
-  'DELETE FROM',
-  'UNION ALL',
-  'UNION',
+  'SELECT', 'FROM', 'WHERE', 'GROUP BY', 'HAVING', 'ORDER BY', 'LIMIT', 'OFFSET',
+  'LEFT OUTER JOIN', 'RIGHT OUTER JOIN', 'FULL OUTER JOIN', 'INNER JOIN',
+  'LEFT JOIN', 'RIGHT JOIN', 'FULL JOIN', 'CROSS JOIN', 'JOIN',
+  'INSERT INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE FROM', 'UNION ALL', 'UNION',
 ] as const;
+
+/**
+ * @brief Pre-compiled regular expression patterns for major clauses sorted by descending length.
+ */
+const COMPILED_CLAUSE_PATTERNS = [...MAJOR_CLAUSES]
+  .sort((a, b) => b.length - a.length)
+  .map((clause) => ({
+    clause,
+    pattern: new RegExp('^' + clause.replace(/\s+/g, '\\s+') + '(?=[\\s,;()]|$)', 'i'),
+  }));
 
 /**
  * @brief Internal metadata representing a matched major SQL clause header in the source text.
@@ -220,7 +210,6 @@ function findTopLevelClauses(sql: string): ClauseMatch[] {
   const matches: ClauseMatch[] = [];
   let parenDepth = 0;
   let i = 0;
-  const sortedClauses = [...MAJOR_CLAUSES].sort((a, b) => b.length - a.length);
 
   while (i < sql.length) {
     const nextLit = skipLiteralOrComment(sql, i);
@@ -234,8 +223,7 @@ function findTopLevelClauses(sql: string): ClauseMatch[] {
       i++;
     } else if (parenDepth === 0 && (i === 0 || /[\s,;()]/.test(sql[i - 1]))) {
       let matched = false;
-      for (const clause of sortedClauses) {
-        const pattern = new RegExp('^' + clause.replace(/\s+/g, '\\s+') + '(?=[\\s,;()]|$)', 'i');
+      for (const { clause, pattern } of COMPILED_CLAUSE_PATTERNS) {
         const m = sql.slice(i).match(pattern);
         if (m) {
           matches.push({ keyword: clause, startIndex: i, endIndex: i + m[0].length });
@@ -325,6 +313,10 @@ function splitStatements(sql: string): string[] {
       }
       if (sql.startsWith('/*', i)) {
         const next = skipBlockComment(sql, i);
+        current += sql.slice(i, next);
+        i = next;
+      } else if (sql.startsWith('--', i)) {
+        const next = skipLineComment(sql, i);
         current += sql.slice(i, next);
         i = next;
       }
