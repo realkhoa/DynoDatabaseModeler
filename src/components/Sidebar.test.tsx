@@ -181,4 +181,107 @@ describe('Sidebar component', () => {
 
     expect(handleSelectConn).toHaveBeenCalledWith(mockConnections[1]);
   });
+
+  /**
+   * @brief Verifies active database dropdown switcher invokes onSwitchDatabase.
+   */
+  it('allows switching active database when serverDatabases are provided', () => {
+    const handleSwitchDb = vi.fn();
+    const handleRefreshDbs = vi.fn();
+
+    render(
+      <Sidebar
+        connections={mockConnections}
+        activeConnection={mockConnections[0]}
+        tables={mockTables}
+        serverDatabases={['app_prod', 'app_dev', 'postgres']}
+        onSwitchDatabase={handleSwitchDb}
+        onRefreshDatabases={handleRefreshDbs}
+        onOpenNewConnection={vi.fn()}
+        onSelectConnection={vi.fn()}
+        onSelectTable={vi.fn()}
+        onRefresh={vi.fn()}
+      />
+    );
+
+    const dbSelect = screen.getByLabelText('Switch active database') as HTMLSelectElement;
+    expect(dbSelect).toBeDefined();
+    expect(dbSelect.value).toBe('app_prod');
+
+    fireEvent.change(dbSelect, { target: { value: 'app_dev' } });
+    expect(handleSwitchDb).toHaveBeenCalledWith('app_dev');
+
+    const refreshDbsBtn = screen.getByLabelText('Refresh server databases');
+    fireEvent.click(refreshDbsBtn);
+    expect(handleRefreshDbs).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * @brief Verifies view table rows button invokes onViewTableData callback.
+   */
+  it('invokes onViewTableData when clicking view data action button on a table item', () => {
+    const handleSelectTable = vi.fn();
+    const handleViewTableData = vi.fn();
+    render(
+      <Sidebar
+        connections={mockConnections}
+        activeConnection={mockConnections[0]}
+        tables={mockTables}
+        onOpenNewConnection={vi.fn()}
+        onSelectConnection={vi.fn()}
+        onSelectTable={handleSelectTable}
+        onRefresh={vi.fn()}
+        onViewTableData={handleViewTableData}
+      />
+    );
+
+    const viewBtn = screen.getByRole('button', { name: /view rows for users/i });
+    expect(viewBtn).toBeDefined();
+    fireEvent.click(viewBtn);
+
+    expect(handleViewTableData).toHaveBeenCalledWith('users');
+    expect(handleSelectTable).not.toHaveBeenCalled();
+  });
+
+  /**
+   * @brief Verifies double-clicking a table item invokes onViewTableData callback.
+   */
+  it('invokes onViewTableData when double clicking a table item', () => {
+    const handleViewTableData = vi.fn();
+    render(
+      <Sidebar
+        connections={mockConnections}
+        activeConnection={mockConnections[0]}
+        tables={mockTables}
+        onOpenNewConnection={vi.fn()}
+        onSelectConnection={vi.fn()}
+        onSelectTable={vi.fn()}
+        onRefresh={vi.fn()}
+        onViewTableData={handleViewTableData}
+      />
+    );
+
+    const userItem = screen.getByText('users');
+    fireEvent.doubleClick(userItem);
+    expect(handleViewTableData).toHaveBeenCalledWith('users');
+  });
+
+  /**
+   * @brief Verifies view rows button is not rendered when onViewTableData is undefined.
+   */
+  it('does not render view table rows button when onViewTableData is omitted', () => {
+    render(
+      <Sidebar
+        connections={mockConnections}
+        activeConnection={mockConnections[0]}
+        tables={mockTables}
+        onOpenNewConnection={vi.fn()}
+        onSelectConnection={vi.fn()}
+        onSelectTable={vi.fn()}
+        onRefresh={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByRole('button', { name: /view rows for users/i })).toBeNull();
+  });
 });

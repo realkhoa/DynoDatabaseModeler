@@ -15,8 +15,10 @@ import {
   X,
   ChevronDown,
   Layers,
+  Eye,
 } from 'lucide-react';
 import type { ConnectionConfig, TableSchema } from '../types/database';
+import { tableKey } from '../types/database';
 
 /**
  * @brief Properties accepted by the Sidebar component.
@@ -28,18 +30,28 @@ export interface SidebarProps {
   activeConnection: ConnectionConfig | null;
   /** @brief List of introspected database tables in the active database. */
   tables: TableSchema[];
-  /** @brief Currently selected table name for ERD/details view. */
-  selectedTableName?: string | null;
+  /** @brief Fully-qualified key of the currently selected table. */
+  selectedTableKey?: string | null;
   /** @brief Callback triggered to open the connection modal dialog. */
   onOpenNewConnection: () => void;
   /** @brief Callback triggered when user selects a different connection from the list. */
   onSelectConnection: (conn: ConnectionConfig) => void;
-  /** @brief Callback triggered when a table item is clicked. */
-  onSelectTable: (tableName: string) => void;
+  /** @brief Callback triggered when a table item is clicked, receiving its qualified key. */
+  onSelectTable: (tableKey: string) => void;
   /** @brief Callback triggered when user requests a schema refresh. */
   onRefresh: () => void;
   /** @brief Optional loading state indicator during schema introspection. */
   isLoading?: boolean;
+  /** @brief Discovered databases available on the active connection server. */
+  serverDatabases?: string[];
+  /** @brief Callback triggered when user chooses a different database catalog on the active server. */
+  onSwitchDatabase?: (dbName: string) => void;
+  /** @brief Callback triggered when user refreshes list of databases on server. */
+  onRefreshDatabases?: () => void;
+  /** @brief Loading state while discovering databases on server. */
+  isLoadingDatabases?: boolean;
+  /** @brief Callback triggered when user requests to view the rows of a specific table. */
+  onViewTableData?: (tableKey: string) => void;
 }
 
 /**
@@ -51,18 +63,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
   connections,
   activeConnection,
   tables,
-  selectedTableName,
+  selectedTableKey,
   onOpenNewConnection,
   onSelectConnection,
   onSelectTable,
   onRefresh,
   isLoading = false,
+  serverDatabases = [],
+  onSwitchDatabase,
+  onRefreshDatabases,
+  isLoadingDatabases = false,
+  onViewTableData,
 }) => {
   const [filter, setFilter] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
+  // Filter on the qualified name so schema-qualified tables are both visible and searchable.
   const filteredTables = tables.filter((t) =>
-    t.name.toLowerCase().includes(filter.toLowerCase())
+    tableKey(t).toLowerCase().includes(filter.toLowerCase())
   );
 
   return (
@@ -186,6 +204,52 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </div>
 
+      {/* Active Database Selector on Connected Server */}
+      {activeConnection &&
+        activeConnection.db_type !== 'Sqlite' &&
+        activeConnection.db_type !== 'DuckDb' && (
+          <div className="px-3 py-1.5 border-b border-[#35373c] bg-[#141517] flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 min-w-0 flex-1">
+              <span className="text-[10px] font-semibold text-[#8c919a] uppercase tracking-wider shrink-0">
+                DB:
+              </span>
+              {serverDatabases && serverDatabases.length > 0 ? (
+                <select
+                  value={activeConnection.database}
+                  onChange={(e) => onSwitchDatabase?.(e.target.value)}
+                  className="bg-[#1e1f22] border border-[#35373c] rounded px-1.5 py-0.5 text-xs text-[#e6e8ea] font-mono focus:outline-none focus:border-[#3a82f7] w-full truncate cursor-pointer"
+                  title="Switch database catalog on this server"
+                  aria-label="Switch active database"
+                >
+                  {serverDatabases.map((db) => (
+                    <option key={db} value={db}>
+                      {db}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span className="font-mono text-xs text-[#e6e8ea] truncate" title={activeConnection.database}>
+                  {activeConnection.database}
+                </span>
+              )}
+            </div>
+            {onRefreshDatabases && (
+              <button
+                type="button"
+                onClick={onRefreshDatabases}
+                disabled={isLoadingDatabases}
+                className="p-1 text-[#8c919a] hover:text-[#e6e8ea] hover:bg-[#26282d] rounded transition-colors shrink-0 cursor-pointer disabled:opacity-50"
+                title="Discover databases on this server"
+                aria-label="Refresh server databases"
+              >
+                <RefreshCw
+                  className={`w-3 h-3 ${isLoadingDatabases ? 'animate-spin text-[#3a82f7]' : ''}`}
+                />
+              </button>
+            )}
+          </div>
+        )}
+
       {/* Tables filter input */}
       <div className="p-2 border-b border-[#35373c] bg-[#18191c]">
         <div className="relative flex items-center">
@@ -243,19 +307,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         ) : (
           filteredTables.map((t) => {
-            const isSelected = selectedTableName === t.name;
+            const key = tableKey(t);
+            const isSelected = selectedTableKey === key;
             return (
               <div
-                key={t.name}
-                onClick={() => onSelectTable(t.name)}
+                key={key}
+                onClick={() => onSelectTable(key)}
+                onDoubleClick={() => onViewTableData?.(key)}
                 role="button"
                 tabIndex={0}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
-                    onSelectTable(t.name);
+                    onSelectTable(key);
                   }
                 }}
-                className={`flex items-center justify-between px-2 py-1.5 rounded cursor-pointer transition-colors ${
+                className={`group flex items-center justify-between px-2 py-1.5 rounded cursor-pointer transition-colors ${
                   isSelected
                     ? 'bg-[#2b2d30] text-white border-l-2 border-[#3a82f7]'
                     : 'text-[#e6e8ea] hover:bg-[#26282d]'
@@ -267,11 +333,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       isSelected ? 'text-[#3a82f7]' : 'text-[#8c919a]'
                     }`}
                   />
-                  <span className="truncate font-mono text-[11px]">{t.name}</span>
+                  <span className="truncate font-mono text-[11px]" title={key}>
+                    {key}
+                  </span>
                 </div>
-                <span className="text-[10px] text-[#8c919a] bg-[#222428] px-1.5 py-0.5 rounded font-mono shrink-0 ml-1">
-                  {t.columns.length}
-                </span>
+                <div className="flex items-center shrink-0 ml-1">
+                  <span className="text-[10px] text-[#8c919a] bg-[#222428] px-1.5 py-0.5 rounded font-mono">
+                    {t.columns.length}
+                  </span>
+                  {onViewTableData && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onViewTableData(key);
+                      }}
+                      title={`View rows for ${key}`}
+                      aria-label={`View rows for ${key}`}
+                      className="p-1 text-[#8c919a] hover:text-[#3a82f7] hover:bg-[#1e2024] rounded transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 shrink-0 ml-1 cursor-pointer"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })
