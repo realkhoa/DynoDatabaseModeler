@@ -18,7 +18,7 @@ export interface SqlCompletionItem {
   /** @brief Subtitle / type indicator shown beside the label. */
   detail: string;
   /** @brief Markdown formatted documentation panel content. */
-  documentation?: string | { value: string };
+  documentation?: { value: string };
   /** @brief Actual text inserted into document upon acceptance. */
   insertText: string;
   /** @brief Insertion rules (e.g. snippet placeholders). */
@@ -37,9 +37,6 @@ export interface SqlCompletionItem {
 export function formatCanonicalType(type: CanonicalType): string {
   if (typeof type === 'string') {
     return type.toUpperCase();
-  }
-  if (!type || typeof type !== 'object') {
-    return 'UNKNOWN';
   }
   if ('Varchar' in type) {
     return type.Varchar !== null && type.Varchar !== undefined
@@ -138,6 +135,12 @@ export function detectCompletionContext(lineTextBeforeCursor: string): Completio
   const dotMatch = lineTextBeforeCursor.match(dotRegex);
   if (dotMatch && dotMatch[1]) {
     const rawTableName = dotMatch[1].replace(/[`"\[\]]/g, '');
+    // Numeric literals (e.g. 10. or 3.14) should not be treated as table names
+    if (/^\d+$/.test(rawTableName) && !/[`"\[]/.test(dotMatch[1])) {
+      return {
+        context: 'general',
+      };
+    }
     return {
       context: 'dot_column',
       tableName: rawTableName,
@@ -187,7 +190,7 @@ export function getTableCompletions(
       label: t.name,
       kind,
       detail: `table (${t.columns.length} columns)`,
-      documentation,
+      documentation: { value: documentation },
       insertText: t.name,
       sortText: `${sortPrefix}${t.name}`,
       range,
@@ -236,7 +239,7 @@ export function getColumnCompletions(
         label: col.name,
         kind,
         detail: `${formattedType}${pkBadge}${nullBadge}`,
-        documentation,
+        documentation: { value: documentation },
         insertText: col.name,
         sortText: targetTable ? sortKey : `2_${col.name}`,
         range,
@@ -306,7 +309,7 @@ export function buildSqlCompletions(
       label: fn.name,
       kind: Kinds.Function,
       detail: fn.detail,
-      documentation: fn.detail,
+      documentation: { value: fn.detail },
       insertText: fn.snippet,
       insertTextRules: InsertRules.InsertAsSnippet,
       sortText: `${kwSortPrefix}${fn.name}`,
