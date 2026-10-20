@@ -274,6 +274,24 @@ describe('ErdCanvas component', () => {
     expect(screen.getByText('orders')).toBeDefined();
     expect(screen.queryByText('users')).toBeNull();
   });
+
+  /**
+   * @brief Verifies clicking view data button on table node forwards onViewTableData callback.
+   */
+  it('forwards onViewTableData when view data button on a table node is clicked', () => {
+    const onViewTableData = vi.fn();
+    render(
+      <ErdCanvas
+        schema={mockSchema}
+        onEditTable={vi.fn()}
+        onViewTableData={onViewTableData}
+      />
+    );
+
+    const viewDataBtns = screen.getAllByLabelText(/view table rows/i);
+    expect(viewDataBtns.length).toBeGreaterThan(0);
+    fireEvent.click(viewDataBtns[0]);
+
+    expect(onViewTableData).toHaveBeenCalledWith('users');
+  });
 });
-
-

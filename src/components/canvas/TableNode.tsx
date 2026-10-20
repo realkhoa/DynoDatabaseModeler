@@ -7,7 +7,7 @@
 
 import { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { Key, Link as LinkIcon, Table as TableIcon } from 'lucide-react';
+import { Eye, Key, Link as LinkIcon, Table as TableIcon } from 'lucide-react';
 import {
   ColumnSchema,
   ForeignKeySchema,
@@ -28,6 +28,8 @@ export interface TableNodeData extends Record<string, unknown> {
   foreignKeys?: ForeignKeySchema[];
   /** @brief Callback triggered when the user requests editing this table. */
   onEdit?: (tableName: string) => void;
+  /** @brief Optional callback triggered when the user requests viewing rows of this table. */
+  onViewData?: (tableKey: string) => void;
 }
 
 /**
@@ -50,7 +52,7 @@ export interface TableNodeProps {
  * @return Rendered table card element.
  */
 export const TableNode = memo(({ data, selected }: TableNodeProps) => {
-  const { label, columns = [], foreignKeys = [], onEdit } = data;
+  const { label, schema, columns = [], foreignKeys = [], onEdit, onViewData } = data;
 
   /**
    * @brief Handles double click on the table header to trigger inspection/edit drawer.
@@ -79,9 +81,26 @@ export const TableNode = memo(({ data, selected }: TableNodeProps) => {
             {label}
           </span>
         </div>
-        <span className="text-[10px] text-[#8c919a] bg-[#1e2024] px-1.5 py-0.5 rounded font-mono shrink-0 ml-2">
-          {columns.length}
-        </span>
+        <div className="flex items-center shrink-0 ml-2">
+          {onViewData && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                const key = schema ? `${schema}.${label}` : label;
+                onViewData(key);
+              }}
+              title={`View table rows for ${label}`}
+              aria-label={`View table rows for ${label}`}
+              className="p-1 text-[#8c919a] hover:text-[#3a82f7] hover:bg-[#1e2024] rounded transition-colors cursor-pointer mr-1"
+            >
+              <Eye className="w-3.5 h-3.5" />
+            </button>
+          )}
+          <span className="text-[10px] text-[#8c919a] bg-[#1e2024] px-1.5 py-0.5 rounded font-mono">
+            {columns.length}
+          </span>
+        </div>
       </div>
 
       {/* Columns List */}

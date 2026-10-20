@@ -27,6 +27,7 @@ import { CrowsFootEdge } from './CrowsFootEdge';
 import { StickyNoteNode, StickyNoteColor } from './StickyNoteNode';
 import { GroupNode } from './GroupNode';
 import { DatabaseSchema, Point, ErdNotationStyle, VirtualRelationship } from '../../types/database';
+import { tableKey } from '../../types/database';
 import {
   loadVirtualRelationships,
   addVirtualRelationship,
@@ -59,14 +60,16 @@ import {
 export interface ErdCanvasProps {
   /** @brief Database schema containing tables, columns, indexes, and foreign keys. */
   schema: DatabaseSchema;
+  /** @brief Connection-scoped identifier used to persist virtual relationships and layout. */
+  storageScope?: string;
   /** @brief Callback triggered when the user requests editing or inspecting a table. */
-  onEditTable: (tableName: string) => void;
+  onEditTable: (tableKey: string) => void;
   /** @brief Optional callback triggered when a table node is selected. */
-  onSelectTable?: (tableName: string) => void;
+  onSelectTable?: (tableKey: string) => void;
   /** @brief Optional callback triggered to open the create new table drawer. */
   onAddNewTable?: () => void;
   /** @brief Optional callback triggered when a node position changes after dragging. */
-  onTablePositionChange?: (tableName: string, position: Point) => void;
+  onTablePositionChange?: (tableKey: string, position: Point) => void;
   /** @brief Optional callback triggered to review schema diff and execute migrations. */
   onOpenDiff?: () => void;
   /** @brief Number of detected pending structural schema changes between live and desired schemas. */
@@ -75,6 +78,8 @@ export interface ErdCanvasProps {
   notationStyle?: ErdNotationStyle;
   /** @brief Optional callback triggered when edge notation style is toggled. */
   onNotationStyleChange?: (style: ErdNotationStyle) => void;
+  /** @brief Optional callback triggered when the user requests viewing rows of a table. */
+  onViewTableData?: (tableKey: string) => void;
 }
 
 /**
@@ -84,6 +89,7 @@ export interface ErdCanvasProps {
  */
 export const ErdCanvas: React.FC<ErdCanvasProps> = ({
   schema,
+  storageScope,
   onEditTable,
   onSelectTable,
   onAddNewTable,
@@ -92,7 +98,10 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
   pendingChangesCount = 0,
   notationStyle: notationStyleProp,
   onNotationStyleChange,
+  onViewTableData,
 }) => {
+  // Diagram data is persisted per connection scope, falling back to the database name.
+  const scope = storageScope ?? schema.database_name;
   // Register custom node types mapping
   const nodeTypes = useMemo(
     () => ({
@@ -129,9 +138,9 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
     setInternalNotation(nextStyle);
   }, [activeNotation, onNotationStyleChange]);
 
-  // Virtual relationships persisted per database schema
+  // Virtual relationships persisted per connection scope
   const [virtualRels, setVirtualRels] = useState<VirtualRelationship[]>(() =>
-    loadVirtualRelationships(schema.database_name)
+    loadVirtualRelationships(scope)
   );
 
   // Schema table filtering string query
@@ -232,16 +241,17 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
 
       const query = tableFilter.toLowerCase().trim();
       const filteredTables = schema.tables.filter((t) =>
-        query ? t.name.toLowerCase().includes(query) : true
+        query ? tableKey(t).toLowerCase().includes(query) : true
       );
 
       const tableNodes: Node[] = filteredTables.map((table, idx) => {
         const defaultX = (idx % 3) * 300 + 40;
         const defaultY = Math.floor(idx / 3) * 280 + 40;
-        const savedPos = positionMap.get(table.name) || table.ui_position;
+        const key = tableKey(table);
+        const savedPos = positionMap.get(key) || table.ui_position;
 
         return {
-          id: table.name,
+          id: key,
           type: 'tableNode',
           position: savedPos || { x: defaultX, y: defaultY },
           data: {
@@ -250,6 +260,7 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
             columns: table.columns,
             foreignKeys: table.foreign_keys,
             onEdit: onEditTable,
+            onViewData: onViewTableData,
           },
         };
       });
@@ -288,6 +299,7 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
       tableFilter,
       extraNodes,
       onEditTable,
+      onViewTableData,
       handleUpdateNoteText,
       handleUpdateNoteColor,
       handleUpdateGroupLabel,
@@ -302,24 +314,34 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
   const buildEdgesFromSchema = useCallback((): Edge[] => {
     const edges: Edge[] = [];
     const query = tableFilter.toLowerCase().trim();
+    const keyOf = new Map<string, string>();
+    schema.tables.forEach((t) => {
+      keyOf.set(tableKey(t), tableKey(t));
+      if (!keyOf.has(t.name)) {
+        keyOf.set(t.name, tableKey(t));
+      }
+    });
+
     const visibleTableNames = new Set(
       schema.tables
-        .filter((t) => (query ? t.name.toLowerCase().includes(query) : true))
-        .map((t) => t.name)
+        .filter((t) => (query ? tableKey(t).toLowerCase().includes(query) : true))
+        .map((t) => tableKey(t))
     );
 
     // 1. Physical database foreign keys
     schema.tables.forEach((table) => {
-      if (!visibleTableNames.has(table.name)) return;
+      const sourceKey = tableKey(table);
+      if (!visibleTableNames.has(sourceKey)) return;
       table.foreign_keys.forEach((fk, fkIdx) => {
-        if (!visibleTableNames.has(fk.target_table)) return;
+        const targetKey = keyOf.get(fk.target_table);
+        if (!targetKey || !visibleTableNames.has(targetKey)) return;
         const edgeId =
-          fk.constraint_name || `fk_${table.name}_${fk.source_column}_${fkIdx}`;
+          fk.constraint_name || `fk_${sourceKey}_${fk.source_column}_${fkIdx}`;
         edges.push({
           id: edgeId,
-          source: table.name,
+          source: sourceKey,
           sourceHandle: `${fk.source_column}-source`,
-          target: fk.target_table,
+          target: targetKey,
           targetHandle: `${fk.target_column}-target`,
           animated: false,
           type: activeNotation === 'crows-foot' ? 'crowsFoot' : 'smoothstep',
@@ -334,12 +356,14 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
 
     // 2. Logical virtual relationships (diagram-only, purple dashed)
     virtualRels.forEach((vr) => {
-      if (!visibleTableNames.has(vr.sourceTable) || !visibleTableNames.has(vr.targetTable)) return;
+      const virtualSource = keyOf.get(vr.sourceTable) ?? vr.sourceTable;
+      const virtualTarget = keyOf.get(vr.targetTable) ?? vr.targetTable;
+      if (!visibleTableNames.has(virtualSource) || !visibleTableNames.has(virtualTarget)) return;
       edges.push({
         id: `vr_${vr.id}`,
-        source: vr.sourceTable,
+        source: virtualSource,
         sourceHandle: `${vr.sourceColumn}-source`,
-        target: vr.targetTable,
+        target: virtualTarget,
         targetHandle: `${vr.targetColumn}-target`,
         animated: true,
         type: activeNotation === 'crows-foot' ? 'crowsFoot' : 'smoothstep',
@@ -364,8 +388,8 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
   // Re-synchronize nodes and edges when schema or virtual relationships change
   useEffect(() => {
     setNodes((prev) => buildNodesFromSchema(prev));
-    setVirtualRels(loadVirtualRelationships(schema.database_name));
-  }, [schema, buildNodesFromSchema, setNodes]);
+    setVirtualRels(loadVirtualRelationships(scope));
+  }, [schema, buildNodesFromSchema, setNodes, scope]);
 
   useEffect(() => {
     setEdges(buildEdgesFromSchema());
@@ -387,10 +411,10 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
         targetColumn: targetCol,
         name: 'Virtual FK',
       };
-      const updated = addVirtualRelationship(schema.database_name, newRel);
+      const updated = addVirtualRelationship(scope, newRel);
       setVirtualRels(updated);
     },
-    [schema.database_name]
+    [scope]
   );
 
   /**
@@ -401,12 +425,12 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
       deletedEdges.forEach((e) => {
         if (e.id.startsWith('vr_')) {
           const rawId = e.id.replace(/^vr_/, '');
-          removeVirtualRelationship(schema.database_name, rawId);
+          removeVirtualRelationship(scope, rawId);
         }
       });
-      setVirtualRels(loadVirtualRelationships(schema.database_name));
+      setVirtualRels(loadVirtualRelationships(scope));
     },
-    [schema.database_name]
+    [scope]
   );
 
   /**

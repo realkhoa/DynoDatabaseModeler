@@ -45,6 +45,11 @@ describe('TableNode component', () => {
     },
   ];
 
+  /**
+   * @brief Helper to render TableNode inside a ReactFlowProvider with optional data overrides.
+   * @param dataOverrides Partial TableNodeData properties to merge over default test props.
+   * @return Render result and assembled TableNodeData.
+   */
   const renderTableNode = (dataOverrides?: Partial<TableNodeData>) => {
     const data: TableNodeData = {
       label: 'profiles',
@@ -121,5 +126,44 @@ describe('TableNode component', () => {
     fireEvent.doubleClick(header);
 
     expect(onEdit).toHaveBeenCalledWith('profiles');
+  });
+
+  /**
+   * @brief Verifies that clicking the view data eye icon button triggers onViewData with tableKey.
+   */
+  it('triggers onViewData callback when clicking the view data eye icon button', () => {
+    const onViewData = vi.fn();
+    renderTableNode({
+      schema: 'public',
+      onViewData,
+    });
+
+    const viewDataBtn = screen.getByRole('button', { name: /view table rows/i });
+    expect(viewDataBtn).toBeDefined();
+    fireEvent.click(viewDataBtn);
+    expect(onViewData).toHaveBeenCalledWith('public.profiles');
+  });
+
+  /**
+   * @brief Verifies onViewData falls back to table label when schema is absent.
+   */
+  it('triggers onViewData with table label only when schema is absent', () => {
+    const onViewData = vi.fn();
+    renderTableNode({
+      schema: undefined,
+      onViewData,
+    });
+
+    const viewDataBtn = screen.getByRole('button', { name: /view table rows/i });
+    fireEvent.click(viewDataBtn);
+    expect(onViewData).toHaveBeenCalledWith('profiles');
+  });
+
+  /**
+   * @brief Verifies view data button is not rendered if onViewData callback is not provided.
+   */
+  it('does not render view data button when onViewData is undefined', () => {
+    renderTableNode({ onViewData: undefined });
+    expect(screen.queryByRole('button', { name: /view table rows/i })).toBeNull();
   });
 });
