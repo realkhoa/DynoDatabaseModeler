@@ -229,13 +229,20 @@ describe('App root component', () => {
         },
       ],
       tables_to_drop: [],
+      tables_to_rename: [],
+      tables_to_rebuild: [],
       columns_to_add: [],
       columns_to_drop: [],
       columns_to_alter: [],
       foreign_keys_to_add: [],
       foreign_keys_to_drop: [],
+      indexes_to_create: [],
+      indexes_to_drop: [],
     });
-    vi.mocked(api.generateDdl).mockResolvedValue(['CREATE TABLE products (id INTEGER PRIMARY KEY);']);
+    vi.mocked(api.generateDdl).mockResolvedValue({
+      statements: ['CREATE TABLE products (id INTEGER PRIMARY KEY);'],
+      warnings: [],
+    });
     vi.mocked(api.executeMigration).mockResolvedValue({
       success: true,
       statements_executed: 1,
@@ -277,6 +284,101 @@ describe('App root component', () => {
       ]);
       expect(screen.queryByText('Review Schema Migration')).toBeNull();
       expect(screen.getByText(/Migration applied successfully/)).toBeDefined();
+    });
+  });
+
+  /**
+   * @brief Verifies workspace orchestration when viewing table data from sidebar.
+   * Switches to SQL tab, builds paginated SELECT query, and automatically executes it.
+   */
+  it('navigates to SQL query tab with paginated query and auto-executes when viewing table data from sidebar', async () => {
+    vi.mocked(api.connect).mockResolvedValue(true);
+    vi.mocked(api.introspectSchema).mockResolvedValue(mockSchema);
+    vi.mocked(api.executeQuery).mockResolvedValue({
+      columns: ['id', 'name'],
+      rows: [[1, 'Alice']],
+      rows_affected: 1,
+      execution_time_ms: 5,
+    });
+
+    render(<App />);
+
+    connectToSampleSqlite();
+
+    await waitFor(() => {
+      expect(api.connect).toHaveBeenCalled();
+      expect(api.introspectSchema).toHaveBeenCalled();
+    });
+
+    // In Sidebar, find the "View rows for customers" button
+    const viewRowsBtn = await screen.findByRole('button', { name: /view rows for customers/i });
+    fireEvent.click(viewRowsBtn);
+
+    // SQL Query Console should now be active
+    await waitFor(() => {
+      expect(screen.getByText('SQL Query Console')).toBeDefined();
+    });
+
+    // Query editor should contain the paginated query for SQLite
+    const editor = screen.getByTestId('monaco-editor') as HTMLTextAreaElement;
+    expect(editor.value).toBe('SELECT * FROM "customers" LIMIT 50 OFFSET 0;');
+
+    // Verify autoRun triggered execution of the paginated query
+    await waitFor(() => {
+      expect(api.executeQuery).toHaveBeenCalledWith(
+        'SELECT * FROM "customers" LIMIT 50 OFFSET 0;'
+      );
+      expect(screen.getByText('Alice')).toBeDefined();
+    });
+  });
+
+  /**
+   * @brief Verifies viewing table data from ERD Canvas node triggers navigation and paginated query.
+   */
+  it('navigates to SQL query tab from ERD canvas node action', async () => {
+    vi.mocked(api.connect).mockResolvedValue(true);
+    vi.mocked(api.introspectSchema).mockResolvedValue(mockSchema);
+    vi.mocked(api.executeQuery).mockResolvedValue({
+      columns: ['id', 'name'],
+      rows: [[2, 'Bob']],
+      rows_affected: 1,
+      execution_time_ms: 4,
+    });
+
+    render(<App />);
+
+    connectToSampleSqlite();
+
+    await waitFor(() => {
+      expect(api.connect).toHaveBeenCalled();
+      expect(api.introspectSchema).toHaveBeenCalled();
+    });
+
+    // Switch back to ERD Canvas
+    fireEvent.click(screen.getByText('ERD Canvas'));
+
+    await waitFor(() => {
+      expect(screen.getByText('VARCHAR(100)')).toBeDefined();
+    });
+
+    // Find the canvas node "View table rows for customers" button
+    const canvasViewBtn = screen.getByLabelText('View table rows for customers');
+    fireEvent.click(canvasViewBtn);
+    fireEvent.click(canvasViewBtn);
+
+    // SQL Query Console should now be active
+    await waitFor(() => {
+      expect(screen.getByText('SQL Query Console')).toBeDefined();
+    });
+
+    const editor = screen.getByTestId('monaco-editor') as HTMLTextAreaElement;
+    expect(editor.value).toBe('SELECT * FROM "customers" LIMIT 50 OFFSET 0;');
+
+    await waitFor(() => {
+      expect(api.executeQuery).toHaveBeenCalledWith(
+        'SELECT * FROM "customers" LIMIT 50 OFFSET 0;'
+      );
+      expect(screen.getByText('Bob')).toBeDefined();
     });
   });
 });

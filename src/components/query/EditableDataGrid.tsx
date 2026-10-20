@@ -715,6 +715,9 @@ export const EditableDataGrid = React.forwardRef<EditableDataGridHandle, Editabl
                 onChange={(e) => pagination.onPageSizeChange(Number(e.target.value))}
                 className="bg-[#121316] text-[#e6e8ea] border border-[#35373c] rounded px-1.5 py-0.5 text-[11px] font-mono outline-none focus:border-[#3a82f7] cursor-pointer"
               >
+                {![25, 50, 100, 200].includes(pagination.pageSize) && (
+                  <option value={pagination.pageSize}>{pagination.pageSize}</option>
+                )}
                 <option value={25}>25</option>
                 <option value={50}>50</option>
                 <option value={100}>100</option>

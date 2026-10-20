@@ -380,7 +380,10 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
         } else if (paginationInfo.offset !== undefined) {
           setPageIndex(Math.floor(paginationInfo.offset / pageSizeRef.current));
         }
-      } else if (!limitApplied) {
+      } else if (limitApplied) {
+        setPageSize(safeLimitRef.current);
+        setPageIndex(0);
+      } else {
         setPageIndex(0);
       }
 
