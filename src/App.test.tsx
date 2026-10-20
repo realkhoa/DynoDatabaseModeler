@@ -7,7 +7,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import App from './App';
 import { api } from './api/ipc';
-import type { DatabaseSchema } from './types/database';
+import type { DatabaseSchema, ConnectionConfig } from './types/database';
 
 // Mock ipc client methods
 vi.mock('./api/ipc', () => ({
@@ -20,6 +20,8 @@ vi.mock('./api/ipc', () => ({
     computeDiff: vi.fn(),
     generateDdl: vi.fn(),
     executeMigration: vi.fn(),
+    hasConnectionSecrets: vi.fn().mockResolvedValue(true),
+    listActiveDatabases: vi.fn().mockResolvedValue([]),
     recordQueryHistory: vi.fn().mockResolvedValue({ id: 1 }),
     getQueryHistory: vi.fn().mockResolvedValue([]),
     toggleFavoriteQuery: vi.fn().mockResolvedValue(true),
@@ -379,6 +381,69 @@ describe('App root component', () => {
         'SELECT * FROM "customers" LIMIT 50 OFFSET 0;'
       );
       expect(screen.getByText('Bob')).toBeDefined();
+    });
+  });
+
+  /**
+   * @brief Verifies handleViewTableData passes primary key column for deterministic ORDER BY in MSSQL.
+   */
+  it('passes primary key column to paginated query for MSSQL connection', async () => {
+    vi.mocked(api.connect).mockResolvedValue(true);
+    vi.mocked(api.introspectSchema).mockResolvedValue(mockSchema);
+    vi.mocked(api.executeQuery).mockResolvedValue({
+      columns: ['id', 'name'],
+      rows: [[1, 'Alice']],
+      rows_affected: 1,
+      execution_time_ms: 5,
+    });
+
+    // Save MSSQL connection to localStorage
+    const mssqlConn: ConnectionConfig = {
+      id: 'mssql-test',
+      name: 'Test MSSQL',
+      db_type: 'Mssql',
+      host: 'localhost',
+      port: 1433,
+      database: 'test_db',
+      username: 'sa',
+      ssl: false,
+    };
+    localStorage.setItem('dyno_connections', JSON.stringify([mssqlConn]));
+
+    render(<App />);
+
+    // Open connection switcher dropdown
+    const switchBtn = screen.getByTitle('Switch database connection');
+    fireEvent.click(switchBtn);
+
+    // Select the MSSQL connection
+    const mssqlOption = await screen.findByText('Test MSSQL');
+    fireEvent.click(mssqlOption);
+
+    await waitFor(() => {
+      expect(api.connect).toHaveBeenCalled();
+      expect(api.introspectSchema).toHaveBeenCalled();
+    });
+
+    // In Sidebar, find the "View rows for customers" button
+    const viewRowsBtn = await screen.findByRole('button', { name: /view rows for customers/i });
+    fireEvent.click(viewRowsBtn);
+
+    // SQL Query Console should now be active
+    await waitFor(() => {
+      expect(screen.getByText('SQL Query Console')).toBeDefined();
+    });
+
+    // Query editor should contain the MSSQL paginated query with ORDER BY [id]
+    const editor = screen.getByTestId('monaco-editor') as HTMLTextAreaElement;
+    expect(editor.value).toBe(
+      'SELECT * FROM [customers] ORDER BY [id] OFFSET 0 ROWS FETCH NEXT 50 ROWS ONLY;'
+    );
+
+    await waitFor(() => {
+      expect(api.executeQuery).toHaveBeenCalledWith(
+        'SELECT * FROM [customers] ORDER BY [id] OFFSET 0 ROWS FETCH NEXT 50 ROWS ONLY;'
+      );
     });
   });
 });

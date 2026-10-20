@@ -58,6 +58,8 @@ export interface QueryEditorTabProps {
 
 /**
  * @brief Updates or appends pagination clauses (LIMIT/OFFSET or MSSQL OFFSET/FETCH) in a SQL query.
+ * @details Targets the trailing pagination clause so that subqueries or CTE expressions
+ * containing nested LIMIT/OFFSET clauses remain untouched.
  * @param sql Existing SQL query text.
  * @param dbType Database dialect.
  * @param pageSize Number of rows per page.
@@ -71,29 +73,28 @@ export function updateQueryPagination(
   pageIndex: number
 ): string {
   const offset = Math.max(0, pageIndex * pageSize);
-  const trimmed = sql.trim().replace(/;+$/, '');
+  const trimmed = sql.trim().replace(/;+$/, '').trimEnd();
 
   if (dbType === 'Mssql') {
-    const mssqlRegex = /OFFSET\s+\d+\s+ROWS\s+FETCH\s+(?:FIRST|NEXT)\s+\d+\s+ROWS(?:\s+ONLY)?/i;
-    if (mssqlRegex.test(trimmed)) {
-      return trimmed.replace(mssqlRegex, `OFFSET ${offset} ROWS FETCH NEXT ${pageSize} ROWS ONLY`) + ';';
+    const mssqlTrailingRegex = /OFFSET\s+\d+\s+ROWS\s+FETCH\s+(?:FIRST|NEXT)\s+\d+\s+ROWS(?:\s+ONLY)?\s*$/i;
+    if (mssqlTrailingRegex.test(trimmed)) {
+      return trimmed.replace(mssqlTrailingRegex, `OFFSET ${offset} ROWS FETCH NEXT ${pageSize} ROWS ONLY`) + ';';
     }
     const hasOrderBy = /\bORDER\s+BY\b/i.test(trimmed);
     const orderPrefix = hasOrderBy ? '' : ' ORDER BY (SELECT NULL)';
     return `${trimmed}${orderPrefix} OFFSET ${offset} ROWS FETCH NEXT ${pageSize} ROWS ONLY;`;
   }
 
-  const hasLimit = /\bLIMIT\s+\d+/i.test(trimmed);
-  const hasOffset = /\bOFFSET\s+\d+/i.test(trimmed);
+  const trailingLimitOffsetRegex = /(?:LIMIT\s+\d+\s+OFFSET\s+\d+|OFFSET\s+\d+\s+LIMIT\s+\d+|LIMIT\s+\d+\s*,\s*\d+)\s*$/i;
+  const trailingLimitRegex = /LIMIT\s+\d+\s*$/i;
+  const trailingOffsetRegex = /OFFSET\s+\d+\s*$/i;
 
-  if (hasLimit && hasOffset) {
-    return (
-      trimmed
-        .replace(/\bLIMIT\s+\d+/i, `LIMIT ${pageSize}`)
-        .replace(/\bOFFSET\s+\d+/i, `OFFSET ${offset}`) + ';'
-    );
-  } else if (hasLimit) {
-    return trimmed.replace(/\bLIMIT\s+\d+/i, `LIMIT ${pageSize} OFFSET ${offset}`) + ';';
+  if (trailingLimitOffsetRegex.test(trimmed)) {
+    return trimmed.replace(trailingLimitOffsetRegex, `LIMIT ${pageSize} OFFSET ${offset}`) + ';';
+  } else if (trailingLimitRegex.test(trimmed)) {
+    return trimmed.replace(trailingLimitRegex, `LIMIT ${pageSize} OFFSET ${offset}`) + ';';
+  } else if (trailingOffsetRegex.test(trimmed)) {
+    return trimmed.replace(trailingOffsetRegex, `LIMIT ${pageSize} OFFSET ${offset}`) + ';';
   } else {
     return `${trimmed} LIMIT ${pageSize} OFFSET ${offset};`;
   }

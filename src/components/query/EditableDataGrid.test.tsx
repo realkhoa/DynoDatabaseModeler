@@ -512,5 +512,144 @@ describe('EditableDataGrid component', () => {
       expect(screen.getByTestId('mutation-bar')).toBeDefined();
       expect(screen.getByTestId('pagination-bar')).toBeDefined();
     });
+
+    /**
+     * @brief Verifies that attempting page transition with dirty cells prompts user confirmation and aborts if declined.
+     */
+    it('prompts window.confirm before page navigation when dirty edits exist and aborts on cancellation', () => {
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+      const onPageChange = vi.fn();
+
+      render(
+        <EditableDataGrid
+          tableName="users"
+          primaryKeyColumns={['id']}
+          columns={['id', 'name']}
+          rows={[[1, 'Alice'], [2, 'Bob']]}
+          pagination={{
+            currentPage: 0,
+            pageSize: 50,
+            totalRows: 100,
+            onPageChange,
+            onPageSizeChange: vi.fn(),
+          }}
+        />
+      );
+
+      // Make a cell dirty
+      const aliceCell = screen.getByText('Alice').closest('td')!;
+      fireEvent.doubleClick(aliceCell);
+      const input = screen.getByDisplayValue('Alice');
+      fireEvent.change(input, { target: { value: 'Alicia' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+
+      // Click Next page button
+      const nextBtn = screen.getByRole('button', { name: /next page/i });
+      fireEvent.click(nextBtn);
+
+      expect(confirmSpy).toHaveBeenCalledWith(
+        'You have unsaved cell modifications. Changing pages will discard these changes. Continue?'
+      );
+      expect(onPageChange).not.toHaveBeenCalled();
+
+      confirmSpy.mockRestore();
+    });
+
+    /**
+     * @brief Verifies that page transition proceeds when user confirms discarding dirty edits.
+     */
+    it('prompts window.confirm before page navigation and proceeds when user confirms', () => {
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      const onPageChange = vi.fn();
+
+      render(
+        <EditableDataGrid
+          tableName="users"
+          primaryKeyColumns={['id']}
+          columns={['id', 'name']}
+          rows={[[1, 'Alice'], [2, 'Bob']]}
+          pagination={{
+            currentPage: 0,
+            pageSize: 50,
+            totalRows: 100,
+            onPageChange,
+            onPageSizeChange: vi.fn(),
+          }}
+        />
+      );
+
+      // Make a cell dirty
+      const aliceCell = screen.getByText('Alice').closest('td')!;
+      fireEvent.doubleClick(aliceCell);
+      const input = screen.getByDisplayValue('Alice');
+      fireEvent.change(input, { target: { value: 'Alicia' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+
+      // Click Next page button
+      const nextBtn = screen.getByRole('button', { name: /next page/i });
+      fireEvent.click(nextBtn);
+
+      expect(confirmSpy).toHaveBeenCalledWith(
+        'You have unsaved cell modifications. Changing pages will discard these changes. Continue?'
+      );
+      expect(onPageChange).toHaveBeenCalledWith(1);
+
+      confirmSpy.mockRestore();
+    });
+
+    /**
+     * @brief Verifies that page size change and refresh trigger window.confirm when dirty cells exist.
+     */
+    it('prompts window.confirm for page size change and refresh actions when dirty cells exist', () => {
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+      const onPageSizeChange = vi.fn();
+      const onRefresh = vi.fn();
+
+      render(
+        <EditableDataGrid
+          tableName="users"
+          primaryKeyColumns={['id']}
+          columns={['id', 'name']}
+          rows={[[1, 'Alice']]}
+          pagination={{
+            currentPage: 0,
+            pageSize: 50,
+            totalRows: 100,
+            onPageChange: vi.fn(),
+            onPageSizeChange,
+            onRefresh,
+          }}
+        />
+      );
+
+      // Make cell dirty
+      const aliceCell = screen.getByText('Alice').closest('td')!;
+      fireEvent.doubleClick(aliceCell);
+      const input = screen.getByDisplayValue('Alice');
+      fireEvent.change(input, { target: { value: 'Alicia' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+
+      // Trigger page size change
+      const pageSizeSelect = screen.getByRole('combobox', { name: /rows per page/i });
+      fireEvent.change(pageSizeSelect, { target: { value: '100' } });
+      expect(confirmSpy).toHaveBeenCalledTimes(1);
+      expect(onPageSizeChange).not.toHaveBeenCalled();
+
+      // Trigger refresh
+      const refreshBtn = screen.getByRole('button', { name: /refresh data/i });
+      fireEvent.click(refreshBtn);
+      expect(confirmSpy).toHaveBeenCalledTimes(2);
+      expect(onRefresh).not.toHaveBeenCalled();
+
+      // Now allow confirm and re-test
+      confirmSpy.mockReturnValue(true);
+      fireEvent.change(pageSizeSelect, { target: { value: '100' } });
+      expect(onPageSizeChange).toHaveBeenCalledWith(100);
+
+      fireEvent.click(refreshBtn);
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+
+      confirmSpy.mockRestore();
+    });
   });
 });

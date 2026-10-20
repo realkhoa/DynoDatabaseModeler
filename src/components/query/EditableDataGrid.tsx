@@ -449,6 +449,23 @@ export const EditableDataGrid = React.forwardRef<EditableDataGridHandle, Editabl
 
     const dirtyCount = useMemo(() => Object.keys(dirtyCells).length, [dirtyCells]);
 
+    /**
+     * @brief Prompts user confirmation before executing pagination transitions if unsaved edits exist.
+     * @param action Callback performing the page transition or reload action.
+     */
+    const handleSafePageTransition = useCallback(
+      (action: () => void) => {
+        if (dirtyCount > 0) {
+          const proceed = window.confirm(
+            'You have unsaved cell modifications. Changing pages will discard these changes. Continue?'
+          );
+          if (!proceed) return;
+        }
+        action();
+      },
+      [dirtyCount]
+    );
+
     return (
       <div className="relative flex flex-col h-full w-full bg-[#18191c] overflow-hidden select-text font-mono text-xs">
         {/* Read-only notice when no safe row locator is available */}
@@ -630,7 +647,7 @@ export const EditableDataGrid = React.forwardRef<EditableDataGridHandle, Editabl
               {pagination.onRefresh && (
                 <button
                   type="button"
-                  onClick={pagination.onRefresh}
+                  onClick={() => handleSafePageTransition(() => pagination.onRefresh?.())}
                   className="p-1 hover:text-[#e6e8ea] hover:bg-[#2b2d30] rounded transition-colors cursor-pointer"
                   title="Refresh current page"
                   aria-label="Refresh data"
@@ -645,7 +662,7 @@ export const EditableDataGrid = React.forwardRef<EditableDataGridHandle, Editabl
               <button
                 type="button"
                 disabled={pagination.currentPage <= 0}
-                onClick={() => pagination.onPageChange(0)}
+                onClick={() => handleSafePageTransition(() => pagination.onPageChange(0))}
                 aria-label="First page"
                 title="First page"
                 className="p-1 text-[#8c919a] hover:text-[#e6e8ea] hover:bg-[#2b2d30] rounded disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
@@ -655,7 +672,9 @@ export const EditableDataGrid = React.forwardRef<EditableDataGridHandle, Editabl
               <button
                 type="button"
                 disabled={pagination.currentPage <= 0}
-                onClick={() => pagination.onPageChange(pagination.currentPage - 1)}
+                onClick={() =>
+                  handleSafePageTransition(() => pagination.onPageChange(pagination.currentPage - 1))
+                }
                 aria-label="Previous page"
                 title="Previous page"
                 className="p-1 text-[#8c919a] hover:text-[#e6e8ea] hover:bg-[#2b2d30] rounded disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
@@ -677,7 +696,9 @@ export const EditableDataGrid = React.forwardRef<EditableDataGridHandle, Editabl
                     ? (pagination.currentPage + 1) * pagination.pageSize >= pagination.totalRows
                     : rows.length < pagination.pageSize
                 }
-                onClick={() => pagination.onPageChange(pagination.currentPage + 1)}
+                onClick={() =>
+                  handleSafePageTransition(() => pagination.onPageChange(pagination.currentPage + 1))
+                }
                 aria-label="Next page"
                 title="Next page"
                 className="p-1 text-[#8c919a] hover:text-[#e6e8ea] hover:bg-[#2b2d30] rounded disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
@@ -692,11 +713,13 @@ export const EditableDataGrid = React.forwardRef<EditableDataGridHandle, Editabl
                     : true
                 }
                 onClick={() => {
-                  if (pagination.totalRows !== null && pagination.totalRows !== undefined) {
-                    pagination.onPageChange(
-                      Math.max(0, Math.ceil(pagination.totalRows / pagination.pageSize) - 1)
-                    );
-                  }
+                  handleSafePageTransition(() => {
+                    if (pagination.totalRows !== null && pagination.totalRows !== undefined) {
+                      pagination.onPageChange(
+                        Math.max(0, Math.ceil(pagination.totalRows / pagination.pageSize) - 1)
+                      );
+                    }
+                  });
                 }}
                 aria-label="Last page"
                 title="Last page"
@@ -712,7 +735,10 @@ export const EditableDataGrid = React.forwardRef<EditableDataGridHandle, Editabl
               <select
                 aria-label="Rows per page"
                 value={pagination.pageSize}
-                onChange={(e) => pagination.onPageSizeChange(Number(e.target.value))}
+                onChange={(e) => {
+                  const newPageSize = Number(e.target.value);
+                  handleSafePageTransition(() => pagination.onPageSizeChange(newPageSize));
+                }}
                 className="bg-[#121316] text-[#e6e8ea] border border-[#35373c] rounded px-1.5 py-0.5 text-[11px] font-mono outline-none focus:border-[#3a82f7] cursor-pointer"
               >
                 {![25, 50, 100, 200].includes(pagination.pageSize) && (

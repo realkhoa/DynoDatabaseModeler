@@ -5,7 +5,12 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
-import { QueryEditorTab, formatCellValue, extractTableNameFromSql } from './QueryEditorTab';
+import {
+  QueryEditorTab,
+  formatCellValue,
+  extractTableNameFromSql,
+  updateQueryPagination,
+} from './QueryEditorTab';
 import { api } from '../../api/ipc';
 import type { ConnectionConfig } from '../../types/database';
 
@@ -794,6 +799,82 @@ describe('QueryEditorTab component', () => {
       await waitFor(() => {
         expect(screen.getByText(/of 350 rows/i)).toBeDefined();
       });
+    });
+  });
+
+  /**
+   * @brief Verifies updateQueryPagination behavior across standard and nested SQL queries.
+   */
+  describe('updateQueryPagination', () => {
+    it('updates standard LIMIT and OFFSET clauses at the end of query', () => {
+      const sql = 'SELECT * FROM users LIMIT 50 OFFSET 0;';
+      const updated = updateQueryPagination(sql, 'Postgres', 25, 2);
+      expect(updated).toBe('SELECT * FROM users LIMIT 25 OFFSET 50;');
+    });
+
+    it('updates query containing only trailing LIMIT clause', () => {
+      const sql = 'SELECT * FROM users LIMIT 100;';
+      const updated = updateQueryPagination(sql, 'Postgres', 50, 1);
+      expect(updated).toBe('SELECT * FROM users LIMIT 50 OFFSET 50;');
+    });
+
+    it('appends LIMIT and OFFSET when query has no pagination clauses', () => {
+      const sql = 'SELECT * FROM users WHERE active = true';
+      const updated = updateQueryPagination(sql, 'Postgres', 50, 0);
+      expect(updated).toBe('SELECT * FROM users WHERE active = true LIMIT 50 OFFSET 0;');
+    });
+
+    it('replaces only trailing pagination without altering inner CTE LIMIT clause', () => {
+      const sql =
+        'WITH top_users AS (SELECT id FROM users LIMIT 10) SELECT * FROM top_users LIMIT 50 OFFSET 0;';
+      const updated = updateQueryPagination(sql, 'Postgres', 25, 2);
+      expect(updated).toBe(
+        'WITH top_users AS (SELECT id FROM users LIMIT 10) SELECT * FROM top_users LIMIT 25 OFFSET 50;'
+      );
+    });
+
+    it('appends outer LIMIT and OFFSET to CTE query without altering inner CTE LIMIT clause', () => {
+      const sql =
+        'WITH top_users AS (SELECT id FROM users LIMIT 10) SELECT * FROM top_users;';
+      const updated = updateQueryPagination(sql, 'Postgres', 50, 0);
+      expect(updated).toBe(
+        'WITH top_users AS (SELECT id FROM users LIMIT 10) SELECT * FROM top_users LIMIT 50 OFFSET 0;'
+      );
+    });
+
+    it('replaces only trailing pagination without altering subquery LIMIT in FROM clause', () => {
+      const sql =
+        'SELECT * FROM (SELECT id, name FROM users LIMIT 5) AS sub LIMIT 50 OFFSET 0;';
+      const updated = updateQueryPagination(sql, 'Sqlite', 100, 1);
+      expect(updated).toBe(
+        'SELECT * FROM (SELECT id, name FROM users LIMIT 5) AS sub LIMIT 100 OFFSET 100;'
+      );
+    });
+
+    it('updates trailing MSSQL OFFSET and FETCH NEXT clauses', () => {
+      const sql =
+        'SELECT * FROM [users] ORDER BY [id] OFFSET 0 ROWS FETCH NEXT 50 ROWS ONLY;';
+      const updated = updateQueryPagination(sql, 'Mssql', 25, 3);
+      expect(updated).toBe(
+        'SELECT * FROM [users] ORDER BY [id] OFFSET 75 ROWS FETCH NEXT 25 ROWS ONLY;'
+      );
+    });
+
+    it('replaces trailing MSSQL pagination without altering inner CTE OFFSET/FETCH clause', () => {
+      const sql =
+        'WITH ranked AS (SELECT * FROM [users] ORDER BY [score] OFFSET 0 ROWS FETCH NEXT 10 ROWS ONLY) SELECT * FROM ranked ORDER BY [id] OFFSET 0 ROWS FETCH NEXT 50 ROWS ONLY;';
+      const updated = updateQueryPagination(sql, 'Mssql', 25, 1);
+      expect(updated).toBe(
+        'WITH ranked AS (SELECT * FROM [users] ORDER BY [score] OFFSET 0 ROWS FETCH NEXT 10 ROWS ONLY) SELECT * FROM ranked ORDER BY [id] OFFSET 25 ROWS FETCH NEXT 25 ROWS ONLY;'
+      );
+    });
+
+    it('injects ORDER BY (SELECT NULL) for unpaginated MSSQL query lacking ORDER BY', () => {
+      const sql = 'SELECT * FROM [users]';
+      const updated = updateQueryPagination(sql, 'Mssql', 50, 0);
+      expect(updated).toBe(
+        'SELECT * FROM [users] ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 50 ROWS ONLY;'
+      );
     });
   });
 });

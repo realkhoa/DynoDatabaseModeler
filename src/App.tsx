@@ -566,24 +566,28 @@ export default function App(): React.ReactElement {
   /**
    * @brief Navigates to the SQL query tab to inspect table rows, pre-filling and auto-executing a paginated query.
    * @details Constructs a dialect-specific paginated SELECT statement using a default limit of 50 rows,
+   * incorporating the primary key column when available for deterministic ordering (especially under MSSQL),
    * selects the table in state, switches the active workspace tab to 'sql', and triggers automatic execution.
    * @param key Schema-qualified or unqualified table name.
    */
   const handleViewTableData = useCallback(
     (key: string) => {
       if (!activeConnection) return;
+      const targetTable = schema?.tables.find((t) => tableKey(t) === key);
+      const primaryKeyCol = targetTable?.columns.find((c) => c.is_primary_key)?.name;
       const initialPaginatedSql = buildPaginatedSelectQuery(
         key,
         activeConnection.db_type,
         50,
-        0
+        0,
+        primaryKeyCol
       );
       setActiveSqlQuery(initialPaginatedSql);
       setAutoRunQuery(true);
       setSelectedTableKey(key);
       setActiveTab('sql');
     },
-    [activeConnection]
+    [activeConnection, schema]
   );
 
   return (
