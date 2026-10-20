@@ -20,6 +20,7 @@ import {
   Lock,
   ShieldCheck,
   ShieldAlert,
+  Sparkles,
 } from 'lucide-react';
 import { api } from '../../api/ipc';
 import type {
@@ -31,11 +32,14 @@ import type {
   DatabaseSchema,
 } from '../../types/database';
 import { buildSqlCompletions } from '../../utils/sqlCompletion';
+import { formatSql } from '../../utils/sqlFormatter';
 import { EditableDataGrid, EditableDataGridHandle } from './EditableDataGrid';
 import { ValueInspectorDrawer } from './ValueInspectorDrawer';
 import { ExportModal } from './ExportModal';
 import { ExplainPlanModal } from './ExplainPlanModal';
 import { QueryHistoryModal } from './QueryHistoryModal';
+import { QueryWorksheetBar } from './QueryWorksheetBar';
+import type { QueryWorksheet } from './QueryWorksheetBar';
 import { analyzeEditableQuery } from '../../utils/sqlSafety';
 import type { EditableQueryAnalysis } from '../../utils/sqlSafety';
 import {
@@ -164,6 +168,29 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
   onQuerySuccess,
   autoRun = false,
 }) => {
+  const [worksheets, setWorksheets] = useState<QueryWorksheet[]>([
+    {
+      id: 'ws-1',
+      title: 'Query 1',
+      query: initialQuery,
+      result: null,
+      safeLimit: 500,
+      safeLimitNotice: null,
+      pageIndex: 0,
+      pageSize: 50,
+      totalRows: null,
+      error: null,
+      explainPlan: null,
+    },
+  ]);
+  const [activeWorksheetId, setActiveWorksheetId] = useState<string>('ws-1');
+  const worksheetCounterRef = useRef<number>(1);
+
+  const [hasSelection, setHasSelection] = useState<boolean>(false);
+  const editorRef = useRef<any>(null);
+  const selectionListenerRef = useRef<{ dispose: () => void } | null>(null);
+  const formattingProviderRef = useRef<{ dispose: () => void } | null>(null);
+
   const [query, setQuery] = useState(initialQuery);
   const [result, setResult] = useState<QueryResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -208,17 +235,42 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
     return () => {
       completionProviderRef.current?.dispose();
       completionProviderRef.current = null;
+      formattingProviderRef.current?.dispose();
+      formattingProviderRef.current = null;
+      selectionListenerRef.current?.dispose();
+      selectionListenerRef.current = null;
     };
   }, []);
 
   const detectedTableName = extractTableNameFromSql(query);
 
-  // Keep latest query and props in refs for callbacks
+  // Keep latest state and props in refs for callbacks
+  const worksheetsRef = useRef(worksheets);
+  worksheetsRef.current = worksheets;
+
+  const activeWorksheetIdRef = useRef(activeWorksheetId);
+  activeWorksheetIdRef.current = activeWorksheetId;
+
   const queryRef = useRef(query);
   queryRef.current = query;
 
+  const resultRef = useRef(result);
+  resultRef.current = result;
+
+  const errorRef = useRef(error);
+  errorRef.current = error;
+
+  const explainPlanRef = useRef(explainPlan);
+  explainPlanRef.current = explainPlan;
+
   const safeLimitRef = useRef(safeLimit);
   safeLimitRef.current = safeLimit;
+
+  const safeLimitNoticeRef = useRef(safeLimitNotice);
+  safeLimitNoticeRef.current = safeLimitNotice;
+
+  const pageIndexRef = useRef(pageIndex);
+  pageIndexRef.current = pageIndex;
 
   const activeConnectionRef = useRef(activeConnection);
   activeConnectionRef.current = activeConnection;
@@ -239,63 +291,29 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
   const handleSelectHistoryQuery = useCallback((historySql: string) => {
     setQuery(historySql);
     queryRef.current = historySql;
+    setWorksheets((prev) =>
+      prev.map((ws) =>
+        ws.id === activeWorksheetIdRef.current ? { ...ws, query: historySql } : ws
+      )
+    );
   }, []);
 
   /**
-   * @brief Handles cell selection in the results data grid.
-   * @param colName Column name.
-   * @param val Current cell value.
+   * @brief Formats the current SQL query buffer using the custom SQL beautifier.
+   * @details Normalizes keyword casing, indents clauses, and synchronizes active worksheet state.
    */
-  const handleCellSelect = useCallback(
-    (colName: string, val: any) => {
-      setSelectedCell((prev) => ({
-        columnName: colName,
-        value: val,
-        rowIndex: prev?.rowIndex ?? 0,
-        colIndex: prev?.colIndex ?? 0,
-      }));
-    },
-    []
-  );
-
-  /**
-   * @brief Captures full cell coordinate position on selection.
-   * @param pos Position and value metadata.
-   */
-  const handleCellPositionSelect = useCallback(
-    (pos: { rowIndex: number; colIndex: number; columnName: string; value: any }) => {
-      setSelectedCell(pos);
-    },
-    []
-  );
-
-  /**
-   * @brief Opens the Value Inspector Drawer for the selected cell or first cell by default.
-   */
-  const handleOpenInspector = useCallback(() => {
-    if (!selectedCell && result && result.rows.length > 0 && result.columns.length > 0) {
-      setSelectedCell({
-        rowIndex: 0,
-        colIndex: 0,
-        columnName: result.columns[0],
-        value: result.rows[0][0],
-      });
-    }
-    setIsInspectorOpen(true);
-  }, [result, selectedCell]);
-
-  /**
-   * @brief Applies modifications made in the inspector drawer back to the data grid.
-   * @param newValue Modified value from the drawer editor.
-   */
-  const handleApplyDrawerEdit = useCallback(
-    (newValue: any) => {
-      if (!selectedCell) return;
-      gridRef.current?.updateCell(selectedCell.rowIndex, selectedCell.colIndex, newValue);
-      setSelectedCell((prev) => (prev ? { ...prev, value: newValue } : null));
-    },
-    [selectedCell]
-  );
+  const handleFormat = useCallback(() => {
+    const current = queryRef.current;
+    if (!current.trim()) return;
+    const formatted = formatSql(current);
+    setQuery(formatted);
+    queryRef.current = formatted;
+    setWorksheets((prev) =>
+      prev.map((ws) =>
+        ws.id === activeWorksheetIdRef.current ? { ...ws, query: formatted } : ws
+      )
+    );
+  }, []);
 
   /**
    * @brief Determines whether the executed statement may be edited and resolves its primary key.
@@ -355,6 +373,315 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
   );
 
   /**
+   * @brief Selects and activates a query worksheet tab.
+   * @details Prompts user confirmation if unsaved data grid edits exist before switching.
+   * Synchronizes the outgoing worksheet buffer and restores target worksheet state.
+   * @param targetId Unique identifier of worksheet to switch to.
+   */
+  const handleSelectWorksheet = useCallback(
+    (targetId: string) => {
+      if (targetId === activeWorksheetIdRef.current) return;
+
+      const dirtyCount = gridRef.current?.getDirtyCount?.() ?? 0;
+      if (dirtyCount > 0) {
+        const proceed = window.confirm(
+          'You have unsaved cell modifications. Changing tabs will discard these changes. Continue?'
+        );
+        if (!proceed) return;
+      }
+
+      const currentActiveId = activeWorksheetIdRef.current;
+      const currentSnapshot: Partial<QueryWorksheet> = {
+        query: queryRef.current,
+        result: resultRef.current,
+        safeLimit: safeLimitRef.current,
+        safeLimitNotice: safeLimitNoticeRef.current,
+        pageIndex: pageIndexRef.current,
+        pageSize: pageSizeRef.current,
+        totalRows: totalRowsRef.current,
+        error: errorRef.current,
+        explainPlan: explainPlanRef.current,
+      };
+
+      const targetWs = worksheetsRef.current.find((w) => w.id === targetId);
+      if (!targetWs) return;
+
+      setWorksheets((prev) =>
+        prev.map((w) => (w.id === currentActiveId ? { ...w, ...currentSnapshot } : w))
+      );
+
+      setActiveWorksheetId(targetWs.id);
+      activeWorksheetIdRef.current = targetWs.id;
+
+      setQuery(targetWs.query);
+      queryRef.current = targetWs.query;
+
+      setResult(targetWs.result);
+      resultRef.current = targetWs.result;
+
+      setSafeLimit(targetWs.safeLimit);
+      safeLimitRef.current = targetWs.safeLimit;
+
+      setSafeLimitNotice(targetWs.safeLimitNotice);
+      safeLimitNoticeRef.current = targetWs.safeLimitNotice;
+
+      setPageIndex(targetWs.pageIndex);
+      pageIndexRef.current = targetWs.pageIndex;
+
+      setPageSize(targetWs.pageSize);
+      pageSizeRef.current = targetWs.pageSize;
+
+      setTotalRows(targetWs.totalRows);
+      totalRowsRef.current = targetWs.totalRows;
+
+      setError(targetWs.error);
+      errorRef.current = targetWs.error;
+
+      setExplainPlan(targetWs.explainPlan);
+      explainPlanRef.current = targetWs.explainPlan;
+
+      setSelectedCell(null);
+      setSaveStatus(null);
+
+      if (targetWs.query) {
+        resolveEditability(targetWs.query).then(({ analysis, keys }) => {
+          setEditAnalysis(analysis);
+          setPrimaryKeyColumns(keys);
+        });
+      } else {
+        setEditAnalysis(null);
+        setPrimaryKeyColumns([]);
+      }
+    },
+    [resolveEditability]
+  );
+
+  /**
+   * @brief Creates and switches to a new empty SQL query worksheet.
+   * @details Automatically generates sequential title ('Query 2', 'Query 3', etc.)
+   * and prompts confirmation if active tab has unsaved grid edits.
+   */
+  const handleAddWorksheet = useCallback(() => {
+    const dirtyCount = gridRef.current?.getDirtyCount?.() ?? 0;
+    if (dirtyCount > 0) {
+      const proceed = window.confirm(
+        'You have unsaved cell modifications. Changing tabs will discard these changes. Continue?'
+      );
+      if (!proceed) return;
+    }
+
+    worksheetCounterRef.current += 1;
+    const newNum = worksheetCounterRef.current;
+    const newId = `ws-${Date.now()}-${newNum}`;
+    const newTitle = `Query ${newNum}`;
+
+    const currentActiveId = activeWorksheetIdRef.current;
+    const currentSnapshot: Partial<QueryWorksheet> = {
+      query: queryRef.current,
+      result: resultRef.current,
+      safeLimit: safeLimitRef.current,
+      safeLimitNotice: safeLimitNoticeRef.current,
+      pageIndex: pageIndexRef.current,
+      pageSize: pageSizeRef.current,
+      totalRows: totalRowsRef.current,
+      error: errorRef.current,
+      explainPlan: explainPlanRef.current,
+    };
+
+    const newWs: QueryWorksheet = {
+      id: newId,
+      title: newTitle,
+      query: '',
+      result: null,
+      safeLimit: 500,
+      safeLimitNotice: null,
+      pageIndex: 0,
+      pageSize: 50,
+      totalRows: null,
+      error: null,
+      explainPlan: null,
+    };
+
+    setWorksheets((prev) => [
+      ...prev.map((w) => (w.id === currentActiveId ? { ...w, ...currentSnapshot } : w)),
+      newWs,
+    ]);
+
+    setActiveWorksheetId(newId);
+    activeWorksheetIdRef.current = newId;
+
+    setQuery('');
+    queryRef.current = '';
+
+    setResult(null);
+    resultRef.current = null;
+
+    setSafeLimit(500);
+    safeLimitRef.current = 500;
+
+    setSafeLimitNotice(null);
+    safeLimitNoticeRef.current = null;
+
+    setPageIndex(0);
+    pageIndexRef.current = 0;
+
+    setPageSize(50);
+    pageSizeRef.current = 50;
+
+    setTotalRows(null);
+    totalRowsRef.current = null;
+
+    setError(null);
+    errorRef.current = null;
+
+    setExplainPlan(null);
+    explainPlanRef.current = null;
+
+    setSelectedCell(null);
+    setSaveStatus(null);
+    setEditAnalysis(null);
+    setPrimaryKeyColumns([]);
+  }, []);
+
+  /**
+   * @brief Closes a query worksheet tab and smoothly activates a neighboring tab.
+   * @details Tab closure is blocked if only one worksheet remains open.
+   * @param idToClose Unique identifier of worksheet to close.
+   */
+  const handleCloseWorksheet = useCallback(
+    (idToClose: string) => {
+      const currentList = worksheetsRef.current;
+      if (currentList.length <= 1) return;
+
+      const closeIndex = currentList.findIndex((w) => w.id === idToClose);
+      if (closeIndex === -1) return;
+
+      const remaining = currentList.filter((w) => w.id !== idToClose);
+
+      if (idToClose === activeWorksheetIdRef.current) {
+        const neighborIndex = closeIndex > 0 ? closeIndex - 1 : 0;
+        const targetWs = remaining[neighborIndex];
+
+        setWorksheets(remaining);
+        setActiveWorksheetId(targetWs.id);
+        activeWorksheetIdRef.current = targetWs.id;
+
+        setQuery(targetWs.query);
+        queryRef.current = targetWs.query;
+
+        setResult(targetWs.result);
+        resultRef.current = targetWs.result;
+
+        setSafeLimit(targetWs.safeLimit);
+        safeLimitRef.current = targetWs.safeLimit;
+
+        setSafeLimitNotice(targetWs.safeLimitNotice);
+        safeLimitNoticeRef.current = targetWs.safeLimitNotice;
+
+        setPageIndex(targetWs.pageIndex);
+        pageIndexRef.current = targetWs.pageIndex;
+
+        setPageSize(targetWs.pageSize);
+        pageSizeRef.current = targetWs.pageSize;
+
+        setTotalRows(targetWs.totalRows);
+        totalRowsRef.current = targetWs.totalRows;
+
+        setError(targetWs.error);
+        errorRef.current = targetWs.error;
+
+        setExplainPlan(targetWs.explainPlan);
+        explainPlanRef.current = targetWs.explainPlan;
+
+        setSelectedCell(null);
+        setSaveStatus(null);
+
+        if (targetWs.query) {
+          resolveEditability(targetWs.query).then(({ analysis, keys }) => {
+            setEditAnalysis(analysis);
+            setPrimaryKeyColumns(keys);
+          });
+        } else {
+          setEditAnalysis(null);
+          setPrimaryKeyColumns([]);
+        }
+      } else {
+        setWorksheets(remaining);
+      }
+    },
+    [resolveEditability]
+  );
+
+  /**
+   * @brief Renames a query worksheet tab.
+   * @param id Unique identifier of worksheet to rename.
+   * @param newTitle New display title string.
+   */
+  const handleRenameWorksheet = useCallback((id: string, newTitle: string) => {
+    const trimmed = newTitle.trim();
+    if (!trimmed) return;
+    setWorksheets((prev) =>
+      prev.map((w) => (w.id === id ? { ...w, title: trimmed } : w))
+    );
+  }, []);
+
+  /**
+   * @brief Handles cell selection in the results data grid.
+   * @param colName Column name.
+   * @param val Current cell value.
+   */
+  const handleCellSelect = useCallback(
+    (colName: string, val: any) => {
+      setSelectedCell((prev) => ({
+        columnName: colName,
+        value: val,
+        rowIndex: prev?.rowIndex ?? 0,
+        colIndex: prev?.colIndex ?? 0,
+      }));
+    },
+    []
+  );
+
+  /**
+   * @brief Captures full cell coordinate position on selection.
+   * @param pos Position and value metadata.
+   */
+  const handleCellPositionSelect = useCallback(
+    (pos: { rowIndex: number; colIndex: number; columnName: string; value: any }) => {
+      setSelectedCell(pos);
+    },
+    []
+  );
+
+  /**
+   * @brief Opens the Value Inspector Drawer for the selected cell or first cell by default.
+   */
+  const handleOpenInspector = useCallback(() => {
+    if (!selectedCell && result && result.rows.length > 0 && result.columns.length > 0) {
+      setSelectedCell({
+        rowIndex: 0,
+        colIndex: 0,
+        columnName: result.columns[0],
+        value: result.rows[0][0],
+      });
+    }
+    setIsInspectorOpen(true);
+  }, [result, selectedCell]);
+
+  /**
+   * @brief Applies modifications made in the inspector drawer back to the data grid.
+   * @param newValue Modified value from the drawer editor.
+   */
+  const handleApplyDrawerEdit = useCallback(
+    (newValue: any) => {
+      if (!selectedCell) return;
+      gridRef.current?.updateCell(selectedCell.rowIndex, selectedCell.colIndex, newValue);
+      setSelectedCell((prev) => (prev ? { ...prev, value: newValue } : null));
+    },
+    [selectedCell]
+  );
+
+  /**
    * @brief Executes the current SQL statement string via Tauri IPC backend.
    * @details Intercepts unbounded queries with safe limit when active, resolves single-table editability,
    * extracts pagination parameters, and triggers background count resolution.
@@ -363,7 +690,29 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
    */
   const handleRun = useCallback(
     async (sqlOverride?: string, forceCountRefresh?: boolean) => {
-      const sqlToRun = (typeof sqlOverride === 'string' ? sqlOverride : queryRef.current).trim();
+      let sqlToRun = typeof sqlOverride === 'string' ? sqlOverride : '';
+
+      if (!sqlToRun) {
+        // Inspect Monaco editor selection: if user highlighted a query segment, run that segment
+        if (editorRef.current) {
+          const sel = editorRef.current.getSelection ? editorRef.current.getSelection() : null;
+          const model = editorRef.current.getModel ? editorRef.current.getModel() : null;
+          const isSelEmpty =
+            !sel || (typeof sel.isEmpty === 'function' ? sel.isEmpty() : true);
+          if (!isSelEmpty && model && typeof model.getValueInRange === 'function') {
+            const selectedText = model.getValueInRange(sel).trim();
+            if (selectedText.length > 0) {
+              sqlToRun = selectedText;
+            }
+          }
+        }
+
+        if (!sqlToRun) {
+          sqlToRun = queryRef.current;
+        }
+      }
+
+      sqlToRun = sqlToRun.trim();
       if (!sqlToRun) return;
 
       setIsLoading(true);
@@ -412,6 +761,26 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
         const res = await api.executeQuery(effectiveSql);
         const durationMs = Date.now() - startTime;
         setResult(res);
+        resultRef.current = res;
+
+        setWorksheets((prev) =>
+          prev.map((ws) =>
+            ws.id === activeWorksheetIdRef.current
+              ? {
+                  ...ws,
+                  result: res,
+                  error: null,
+                  safeLimitNotice: limitApplied ? `Safe Limit: ${safeLimitRef.current}` : null,
+                  pageSize:
+                    paginationInfo?.limit ?? (limitApplied ? safeLimitRef.current : ws.pageSize),
+                  pageIndex:
+                    paginationInfo?.offset !== undefined && paginationInfo?.limit !== undefined
+                      ? Math.floor(paginationInfo.offset / paginationInfo.limit)
+                      : ws.pageIndex,
+                }
+              : ws
+          )
+        );
 
         const { analysis, keys } = await resolveEditability(effectiveSql);
         setEditAnalysis(analysis);
@@ -464,7 +833,20 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
           .recordQueryHistory(sqlToRun, durationMs, 0, 'error')
           .catch((e) => console.error('Failed to log query history:', e));
         setError(msg || 'Execution failed');
+        errorRef.current = msg || 'Execution failed';
         setResult(null);
+        resultRef.current = null;
+        setWorksheets((prev) =>
+          prev.map((ws) =>
+            ws.id === activeWorksheetIdRef.current
+              ? {
+                  ...ws,
+                  error: msg || 'Execution failed',
+                  result: null,
+                }
+              : ws
+          )
+        );
         setEditAnalysis(null);
         setPrimaryKeyColumns([]);
         setTotalRows(null);
@@ -482,11 +864,19 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
   const handlePageChange = useCallback(
     async (newPage: number) => {
       setPageIndex(newPage);
+      pageIndexRef.current = newPage;
       const currentSql = queryRef.current;
       const dbType = activeConnection?.db_type ?? 'Postgres';
       const updatedSql = updateQueryPagination(currentSql, dbType, pageSize, newPage);
       setQuery(updatedSql);
       queryRef.current = updatedSql;
+      setWorksheets((prev) =>
+        prev.map((ws) =>
+          ws.id === activeWorksheetIdRef.current
+            ? { ...ws, query: updatedSql, pageIndex: newPage }
+            : ws
+        )
+      );
       await handleRun(updatedSql);
     },
     [activeConnection?.db_type, handleRun, pageSize]
@@ -499,12 +889,21 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
   const handlePageSizeChange = useCallback(
     async (newPageSize: number) => {
       setPageSize(newPageSize);
+      pageSizeRef.current = newPageSize;
       setPageIndex(0);
+      pageIndexRef.current = 0;
       const currentSql = queryRef.current;
       const dbType = activeConnection?.db_type ?? 'Postgres';
       const updatedSql = updateQueryPagination(currentSql, dbType, newPageSize, 0);
       setQuery(updatedSql);
       queryRef.current = updatedSql;
+      setWorksheets((prev) =>
+        prev.map((ws) =>
+          ws.id === activeWorksheetIdRef.current
+            ? { ...ws, query: updatedSql, pageSize: newPageSize, pageIndex: 0 }
+            : ws
+        )
+      );
       await handleRun(updatedSql);
     },
     [activeConnection?.db_type, handleRun]
@@ -522,13 +921,109 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
   useEffect(() => {
     if (initialQuery !== prevInitialQueryRef.current) {
       prevInitialQueryRef.current = initialQuery;
-      setQuery(initialQuery);
-      queryRef.current = initialQuery;
-      if (autoRun && initialQuery.trim()) {
-        handleRun(initialQuery, true);
+      const targetTable = extractTableNameFromSql(initialQuery);
+
+      if (targetTable !== 'unknown') {
+        const existingWs = worksheetsRef.current.find(
+          (w) => w.title.toLowerCase() === targetTable.toLowerCase()
+        );
+
+        if (existingWs) {
+          handleSelectWorksheet(existingWs.id);
+          setQuery(initialQuery);
+          queryRef.current = initialQuery;
+          setWorksheets((prev) =>
+            prev.map((w) => (w.id === existingWs.id ? { ...w, query: initialQuery } : w))
+          );
+          if (autoRun && initialQuery.trim()) {
+            handleRun(initialQuery, true);
+          }
+        } else {
+          const currentActiveId = activeWorksheetIdRef.current;
+          const currentSnapshot: Partial<QueryWorksheet> = {
+            query: queryRef.current,
+            result: resultRef.current,
+            safeLimit: safeLimitRef.current,
+            safeLimitNotice: safeLimitNoticeRef.current,
+            pageIndex: pageIndexRef.current,
+            pageSize: pageSizeRef.current,
+            totalRows: totalRowsRef.current,
+            error: errorRef.current,
+            explainPlan: explainPlanRef.current,
+          };
+
+          worksheetCounterRef.current += 1;
+          const newId = `ws-${Date.now()}-${worksheetCounterRef.current}`;
+          const newWs: QueryWorksheet = {
+            id: newId,
+            title: targetTable,
+            query: initialQuery,
+            result: null,
+            safeLimit: 500,
+            safeLimitNotice: null,
+            pageIndex: 0,
+            pageSize: 50,
+            totalRows: null,
+            error: null,
+            explainPlan: null,
+          };
+
+          setWorksheets((prev) => [
+            ...prev.map((w) => (w.id === currentActiveId ? { ...w, ...currentSnapshot } : w)),
+            newWs,
+          ]);
+
+          setActiveWorksheetId(newId);
+          activeWorksheetIdRef.current = newId;
+
+          setQuery(initialQuery);
+          queryRef.current = initialQuery;
+
+          setResult(null);
+          resultRef.current = null;
+
+          setSafeLimit(500);
+          safeLimitRef.current = 500;
+
+          setSafeLimitNotice(null);
+          safeLimitNoticeRef.current = null;
+
+          setPageIndex(0);
+          pageIndexRef.current = 0;
+
+          setPageSize(50);
+          pageSizeRef.current = 50;
+
+          setTotalRows(null);
+          totalRowsRef.current = null;
+
+          setError(null);
+          errorRef.current = null;
+
+          setExplainPlan(null);
+          explainPlanRef.current = null;
+
+          setSelectedCell(null);
+          setSaveStatus(null);
+
+          if (autoRun && initialQuery.trim()) {
+            handleRun(initialQuery, true);
+          }
+        }
+      } else {
+        setQuery(initialQuery);
+        queryRef.current = initialQuery;
+        setWorksheets((prev) =>
+          prev.map((w) =>
+            w.id === activeWorksheetIdRef.current ? { ...w, query: initialQuery } : w
+          )
+        );
+        if (autoRun && initialQuery.trim()) {
+          handleRun(initialQuery, true);
+        }
       }
     }
-  }, [initialQuery, autoRun, handleRun]);
+  }, [initialQuery, autoRun, handleRun, handleSelectWorksheet]);
 
   // Handle autoRun on initial mount
   const hasAutoRunOnMount = useRef(false);
@@ -586,6 +1081,12 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
     try {
       const plan = await api.explainQuery(sqlToExplain);
       setExplainPlan(plan);
+      explainPlanRef.current = plan;
+      setWorksheets((prev) =>
+        prev.map((ws) =>
+          ws.id === activeWorksheetIdRef.current ? { ...ws, explainPlan: plan } : ws
+        )
+      );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setExplainError(msg || 'Failed to analyze query execution plan');
@@ -602,10 +1103,59 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
    */
   const handleEditorDidMount: OnMount = useCallback(
     (editor, monaco) => {
+      editorRef.current = editor;
+
       // Register Ctrl+Enter / Cmd+Enter shortcut
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
         handleRun();
       });
+
+      // Track cursor selection for Run Selection vs Run Query
+      if (editor.onDidChangeCursorSelection) {
+        selectionListenerRef.current?.dispose();
+        selectionListenerRef.current = editor.onDidChangeCursorSelection(() => {
+          const sel = editor.getSelection ? editor.getSelection() : null;
+          const model = editor.getModel ? editor.getModel() : null;
+          const isSelEmpty =
+            !sel || (typeof sel.isEmpty === 'function' ? sel.isEmpty() : true);
+          if (!isSelEmpty && model && typeof model.getValueInRange === 'function') {
+            const selectedText = model.getValueInRange(sel).trim();
+            setHasSelection(selectedText.length > 0);
+          } else {
+            setHasSelection(false);
+          }
+        });
+      }
+
+      // Register Monaco document formatting edit provider for SQL
+      if (
+        !formattingProviderRef.current &&
+        monaco?.languages?.registerDocumentFormattingEditProvider
+      ) {
+        formattingProviderRef.current = monaco.languages.registerDocumentFormattingEditProvider(
+          'sql',
+          {
+            provideDocumentFormattingEdits: (model: any) => {
+              const fullSql = model.getValue();
+              const formatted = formatSql(fullSql);
+              const fullRange = model.getFullModelRange
+                ? model.getFullModelRange()
+                : {
+                    startLineNumber: 1,
+                    startColumn: 1,
+                    endLineNumber: model.getLineCount ? model.getLineCount() : 1,
+                    endColumn: 1000,
+                  };
+              return [
+                {
+                  range: fullRange,
+                  text: formatted,
+                },
+              ];
+            },
+          }
+        );
+      }
 
       // Register schema-aware SQL completion provider
       if (!completionProviderRef.current && monaco?.languages?.registerCompletionItemProvider) {
@@ -657,6 +1207,16 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
       onKeyDown={handleContainerKeyDown}
       tabIndex={-1}
     >
+      {/* Horizontal Multi-Tab SQL Worksheets Bar */}
+      <QueryWorksheetBar
+        worksheets={worksheets}
+        activeId={activeWorksheetId}
+        onSelect={handleSelectWorksheet}
+        onAdd={handleAddWorksheet}
+        onClose={handleCloseWorksheet}
+        onRename={handleRenameWorksheet}
+      />
+
       {/* Top Toolbar */}
       <div className="h-10 p-2 bg-[#26282d] border-b border-[#35373c] flex items-center justify-between shrink-0">
         <div className="flex items-center space-x-3">
@@ -669,14 +1229,41 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
             type="button"
             onClick={() => handleRun()}
             disabled={isLoading}
-            className="flex items-center space-x-1.5 bg-[#3a82f7] hover:bg-[#2b6fd6] text-white px-3 py-1 rounded font-semibold disabled:opacity-50 transition-colors shadow-xs cursor-pointer"
+            className={
+              'flex items-center space-x-1.5 bg-[#3a82f7] hover:bg-[#2b6fd6] ' +
+              'text-white px-3 py-1 rounded font-semibold disabled:opacity-50 ' +
+              'transition-colors shadow-xs cursor-pointer'
+            }
+            title={hasSelection ? 'Execute highlighted SQL query' : 'Execute full query'}
           >
             {isLoading ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
             ) : (
               <Play className="w-3.5 h-3.5 fill-current" />
             )}
-            <span>{isLoading ? 'Running...' : 'Run Query (Ctrl+Enter)'}</span>
+            <span>
+              {isLoading
+                ? 'Running...'
+                : hasSelection
+                ? 'Run Selection (Ctrl+Enter)'
+                : 'Run Query (Ctrl+Enter)'}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            data-testid="format-sql-btn"
+            onClick={handleFormat}
+            disabled={!query.trim()}
+            className={
+              'flex items-center space-x-1.5 bg-[#26282d] hover:bg-[#35373c] ' +
+              'text-[#e6e8ea] px-3 py-1 rounded font-semibold border ' +
+              'border-[#35373c] disabled:opacity-50 transition-colors shadow-xs cursor-pointer'
+            }
+            title="Format SQL query (Shift+Alt+F)"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+            <span>Format</span>
           </button>
 
           <button
@@ -684,7 +1271,11 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
             data-testid="explain-plan-btn"
             onClick={handleExplain}
             disabled={isExplaining || !query.trim()}
-            className="flex items-center space-x-1.5 bg-[#26282d] hover:bg-[#35373c] text-[#e6e8ea] px-3 py-1 rounded font-semibold border border-[#35373c] disabled:opacity-50 transition-colors shadow-xs cursor-pointer"
+            className={
+              'flex items-center space-x-1.5 bg-[#26282d] hover:bg-[#35373c] ' +
+              'text-[#e6e8ea] px-3 py-1 rounded font-semibold border ' +
+              'border-[#35373c] disabled:opacity-50 transition-colors shadow-xs cursor-pointer'
+            }
             title="Analyze query execution plan (EXPLAIN)"
           >
             {isExplaining ? (
@@ -699,7 +1290,11 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
             type="button"
             data-testid="query-history-btn"
             onClick={() => setIsHistoryOpen(true)}
-            className="flex items-center space-x-1.5 bg-[#26282d] hover:bg-[#35373c] text-[#e6e8ea] px-3 py-1 rounded font-semibold border border-[#35373c] transition-colors shadow-xs cursor-pointer"
+            className={
+              'flex items-center space-x-1.5 bg-[#26282d] hover:bg-[#35373c] ' +
+              'text-[#e6e8ea] px-3 py-1 rounded font-semibold border ' +
+              'border-[#35373c] transition-colors shadow-xs cursor-pointer'
+            }
             title="View query execution history"
           >
             <History className="w-3.5 h-3.5 text-blue-400" />
@@ -715,7 +1310,16 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
             <select
               aria-label="Safe Limit"
               value={safeLimit}
-              onChange={(e) => setSafeLimit(Number(e.target.value))}
+              onChange={(e) => {
+                const newLimit = Number(e.target.value);
+                setSafeLimit(newLimit);
+                safeLimitRef.current = newLimit;
+                setWorksheets((prev) =>
+                  prev.map((ws) =>
+                    ws.id === activeWorksheetIdRef.current ? { ...ws, safeLimit: newLimit } : ws
+                  )
+                );
+              }}
               className="bg-transparent text-[#e6e8ea] text-[11px] font-mono outline-none cursor-pointer"
             >
               <option value={100} className="bg-[#1e1f22]">
@@ -815,7 +1419,16 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
           language="sql"
           theme="vs-dark"
           value={query}
-          onChange={(v) => setQuery(v || '')}
+          onChange={(v) => {
+            const nextVal = v || '';
+            setQuery(nextVal);
+            queryRef.current = nextVal;
+            setWorksheets((prev) =>
+              prev.map((ws) =>
+                ws.id === activeWorksheetIdRef.current ? { ...ws, query: nextVal } : ws
+              )
+            );
+          }}
           onMount={handleEditorDidMount}
           options={{
             minimap: { enabled: false },
