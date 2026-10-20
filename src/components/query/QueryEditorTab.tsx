@@ -28,7 +28,9 @@ import type {
   RowUpdatePayload,
   ExecutionPlanNode,
   DatabaseType,
+  DatabaseSchema,
 } from '../../types/database';
+import { buildSqlCompletions } from '../../utils/sqlCompletion';
 import { EditableDataGrid, EditableDataGridHandle } from './EditableDataGrid';
 import { ValueInspectorDrawer } from './ValueInspectorDrawer';
 import { ExportModal } from './ExportModal';
@@ -48,6 +50,8 @@ import {
 export interface QueryEditorTabProps {
   /** @brief Currently active database connection configuration or null if disconnected. */
   activeConnection?: ConnectionConfig | null;
+  /** @brief Optional active database schema containing tables and columns for autocompletion. */
+  schema?: DatabaseSchema | null;
   /** @brief Optional initial SQL query statement text. */
   initialQuery?: string;
   /** @brief Optional callback triggered upon successful query execution. */
@@ -155,6 +159,7 @@ interface SelectedCellState {
  */
 export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
   activeConnection,
+  schema,
   initialQuery = 'SELECT 1 as id, "Hello DynoDbModeler" as message;',
   onQuerySuccess,
   autoRun = false,
@@ -190,6 +195,21 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
 
   const gridRef = useRef<EditableDataGridHandle | null>(null);
   const primaryKeyCache = useRef<Map<string, string[]>>(new Map());
+
+  // Schema ref for autocomplete completion provider
+  const schemaRef = useRef(schema);
+  useEffect(() => {
+    schemaRef.current = schema;
+  }, [schema]);
+
+  const completionProviderRef = useRef<{ dispose: () => void } | null>(null);
+
+  useEffect(() => {
+    return () => {
+      completionProviderRef.current?.dispose();
+      completionProviderRef.current = null;
+    };
+  }, []);
 
   const detectedTableName = extractTableNameFromSql(query);
 
@@ -576,7 +596,7 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
 
 
   /**
-   * @brief Configures Monaco Editor keyboard shortcuts on editor mount.
+   * @brief Configures Monaco Editor keyboard shortcuts and registers SQL autocomplete provider.
    * @param editor Monaco editor instance.
    * @param monaco Global Monaco namespace.
    */
@@ -586,6 +606,35 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
         handleRun();
       });
+
+      // Register schema-aware SQL completion provider
+      if (!completionProviderRef.current && monaco?.languages?.registerCompletionItemProvider) {
+        completionProviderRef.current = monaco.languages.registerCompletionItemProvider('sql', {
+          triggerCharacters: ['.', ' '],
+          provideCompletionItems: (model: any, position: any) => {
+            const word = model.getWordUntilPosition(position);
+            const range = {
+              startLineNumber: position.lineNumber,
+              endLineNumber: position.lineNumber,
+              startColumn: word.startColumn,
+              endColumn: word.endColumn,
+            };
+            const lineContent = model.getValueInRange({
+              startLineNumber: position.lineNumber,
+              startColumn: 1,
+              endLineNumber: position.lineNumber,
+              endColumn: position.column,
+            });
+            const suggestions = buildSqlCompletions(
+              lineContent,
+              schemaRef.current ?? null,
+              range,
+              monaco
+            );
+            return { suggestions };
+          },
+        });
+      }
     },
     [handleRun]
   );
@@ -603,6 +652,7 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
 
   return (
     <div
+      data-testid="sql-query-editor-tab"
       className="flex-1 flex flex-col h-full bg-[#1e1f22] text-xs overflow-hidden select-none"
       onKeyDown={handleContainerKeyDown}
       tabIndex={-1}

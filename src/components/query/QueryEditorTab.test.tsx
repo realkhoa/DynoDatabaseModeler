@@ -12,7 +12,15 @@ import {
   updateQueryPagination,
 } from './QueryEditorTab';
 import { api } from '../../api/ipc';
-import type { ConnectionConfig } from '../../types/database';
+import type { ConnectionConfig, DatabaseSchema } from '../../types/database';
+
+const { mockCompletionDispose, mockRegisterCompletionItemProvider } = vi.hoisted(() => {
+  const mockCompletionDispose = vi.fn();
+  const mockRegisterCompletionItemProvider = vi.fn().mockImplementation(() => ({
+    dispose: mockCompletionDispose,
+  }));
+  return { mockCompletionDispose, mockRegisterCompletionItemProvider };
+});
 
 vi.mock('../../api/ipc', () => ({
   api: {
@@ -50,6 +58,9 @@ vi.mock('@monaco-editor/react', () => ({
       const mockMonaco = {
         KeyMod: { CtrlCmd: 2048 },
         KeyCode: { Enter: 3 },
+        languages: {
+          registerCompletionItemProvider: mockRegisterCompletionItemProvider,
+        },
       };
       onMount(mockEditor, mockMonaco);
     }
@@ -877,5 +888,118 @@ describe('QueryEditorTab component', () => {
       );
     });
   });
-});
+  describe('Schema-aware SQL autocompletion integration', () => {
+    const mockSchema: DatabaseSchema = {
+      database_name: 'test_db',
+      tables: [
+        {
+          name: 'customers',
+          columns: [
+            {
+              name: 'id',
+              data_type: 'Integer',
+              is_primary_key: true,
+              is_nullable: false,
+              is_auto_increment: true,
+            },
+            {
+              name: 'email',
+              data_type: { Varchar: 255 },
+              is_primary_key: false,
+              is_nullable: false,
+              is_auto_increment: false,
+            },
+          ],
+          foreign_keys: [],
+          indexes: [],
+        },
+      ],
+    };
 
+    /**
+     * @brief Verifies root container renders with data-testid="sql-query-editor-tab" and accepts schema prop.
+     */
+    it('renders root container with data-testid="sql-query-editor-tab" and accepts schema prop', () => {
+      render(
+        <QueryEditorTab
+          activeConnection={mockConnection}
+          schema={mockSchema}
+        />
+      );
+
+      const root = screen.getByTestId('sql-query-editor-tab');
+      expect(root).toBeDefined();
+    });
+
+    /**
+     * @brief Verifies Monaco completion provider is registered on editor mount and disposes on unmount.
+     */
+    it('registers Monaco completion provider on editor mount and disposes on unmount', () => {
+      const { unmount } = render(
+        <QueryEditorTab
+          activeConnection={mockConnection}
+          schema={mockSchema}
+        />
+      );
+
+      expect(mockRegisterCompletionItemProvider).toHaveBeenCalledTimes(1);
+      const [lang, provider] = mockRegisterCompletionItemProvider.mock.calls[0];
+      expect(lang).toBe('sql');
+      expect(provider.triggerCharacters).toEqual(['.', ' ']);
+      expect(typeof provider.provideCompletionItems).toBe('function');
+
+      const mockModel = {
+        getWordUntilPosition: vi.fn().mockReturnValue({ startColumn: 1, endColumn: 7 }),
+        getValueInRange: vi.fn().mockReturnValue('SELECT '),
+      };
+      const mockPosition = { lineNumber: 1, column: 8 };
+
+      const result = provider.provideCompletionItems(mockModel, mockPosition);
+      expect(result).toBeDefined();
+      expect(Array.isArray(result.suggestions)).toBe(true);
+      expect(result.suggestions.length).toBeGreaterThan(0);
+
+      unmount();
+      expect(mockCompletionDispose).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * @brief Verifies completion suggestions dynamically update when schema prop changes via ref.
+     */
+    it('updates completion suggestions when schema prop changes dynamically', () => {
+      const { rerender } = render(
+        <QueryEditorTab
+          activeConnection={mockConnection}
+          schema={null}
+        />
+      );
+
+      expect(mockRegisterCompletionItemProvider).toHaveBeenCalledTimes(1);
+      const [, provider] = mockRegisterCompletionItemProvider.mock.calls[0];
+      const mockModel = {
+        getWordUntilPosition: vi.fn().mockReturnValue({ startColumn: 1, endColumn: 5 }),
+        getValueInRange: vi.fn().mockReturnValue('FROM '),
+      };
+      const mockPosition = { lineNumber: 1, column: 6 };
+
+      const resultBefore = provider.provideCompletionItems(mockModel, mockPosition);
+      const hasCustomersBefore = resultBefore.suggestions.some(
+        (s: any) => s.label === 'customers'
+      );
+      expect(hasCustomersBefore).toBe(false);
+
+      rerender(
+        <QueryEditorTab
+          activeConnection={mockConnection}
+          schema={mockSchema}
+        />
+      );
+
+      const resultAfter = provider.provideCompletionItems(mockModel, mockPosition);
+      const hasCustomersAfter = resultAfter.suggestions.some(
+        (s: any) => s.label === 'customers'
+      );
+      expect(hasCustomersAfter).toBe(true);
+    });
+  });
+});
