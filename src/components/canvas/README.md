@@ -10,7 +10,7 @@ The `canvas` module provides an interactive, dark-themed Entity-Relationship Dia
 | Component | Responsibility |
 |---|---|
 | `ErdCanvas.tsx` | Main diagram container orchestrating React Flow, toolbar actions, edge routing, auto layout, and diagram export. |
-| `TableNode.tsx` | Custom node rendering database tables, column names, data types, primary keys (🔑), and foreign keys (🔗). |
+| `TableNode.tsx` | Custom node rendering database tables, column names, data types, primary keys (🔑), foreign keys (🔗), and direct "View Data" (👁️) trigger button. |
 | `CrowsFootEdge.tsx` | Custom SVG edge component rendering standard Crow's Foot cardinality notations (`||`, `|<`, `o<`). |
 | `StickyNoteNode.tsx` | Sticky note annotations supporting 4 color palettes (yellow, blue, green, purple), inline editing, and deletion. |
 | `GroupNode.tsx` | Bounding container frame for grouping related tables into domain modules (e.g., Auth, Billing). |
@@ -20,26 +20,30 @@ The `canvas` module provides an interactive, dark-themed Entity-Relationship Dia
 
 ## Key Capabilities
 
-### 1. Crow's Foot Cardinality Notation
+### 1. Direct Table Rows Inspection
+- Every table node header features a direct **"View Data"** (`Eye`) icon button.
+- Clicking the button automatically switches the workspace to the **SQL Query Editor**, generates a dialect-aware paginated query (`LIMIT 50 OFFSET 0` or `OFFSET 0 ROWS FETCH NEXT 50 ROWS ONLY`), and executes it immediately without manually writing SQL.
+
+### 2. Crow's Foot Cardinality Notation
 - Foreign keys can be rendered in two distinct styles via the canvas toolbar toggle:
   - **Crow's Foot**: End markers accurately illustrate zero-or-one, one-and-only-one, one-or-more, and zero-or-more cardinalities.
   - **Simple**: Clean smoothstep curves with foreign key constraint labels.
 
-### 2. Virtual Relationships (Logical Foreign Keys)
+### 3. Virtual Relationships (Logical Foreign Keys)
 - Users can drag an edge from any source column handle to a target column handle to create diagram-only relationships.
 - Virtual relations are displayed with purple dashed lines (`#a855f7`) and persisted locally per database name in browser storage (`localStorage`).
 - Deleting the edge on the canvas automatically cleans up the virtual relation.
 
-### 3. Sticky Notes & Domain Group Frames
+### 4. Sticky Notes & Domain Group Frames
 - Click **"Add Note"** to place an architectural annotation note adjacent to tables.
 - Click **"Add Group"** to define a domain cluster (e.g., "Identity & Access").
 - Double-click texts to edit inline; click palette icon to switch note colors.
 
-### 4. Interactive Schema Filtering
+### 5. Interactive Schema Filtering
 - Use the **"Filter tables..."** input in the canvas toolbar to dynamically isolate specific tables in large enterprise schemas.
 - Only matching tables and their interconnected relationship edges are rendered.
 
-### 5. Multi-Format Diagram Export
+### 6. Multi-Format Diagram Export
 - **JSON**: Exports complete normalized `DatabaseSchema` object.
 - **SVG**: Serializes the `.react-flow__viewport` into a vector graphic.
 - **PNG**: Converts canvas elements into high-resolution PNG raster image.

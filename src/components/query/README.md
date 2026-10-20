@@ -5,6 +5,8 @@ The `src/components/query` module provides an interactive SQL query workspace an
 - An embedded **Monaco Editor** with SQL syntax highlighting, line numbers, automatic layout, and `vs-dark` theme.
 - Convenient keyboard shortcuts (`Ctrl+Enter` / `Cmd+Enter`) to trigger rapid query execution directly from the editor without switching focus.
 - Top toolbar controls with execution indicators, spinner states, active database target badges, and precise query execution telemetry (rows returned and duration in milliseconds).
+- **Safe Limit Query Interceptor**: Automatically caps unbounded `SELECT` statements with a configurable row limit (100, 500, 1000, or Off; default: 500 rows) to eliminate UI freezes, IPC latency, and memory spikes when querying large enterprise tables. Displays a visual telemetry badge when applied.
+- **Server-Side Interactive Pagination Bar (`EditableDataGrid`)**: Sticky bottom pagination controls with First/Previous/Next/Last page navigation, page size selector (25, 50, 100, 200), refresh trigger, and asynchronous background `SELECT COUNT(*)` record counting.
 - **Interactive Multi-Format Data Transfer Wizard (`ExportModal`)**: Inspired by DBeaver's data export stream engine, allows exporting tabular query results to CSV, JSON, Markdown tables, and SQL INSERT statements, complete with live preview, formatting options, copy-to-clipboard, and direct file download.
 - **Deep Value Inspector Drawer (`ValueInspectorDrawer`)**: Slide-out drawer for inspecting cell contents with syntax highlighting (JSON/XML/Text/Image), edit application, and comprehensive telemetry metrics (characters, words, lines, byte size).
 - A clean, modern tabular results grid (`EditableDataGrid`) featuring inline cell editing, dirty-cell tracking, staging mutations bar, sticky headers, and smart data cell formatters for `NULL`, boolean flags, numbers, strings, and JSON objects/arrays.
@@ -15,8 +17,9 @@ The `src/components/query` module provides an interactive SQL query workspace an
 ## 2. Prerequisites & Dependencies
 - **React 19 / TypeScript 5.7+**: Frontend component architecture and strict typing.
 - **`@monaco-editor/react`**: Web-standard Monaco code editor runtime.
-- **`lucide-react`**: Clean minimalist icons (`Play`, `Loader2`, `AlertCircle`, `FileCode`, `Download`, `Eye`, `Copy`, `Check`, `FileSpreadsheet`, `FileJson`, `Database`).
+- **`lucide-react`**: Clean minimalist icons (`Play`, `Loader2`, `AlertCircle`, `FileCode`, `Download`, `Eye`, `Copy`, `Check`, `FileSpreadsheet`, `FileJson`, `Database`, `ShieldCheck`, `ShieldAlert`, `ChevronLeft`, `ChevronRight`, `ChevronsLeft`, `ChevronsRight`, `RotateCw`).
 - **`src/types/database.ts`**: Core `QueryResult` and `ConnectionConfig` models.
+- **`src/utils/sqlPagination.ts`**: Dialect-aware pagination generators (`LIMIT/OFFSET` vs `OFFSET/FETCH NEXT`), identifier escaping, safe query limit interception, and background count queries.
 - **`src/utils/dataTransfer.ts`**: High-performance serialization engines (CSV RFC 4180, JSON, Markdown, SQL INSERT).
 - **Tauri IPC (`src/api/ipc.ts`)**: Invokes backend query execution (`cmd_execute_query`) and mutation persistence (`cmd_update_rows`).
 
@@ -30,6 +33,25 @@ The `src/components/query` module provides an interactive SQL query workspace an
 | `activeConnection` | `ConnectionConfig \| null` | No | Currently active database session profile displayed in the target badge. |
 | `initialQuery` | `string` | No | Initial SQL statement loaded into the editor buffer (defaults to sample query). |
 | `onQuerySuccess` | `(result: QueryResult) => void` | No | Optional callback invoked upon successful query completion. |
+| `autoRun` | `boolean` | No | When `true`, automatically executes the query on mount or when `initialQuery` changes. |
+
+### `EditableDataGridProps` & `DataPaginationState`
+```typescript
+export interface DataPaginationState {
+  /** Zero-based index of the currently displayed page */
+  currentPage: number;
+  /** Number of rows displayed per page (e.g. 25, 50, 100, 200) */
+  pageSize: number;
+  /** Total row count across entire table or null if uncomputed */
+  totalRows?: number | null;
+  /** Callback triggered when user navigates to a new page */
+  onPageChange: (newPage: number) => void;
+  /** Callback triggered when user selects a different page size */
+  onPageSizeChange: (newPageSize: number) => void;
+  /** Optional callback triggered to reload current page dataset */
+  onRefresh?: () => void;
+}
+```
 
 ### `ExportModalProps`
 | Property | Type | Required | Description |
@@ -49,44 +71,47 @@ The `src/components/query` module provides an interactive SQL query workspace an
 | `onClose` | `() => void` | Yes | Callback invoked to close the drawer. |
 | `onApplyEdit` | `(newValue: any) => void` | No | Callback invoked to commit edited value back into the data grid. |
 
-### Data Transfer Utilities (`src/utils/dataTransfer.ts`)
-- **`exportAsCsv(columns: string[], rows: any[][], options?: CsvExportOptions): string`**:
-  Generates RFC 4180 compliant CSV output. Supports comma, semicolon, or tab delimiters, handles quotes, newlines, and provides a `quoteAll` option.
-- **`exportAsJson(columns: string[], rows: any[][], pretty?: boolean): string`**:
-  Serializes rows into an array of objects keyed by column names, with optional 2-space indentation.
-- **`exportAsMarkdown(columns: string[], rows: any[][]): string`**:
-  Generates GitHub-flavored Markdown tables with escaped pipe characters and preserved line breaks.
-- **`exportAsSqlInserts(columns: string[], rows: any[][], options: SqlExportOptions): string`**:
-  Generates dialect-safe SQL INSERT statements with escaped string literals, boolean keywords, and numeric formatting.
-- **`downloadExportFile(content: string, filename: string, mimeType: string): void`**:
-  Triggers a client-side browser file download using temporary `Blob` and anchor elements.
+### SQL Pagination Utilities (`src/utils/sqlPagination.ts`)
+- **`escapeIdentifier(ident: string, dbType?: DatabaseType): string`**:
+  Escapes identifiers safely for Postgres/SQLite/DuckDB (`""`), MySQL (`` ` ``), and MSSQL (`[]`).
+- **`buildPaginatedSelectQuery(tableKey: string, dbType: DatabaseType, pageSize: number, pageIndex: number, primaryKey?: string): string`**:
+  Synthesizes dialect-aware paginated SELECT queries (`LIMIT n OFFSET m` or `ORDER BY ... OFFSET m ROWS FETCH NEXT n ROWS ONLY`).
+- **`buildCountQuery(tableKey: string, dbType: DatabaseType): string`**:
+  Generates `SELECT COUNT(*) AS total_count FROM <table>;`.
+- **`applySafeLimit(sql: string, dbType: DatabaseType, limit: number): SafeLimitResult`**:
+  Analyzes user queries and injects safe limit clauses if unbounded SELECT is detected.
+- **`extractPaginationInfo(sql: string): { limit?: number; offset?: number } | null`**:
+  Parses existing limit and offset parameters from SQL strings.
 
 ---
 
 ## 4. Usage Examples
 
-### Launching Export Wizard from Results Toolbar
+### Configuring Paginated DataGrid
 ```tsx
 import React, { useState } from 'react';
-import { ExportModal } from './components/query/ExportModal';
+import { EditableDataGrid } from './components/query/EditableDataGrid';
 
-export const ResultsViewer: React.FC<{ columns: string[]; rows: any[][] }> = ({
-  columns,
-  rows,
-}) => {
-  const [isExportOpen, setIsExportOpen] = useState(false);
+export const TableRowsViewer: React.FC = () => {
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(50);
 
   return (
-    <div>
-      <button onClick={() => setIsExportOpen(true)}>Export Data</button>
-      <ExportModal
-        isOpen={isExportOpen}
-        tableName="customers"
-        columns={columns}
-        rows={rows}
-        onClose={() => setIsExportOpen(false)}
-      />
-    </div>
+    <EditableDataGrid
+      columns={['id', 'username', 'email']}
+      rows={[[1, 'john_doe', 'john@example.com']]}
+      pagination={{
+        currentPage: page,
+        pageSize: pageSize,
+        totalRows: 1250,
+        onPageChange: (newPage) => setPage(newPage),
+        onPageSizeChange: (newSize) => {
+          setPageSize(newSize);
+          setPage(0);
+        },
+        onRefresh: () => console.log('Reloading data...'),
+      }}
+    />
   );
 };
 ```
@@ -108,15 +133,9 @@ export interface QueryResult {
 }
 ```
 
-Export formats produce the following structure:
-- **CSV**: Comma/Semicolon/Tab-separated values with RFC 4180 quotes for delimiters, quotes (`""`), and multiline strings.
-- **JSON**: Valid JSON array of row objects `[{ "col1": "val1" }, ...]`.
-- **Markdown**: GFM table `| col1 | col2 |\n| --- | --- |\n| val1 | val2 |`.
-- **SQL INSERT**: `INSERT INTO table_name (col1, col2) VALUES ('val1', 123);`.
-
 ---
 
 ## 6. Troubleshooting & Edge Cases
 - **No Active Connection**: Running queries without an active connection will return backend error diagnostics; the toolbar displays a helper hint recommending connection to a target database.
-- **Large Result Sets in Export**: The modal preview displays up to the first 50 rows for optimal UI responsiveness, while the "Download File" and "Copy to Clipboard" operations always operate on the entire dataset.
-- **Cell Value Escaping**: Markdown export escapes internal `|` characters as `\|` and newline characters as `<br/>` to avoid breaking table layout. SQL INSERT statements double single quotes (`''`) to ensure valid literal syntax.
+- **Safe Limit on Large Tables**: When querying tables with millions of rows, the default Safe Limit (500 rows) automatically intercepts the query, preventing browser freezes and memory exhaustion. Toggle to "Off" in the toolbar if you specifically require unbounded raw data retrieval.
+- **Server Count Fallback**: If `SELECT COUNT(*)` fails due to lack of permission on a complex view, `totalRows` gracefully falls back to `null`, displaying "Showing N rows" with Previous/Next buttons continuing to operate seamlessly.
