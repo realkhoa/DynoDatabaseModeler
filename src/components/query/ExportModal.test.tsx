@@ -122,7 +122,9 @@ describe('ExportModal component', () => {
     // Switch to SQL
     fireEvent.click(screen.getByRole('tab', { name: /sql/i }));
     preview = screen.getByTestId('export-preview');
-    expect(preview.textContent).toContain("INSERT INTO users (id, name, status) VALUES (1, 'Alice', 'active');");
+    expect(preview.textContent).toContain(
+      "INSERT INTO \"users\" (\"id\", \"name\", \"status\") VALUES (1, 'Alice', 'active');"
+    );
   });
 
   it('allows customizing SQL table name and reflects in SQL preview', () => {
@@ -141,7 +143,9 @@ describe('ExportModal component', () => {
     fireEvent.change(tableNameInput, { target: { value: 'custom_customers' } });
 
     const preview = screen.getByTestId('export-preview');
-    expect(preview.textContent).toContain("INSERT INTO custom_customers (id, name, status)");
+    expect(preview.textContent).toContain(
+      "INSERT INTO \"custom_customers\" (\"id\", \"name\", \"status\")"
+    );
   });
 
   it('copies export content to clipboard and shows temporary feedback', async () => {

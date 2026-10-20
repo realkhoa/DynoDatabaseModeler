@@ -196,14 +196,17 @@ async fn test_app_state_generate_ddl_with_active_dialect() {
         foreign_keys: vec![],
         indexes: vec![],
         ui_position: None,
+        rename_from: None,
+        unsupported_features: vec![],
     });
 
-    let ddl_stmts = state
+    let ddl = state
         .generate_ddl(&diff)
         .await
         .expect("Failed to generate DDL");
-    assert_eq!(ddl_stmts.len(), 1);
-    assert!(ddl_stmts[0].contains("CREATE TABLE \"products\""));
+    assert_eq!(ddl.statements.len(), 1);
+    assert!(ddl.statements[0].contains("CREATE TABLE \"products\""));
+    assert!(ddl.warnings.is_empty());
 }
 
 /// @brief Tests cmd_test_connection with a valid SQLite configuration.
@@ -260,6 +263,8 @@ async fn test_cmd_compute_diff() {
             foreign_keys: vec![],
             indexes: vec![],
             ui_position: None,
+            rename_from: None,
+            unsupported_features: vec![],
         }],
     };
 
@@ -268,4 +273,76 @@ async fn test_cmd_compute_diff() {
         .expect("Failed to compute diff");
     assert_eq!(diff.tables_to_create.len(), 1);
     assert_eq!(diff.tables_to_create[0].name, "users");
+}
+
+/// @brief Tests that query history survives an application restart.
+/// @details Query history must be file backed: an in-memory database is destroyed as soon as the
+/// pool recycles its connection, after which every history call fails and all history is lost on
+/// exit.
+#[tokio::test]
+async fn test_query_history_survives_restart() {
+    let dir = std::env::temp_dir().join(format!("dyno-history-test-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&dir).expect("create temp storage dir");
+
+    // First "session": record one query, then drop the whole application state.
+    {
+        let state = AppState::default();
+        state.configure_storage(dir.clone());
+        state
+            .record_query_history("SELECT 1", 3, 1, "success")
+            .await
+            .expect("record history");
+        let history = state.get_query_history(10).await.expect("read history");
+        assert_eq!(history.len(), 1);
+    }
+
+    // Second "session": a fresh AppState pointed at the same directory must see the record.
+    let restarted = AppState::default();
+    restarted.configure_storage(dir.clone());
+    let history = restarted
+        .get_query_history(10)
+        .await
+        .expect("read history after restart");
+    assert_eq!(history.len(), 1, "history must survive a restart");
+    assert_eq!(history[0].query_text, "SELECT 1");
+
+    // The history file must exist on disk, not in memory.
+    assert!(
+        dir.join("history.db").exists(),
+        "history.db must be a real file"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// @brief Tests that the history table is recreated if the storage file is replaced at runtime.
+#[tokio::test]
+async fn test_query_history_recovers_when_table_disappears() {
+    let dir = std::env::temp_dir().join(format!("dyno-history-recover-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&dir).expect("create temp storage dir");
+
+    let state = AppState::default();
+    state.configure_storage(dir.clone());
+    state
+        .record_query_history("SELECT 1", 1, 1, "success")
+        .await
+        .expect("record history");
+
+    // Simulate the schema vanishing underneath the cached pool by deleting the table directly.
+    {
+        let pool = state.get_or_init_storage().await.expect("storage pool");
+        sqlx::query("DROP TABLE query_history")
+            .execute(&pool)
+            .await
+            .expect("drop history table");
+    }
+
+    // The next call must recreate the schema and succeed rather than failing permanently.
+    let history = state
+        .get_query_history(10)
+        .await
+        .expect("history read must self-heal");
+    assert!(history.is_empty());
+
+    let _ = std::fs::remove_dir_all(&dir);
 }

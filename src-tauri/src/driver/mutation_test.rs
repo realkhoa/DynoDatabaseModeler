@@ -233,7 +233,10 @@ async fn test_update_rows_rollback_on_invalid_column() {
     ];
 
     let result = driver.update_rows(batch).await;
-    assert!(result.is_err(), "Expected batch update to fail on invalid column");
+    assert!(
+        result.is_err(),
+        "Expected batch update to fail on invalid column"
+    );
 
     // CRITICAL: Verify transaction rollback - row 1 must still have original price 15.5
     let r1 = driver

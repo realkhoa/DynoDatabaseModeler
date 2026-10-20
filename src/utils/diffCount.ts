@@ -1,15 +1,16 @@
 /**
  * @file diffCount.ts
  * @brief Utility calculating pending structural schema differences between live and desired schemas.
- * @details Evaluates created tables, dropped tables, added columns, dropped columns,
- * altered columns, and foreign key modifications between two schema snapshots.
+ * @details Mirrors the backend diff engine: tables are matched by fully-qualified identity,
+ * user-recorded renames count as one change instead of a destructive drop plus create, and column
+ * comparisons follow the same field set the backend uses.
  */
 
-import type { DatabaseSchema } from '../types/database';
+import type { DatabaseSchema, TableSchema } from '../types/database';
+import { tableKey } from '../types/database';
 
 /**
  * @brief Computes the count of structural differences between live and desired database schemas.
- * @details Compares tables, columns, column attributes, and foreign keys between the schemas.
  * @param live Live database schema introspected from the target database, or null/undefined.
  * @param desired Target working database schema modified in the diagram canvas, or null/undefined.
  * @return Total integer count of pending structural changes.
@@ -24,112 +25,113 @@ export function computePendingChangesCount(
 
   let count = 0;
 
-  // 1. Tables to create: in desired but not in live
-  const liveTableMap = new Map(live.tables.map((t) => [t.name, t]));
-  const desiredTableMap = new Map(desired.tables.map((t) => [t.name, t]));
+  const liveTables = new Map<string, TableSchema>(
+    live.tables.map((t) => [tableKey(t), t])
+  );
+  const claimed = new Set<string>();
 
-  for (const [name] of desiredTableMap) {
-    if (!liveTableMap.has(name)) {
-      count++;
+  // 1. Match desired tables to live counterparts, honouring recorded renames.
+  const matched: Array<{ liveTable: TableSchema; desiredTable: TableSchema }> = [];
+  const toCreate: TableSchema[] = [];
+
+  for (const desiredTable of desired.tables) {
+    const key = tableKey(desiredTable);
+    const renameSource = desiredTable.rename_from;
+
+    let liveTable: TableSchema | undefined;
+    if (renameSource && liveTables.has(renameSource) && !claimed.has(renameSource)) {
+      liveTable = liveTables.get(renameSource);
+    } else if (liveTables.has(key) && !claimed.has(key)) {
+      liveTable = liveTables.get(key);
+    }
+
+    if (liveTable) {
+      const liveKey = tableKey(liveTable);
+      claimed.add(liveKey);
+      matched.push({ liveTable, desiredTable });
+      if (liveKey !== key) {
+        // A rename is a single non-destructive change.
+        count += 1;
+      }
+    } else {
+      toCreate.push(desiredTable);
     }
   }
 
-  // 2. Tables to drop: in live but not in desired
-  for (const [name] of liveTableMap) {
-    if (!desiredTableMap.has(name)) {
-      count++;
+  // 2. Tables only present in the desired schema.
+  count += toCreate.length;
+
+  // 3. Tables only present in the live schema are drops.
+  for (const [key] of liveTables) {
+    if (!claimed.has(key)) {
+      count += 1;
     }
   }
 
-  // 3. For tables existing in both: compare columns and foreign keys
-  for (const [name, desiredTable] of desiredTableMap) {
-    const liveTable = liveTableMap.get(name);
-    if (!liveTable) {
-      continue;
-    }
-
+  // 4. Per-table column and foreign key comparison for surviving tables.
+  for (const { liveTable, desiredTable } of matched) {
     const liveColMap = new Map(liveTable.columns.map((c) => [c.name, c]));
     const desiredColMap = new Map(desiredTable.columns.map((c) => [c.name, c]));
 
-    // Columns to add
     for (const [colName] of desiredColMap) {
       if (!liveColMap.has(colName)) {
-        count++;
+        count += 1;
       }
     }
 
-    // Columns to drop
     for (const [colName] of liveColMap) {
       if (!desiredColMap.has(colName)) {
-        count++;
+        count += 1;
       }
     }
 
-    // Columns to alter
     for (const [colName, desiredCol] of desiredColMap) {
       const liveCol = liveColMap.get(colName);
       if (!liveCol) {
         continue;
       }
-
-      const typeChanged =
-        JSON.stringify(liveCol.data_type) !== JSON.stringify(desiredCol.data_type);
-      const nullableChanged = liveCol.is_nullable !== desiredCol.is_nullable;
-      const pkChanged = liveCol.is_primary_key !== desiredCol.is_primary_key;
-      const autoIncChanged = liveCol.is_auto_increment !== desiredCol.is_auto_increment;
-      const defaultChanged = liveCol.default_value !== desiredCol.default_value;
-
-      if (typeChanged || nullableChanged || pkChanged || autoIncChanged || defaultChanged) {
-        count++;
+      const changed =
+        JSON.stringify(liveCol.data_type) !== JSON.stringify(desiredCol.data_type) ||
+        liveCol.is_nullable !== desiredCol.is_nullable ||
+        liveCol.is_primary_key !== desiredCol.is_primary_key ||
+        liveCol.is_auto_increment !== desiredCol.is_auto_increment ||
+        liveCol.default_value !== desiredCol.default_value;
+      if (changed) {
+        count += 1;
       }
     }
 
-    // Foreign keys
-    const liveFkMap = new Map(
-      liveTable.foreign_keys.map((fk) => [
-        fk.constraint_name || `${fk.source_column}->${fk.target_table}.${fk.target_column}`,
-        fk,
-      ])
-    );
-    const desiredFkMap = new Map(
-      desiredTable.foreign_keys.map((fk) => [
-        fk.constraint_name || `${fk.source_column}->${fk.target_table}.${fk.target_column}`,
-        fk,
-      ])
-    );
-
-    // Foreign keys to add
-    for (const [fkKey] of desiredFkMap) {
-      if (!liveFkMap.has(fkKey)) {
-        count++;
+    for (const desiredFk of desiredTable.foreign_keys) {
+      if (!liveTable.foreign_keys.some((fk) => fk === desiredFk || sameFk(fk, desiredFk))) {
+        count += 1;
       }
     }
-
-    // Foreign keys to drop
-    for (const [fkKey] of liveFkMap) {
-      if (!desiredFkMap.has(fkKey)) {
-        count++;
-      }
-    }
-
-    // Foreign keys altered (same key name but changed parameters)
-    for (const [fkKey, desiredFk] of desiredFkMap) {
-      const liveFk = liveFkMap.get(fkKey);
-      if (!liveFk) {
-        continue;
-      }
-
-      if (
-        liveFk.on_delete !== desiredFk.on_delete ||
-        liveFk.on_update !== desiredFk.on_update ||
-        liveFk.source_column !== desiredFk.source_column ||
-        liveFk.target_column !== desiredFk.target_column ||
-        liveFk.target_table !== desiredFk.target_table
-      ) {
-        count++;
+    for (const liveFk of liveTable.foreign_keys) {
+      if (!desiredTable.foreign_keys.some((fk) => fk === liveFk || sameFk(fk, liveFk))) {
+        count += 1;
       }
     }
   }
 
   return count;
+}
+
+/**
+ * @brief Compares two foreign key definitions by identity and target.
+ * @param a First foreign key definition.
+ * @param b Second foreign key definition.
+ * @return `true` when both describe the same constraint with identical rules.
+ */
+function sameFk(
+  a: { constraint_name: string; source_column: string; target_table: string; target_column: string; on_delete: string; on_update: string },
+  b: { constraint_name: string; source_column: string; target_table: string; target_column: string; on_delete: string; on_update: string }
+): boolean {
+  return (
+    a.constraint_name === b.constraint_name &&
+    a.source_column === b.source_column &&
+    a.target_table === b.target_table &&
+    a.target_column === b.target_column &&
+    a.on_delete === b.on_delete &&
+    a.on_update === b.on_update
+  );
 }

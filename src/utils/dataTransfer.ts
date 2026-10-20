@@ -176,6 +176,9 @@ export function exportAsMarkdown(columns: string[], rows: any[][]): string {
 
 /**
  * @brief Formats a value into a dialect-safe SQL literal.
+ * @details Single quotes are doubled and backslashes are escaped by doubling as well, so the literal
+ * stays correct for servers that treat backslash as an escape character
+ * (`standard_conforming_strings = off`, MySQL's default).
  * @param val Arbitrary cell value.
  * @return SQL literal string.
  */
@@ -203,8 +206,21 @@ function formatSqlLiteral(val: any): string {
     strVal = String(val);
   }
 
-  const escaped = strVal.replace(/'/g, "''");
+  const escaped = strVal.replace(/\\/g, '\\\\').replace(/'/g, "''");
   return `'${escaped}'`;
+}
+
+/**
+ * @brief Quotes an identifier for use in generated SQL.
+ * @details Identifiers are wrapped in double quotes with embedded quotes doubled, which is accepted
+ * by PostgreSQL, SQLite, MySQL (with ANSI_QUOTES off MySQL still accepts double quotes for
+ * identifiers) and most tooling. Reserved words such as `order` or `select` therefore stay usable
+ * as column names.
+ * @param identifier Raw identifier text.
+ * @return Double-quoted identifier.
+ */
+function quoteSqlIdentifier(identifier: string): string {
+  return `"${identifier.replace(/"/g, '""')}"`;
 }
 
 /**
@@ -223,8 +239,12 @@ export function exportAsSqlInserts(
     return '';
   }
 
-  const targetTable = options.tableName.trim() || 'exported_table';
-  const colList = columns.join(', ');
+  const rawTable = options.tableName.trim() || 'exported_table';
+  const targetTable = rawTable
+    .split('.')
+    .map((part) => quoteSqlIdentifier(part))
+    .join('.');
+  const colList = columns.map(quoteSqlIdentifier).join(', ');
 
   const statements = rows.map((row) => {
     const valList = columns

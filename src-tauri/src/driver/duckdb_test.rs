@@ -69,7 +69,9 @@ async fn test_duckdb_in_memory_workflow() {
 
     // Insert sample data
     let _insert_res = driver
-        .execute_query("INSERT INTO analytics VALUES (1, 'cpu_usage', 72.5), (2, 'memory_usage', 45.0)")
+        .execute_query(
+            "INSERT INTO analytics VALUES (1, 'cpu_usage', 72.5), (2, 'memory_usage', 45.0)",
+        )
         .await
         .expect("Insert query");
 
@@ -93,6 +95,7 @@ async fn test_duckdb_in_memory_workflow() {
         table: "analytics".to_string(),
         primary_keys: pks,
         updated_values: modified,
+        expect_single_row: true,
     }];
 
     let affected = driver.update_rows(updates).await.expect("Update rows");
@@ -105,10 +108,16 @@ async fn test_duckdb_in_memory_workflow() {
         .expect("Verify query");
     assert_eq!(check_res.rows[0][0], json!(88.5));
 
-    // Explain query
+    // Explain query returns a real operator tree parsed from EXPLAIN (FORMAT JSON)
     let plan = driver
         .explain_query("SELECT * FROM analytics WHERE score > 50")
         .await
         .expect("Explain query");
-    assert_eq!(plan.node_type, "DuckDB Physical Plan");
+    assert_eq!(plan.node_type, "PROJECTION");
+    assert_eq!(plan.children.len(), 1);
+    let scan = &plan.children[0];
+    assert_eq!(scan.node_type, "SEQ_SCAN");
+    assert_eq!(scan.relation_name.as_deref(), Some("analytics"));
+    assert_eq!(scan.detail.as_deref(), Some("score>50.0"));
+    assert_eq!(scan.rows, 1);
 }

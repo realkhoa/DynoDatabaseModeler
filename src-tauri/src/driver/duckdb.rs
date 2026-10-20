@@ -12,7 +12,8 @@ use std::time::Instant;
 use tokio::sync::Mutex;
 
 use super::{
-    DatabaseDriver, ExecutionPlanNode, MigrationReport, QueryResult, RowUpdatePayload,
+    is_row_returning, parse_referential_action, DatabaseDriver, ExecutionPlanNode, MigrationReport,
+    QueryResult, RowUpdatePayload,
 };
 use crate::error::AppError;
 use crate::model::connection::{ConnectionConfig, DatabaseType};
@@ -31,11 +32,13 @@ impl DuckDbDriver {
     pub async fn connect(config: &ConnectionConfig) -> Result<Self, AppError> {
         let path = config.file_path.as_deref().unwrap_or(":memory:");
         let conn = if path == ":memory:" || path.trim().is_empty() {
-            Connection::open_in_memory()
-                .map_err(|e| AppError::Connection(format!("Failed to open DuckDB in-memory: {}", e)))?
+            Connection::open_in_memory().map_err(|e| {
+                AppError::Connection(format!("Failed to open DuckDB in-memory: {}", e))
+            })?
         } else {
-            Connection::open(path)
-                .map_err(|e| AppError::Connection(format!("Failed to open DuckDB file '{}': {}", path, e)))?
+            Connection::open(path).map_err(|e| {
+                AppError::Connection(format!("Failed to open DuckDB file '{}': {}", path, e))
+            })?
         };
 
         Ok(Self {
@@ -69,6 +72,34 @@ fn duck_val_to_json(val: DuckValue) -> serde_json::Value {
     }
 }
 
+/// @brief Converts a JSON value into a boxed DuckDB parameter.
+/// @param val Reference to serde_json::Value to convert.
+/// @return Boxed parameter ready to be bound to a prepared statement.
+fn json_to_duck_param(val: &serde_json::Value) -> Box<dyn duckdb::ToSql> {
+    match val {
+        serde_json::Value::Null => Box::new(Option::<String>::None),
+        serde_json::Value::Bool(b) => Box::new(*b),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Box::new(i)
+            } else if let Some(f) = n.as_f64() {
+                Box::new(f)
+            } else {
+                Box::new(n.to_string())
+            }
+        }
+        serde_json::Value::String(s) => Box::new(s.clone()),
+        other => Box::new(other.to_string()),
+    }
+}
+
+/// @brief Quotes a SQL identifier with double quotes, escaping embedded quotes.
+/// @param ident Identifier to quote.
+/// @return Double-quoted identifier.
+fn duck_quote_ident(ident: &str) -> String {
+    format!("\"{}\"", ident.replace('"', "\"\""))
+}
+
 /// @brief Normalizes raw DuckDB data type strings into CanonicalType representations.
 /// @param raw DuckDB data type name.
 /// @return Normalized CanonicalType.
@@ -87,7 +118,10 @@ pub fn parse_duckdb_type(raw: &str) -> CanonicalType {
         CanonicalType::Double
     } else if upper.starts_with("BOOL") {
         CanonicalType::Boolean
-    } else if upper.starts_with("VARCHAR") || upper.starts_with("TEXT") || upper.starts_with("STRING") {
+    } else if upper.starts_with("VARCHAR")
+        || upper.starts_with("TEXT")
+        || upper.starts_with("STRING")
+    {
         CanonicalType::Text
     } else if upper.starts_with("DATE") {
         CanonicalType::Date
@@ -111,6 +145,84 @@ pub fn parse_duckdb_type(raw: &str) -> CanonicalType {
     }
 }
 
+/// @brief Recursively converts a DuckDB JSON plan node into an ExecutionPlanNode.
+/// @details DuckDB returns the plan as a single-element array whose nodes expose `name`,
+/// `children` and `extra_info`. `extra_info` carries the accessed relation qualified as
+/// `catalog.schema.table`, the estimated cardinality and the projection list.
+/// @param val Reference to a plan node object.
+/// @return Populated ExecutionPlanNode.
+fn parse_duckdb_plan_node(val: &serde_json::Value) -> ExecutionPlanNode {
+    let node_type = val
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Operator")
+        .to_string();
+
+    let extra = val.get("extra_info");
+
+    // Relations are reported as catalog.schema.table; the bare table name matches the ERD node id.
+    let relation = extra
+        .and_then(|e| e.get("Table"))
+        .and_then(|v| v.as_str())
+        .map(|qualified| {
+            qualified
+                .rsplit('.')
+                .next()
+                .unwrap_or(qualified)
+                .to_string()
+        });
+
+    let rows = extra
+        .and_then(|e| e.get("Estimated Cardinality"))
+        .and_then(|v| {
+            v.as_str()
+                .and_then(|s| s.parse::<f64>().ok())
+                .or_else(|| v.as_f64())
+        })
+        .unwrap_or(0.0) as u64;
+
+    // Prefer the scan filter when present, otherwise list the projected expressions.
+    let detail = extra
+        .and_then(|e| e.get("Filters"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .or_else(|| {
+            extra
+                .and_then(|e| e.get("Projections"))
+                .and_then(|v| v.as_array())
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(|i| i.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                })
+        });
+
+    let mut node = ExecutionPlanNode::new(node_type, relation, 0.0, rows, detail);
+    if let Some(children) = val.get("children").and_then(|v| v.as_array()) {
+        for child in children {
+            node.children.push(parse_duckdb_plan_node(child));
+        }
+    }
+    node
+}
+
+/// @brief Parses a DuckDB JSON explain document into the root plan node.
+/// @details DuckDB wraps the physical plan in a single-element array, so the array is unwrapped
+/// before the recursive conversion.
+/// @param parsed Parsed JSON document returned by `EXPLAIN (FORMAT JSON)`.
+/// @return Root ExecutionPlanNode.
+fn parse_duckdb_plan_document(parsed: &serde_json::Value) -> ExecutionPlanNode {
+    match parsed {
+        serde_json::Value::Array(items) => items
+            .first()
+            .map(parse_duckdb_plan_node)
+            .unwrap_or_else(|| ExecutionPlanNode::new("Query Plan", None, 0.0, 0, None)),
+        other => parse_duckdb_plan_node(other),
+    }
+}
+
 #[async_trait]
 impl DatabaseDriver for DuckDbDriver {
     /// @brief Tests the DuckDB connection responsiveness.
@@ -122,7 +234,10 @@ impl DatabaseDriver for DuckDbDriver {
         Ok(())
     }
 
-    /// @brief Introspects tables, columns, and constraints from DuckDB information_schema.
+    /// @brief Introspects tables, columns, foreign keys, and constraints from DuckDB information_schema.
+    /// @details Numeric precision/scale are read from `information_schema.columns`, AUTOINCREMENT is
+    /// inferred from a `nextval(...)` default, and foreign keys are read through
+    /// `PRAGMA foreign_key_list` when the engine exposes it.
     /// @return Populated DatabaseSchema domain model.
     async fn introspect_schema(&self) -> Result<DatabaseSchema, AppError> {
         let conn = self.conn.lock().await;
@@ -166,24 +281,67 @@ impl DatabaseDriver for DuckDbDriver {
                 .into_iter()
                 .map(|(col_name, raw_type, not_null, dflt, is_pk)| {
                     let data_type = parse_duckdb_type(&raw_type);
+                    let is_auto_increment = dflt
+                        .as_deref()
+                        .map(|d| d.to_lowercase().contains("nextval("))
+                        .unwrap_or(false);
                     ColumnSchema {
                         name: col_name,
                         data_type,
                         is_primary_key: is_pk,
                         is_nullable: !not_null,
-                        is_auto_increment: false,
+                        is_auto_increment,
                         default_value: dflt,
                     }
                 })
                 .collect();
 
+            // Foreign keys: DuckDB exposes PRAGMA foreign_key_list on recent versions; when the
+            // engine does not support it the table simply reports no foreign keys.
+            let mut foreign_keys = Vec::new();
+            let fk_pragma = format!(
+                "PRAGMA foreign_key_list('{}')",
+                table_name.replace('\'', "''")
+            );
+            if let Ok(mut stmt) = conn.prepare(&fk_pragma) {
+                if let Ok(rows) = stmt.query_map([], |row| {
+                    let id: i64 = row.get(0)?;
+                    let target_table: String = row.get(2)?;
+                    let from_col: String = row.get(3)?;
+                    let to_col: Option<String> = row.get(4)?;
+                    let on_update: Option<String> = row.get(5)?;
+                    let on_delete: Option<String> = row.get(6)?;
+                    Ok((id, target_table, from_col, to_col, on_update, on_delete))
+                }) {
+                    for row in rows.flatten() {
+                        let (id, target_table, from_col, to_col, on_update, on_delete) = row;
+                        foreign_keys.push(ForeignKeySchema {
+                            constraint_name: format!("fk_{}_{}_{}", table_name, from_col, id),
+                            source_column: from_col,
+                            target_table,
+                            target_column: to_col.unwrap_or_else(|| "id".to_string()),
+                            on_delete: parse_referential_action(
+                                on_delete.as_deref().unwrap_or("NO ACTION"),
+                            ),
+                            on_update: parse_referential_action(
+                                on_update.as_deref().unwrap_or("NO ACTION"),
+                            ),
+                        });
+                    }
+                }
+            }
+
             tables.push(TableSchema {
                 name: table_name,
                 schema: Some("main".to_string()),
                 columns,
-                foreign_keys: vec![],
+                foreign_keys,
+                // DuckDB indexes are physical optimisations rather than schema contracts, so they
+                // are intentionally not round-tripped into generated migrations.
                 indexes: vec![],
                 ui_position: None,
+                rename_from: None,
+                unsupported_features: vec![],
             });
         }
 
@@ -194,11 +352,25 @@ impl DatabaseDriver for DuckDbDriver {
     }
 
     /// @brief Executes arbitrary SQL query against DuckDB and returns structured tabular results.
+    /// @details Row-returning statements are prepared and streamed; other statements are executed
+    /// and report the engine's affected row count.
     /// @param sql SQL query string.
     /// @return QueryResult with column names and serialized rows.
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, AppError> {
         let conn = self.conn.lock().await;
         let start = Instant::now();
+
+        if !is_row_returning(sql) {
+            let affected = conn
+                .execute(sql, [])
+                .map_err(|e| AppError::Database(format!("DuckDB execution error: {}", e)))?;
+            return Ok(QueryResult {
+                columns: vec![],
+                rows: vec![],
+                rows_affected: affected as u64,
+                execution_time_ms: start.elapsed().as_millis() as u64,
+            });
+        }
 
         let mut stmt = conn
             .prepare(sql)
@@ -210,7 +382,10 @@ impl DatabaseDriver for DuckDbDriver {
                 .query([])
                 .map_err(|e| AppError::Database(format!("DuckDB query execution error: {}", e)))?;
 
-            while let Some(row) = rows_iter.next().map_err(|e| AppError::Database(e.to_string()))? {
+            while let Some(row) = rows_iter
+                .next()
+                .map_err(|e| AppError::Database(e.to_string()))?
+            {
                 let mut row_values = Vec::new();
                 let mut col_idx = 0;
                 while let Ok(val) = row.get::<_, DuckValue>(col_idx) {
@@ -244,8 +419,9 @@ impl DatabaseDriver for DuckDbDriver {
         let conn = self.conn.lock().await;
         let start = Instant::now();
 
-        conn.execute("BEGIN TRANSACTION", [])
-            .map_err(|e| AppError::Migration(format!("Failed to begin DuckDB transaction: {}", e)))?;
+        conn.execute("BEGIN TRANSACTION", []).map_err(|e| {
+            AppError::Migration(format!("Failed to begin DuckDB transaction: {}", e))
+        })?;
 
         let mut executed = 0;
         for stmt in statements {
@@ -262,8 +438,9 @@ impl DatabaseDriver for DuckDbDriver {
             executed += 1;
         }
 
-        conn.execute("COMMIT", [])
-            .map_err(|e| AppError::Migration(format!("Failed to commit DuckDB transaction: {}", e)))?;
+        conn.execute("COMMIT", []).map_err(|e| {
+            AppError::Migration(format!("Failed to commit DuckDB transaction: {}", e))
+        })?;
 
         Ok(MigrationReport {
             success: true,
@@ -274,6 +451,9 @@ impl DatabaseDriver for DuckDbDriver {
     }
 
     /// @brief Executes batch row mutations transactionally against DuckDB tables.
+    /// @details Values are bound as statement parameters rather than interpolated, and identifiers
+    /// are quote-escaped. In strict single-row mode the batch is rolled back unless exactly one row
+    /// was affected.
     /// @param updates List of row update payloads specifying tables, PKs, and modified columns.
     /// @return Count of rows affected across updates.
     async fn update_rows(&self, updates: Vec<RowUpdatePayload>) -> Result<u64, AppError> {
@@ -291,40 +471,41 @@ impl DatabaseDriver for DuckDbDriver {
             if update.updated_values.is_empty() {
                 continue;
             }
+            if let Err(message) = update.validate_locator() {
+                let _ = conn.execute("ROLLBACK", []);
+                return Err(AppError::Database(message));
+            }
+
+            let mut parameters: Vec<Box<dyn duckdb::ToSql>> = Vec::new();
 
             let mut set_clauses = Vec::new();
             for (col, val) in &update.updated_values {
-                let escaped_val = match val {
-                    serde_json::Value::Null => "NULL".to_string(),
-                    serde_json::Value::Number(n) => n.to_string(),
-                    serde_json::Value::Bool(b) => (if *b { "true" } else { "false" }).to_string(),
-                    serde_json::Value::String(s) => format!("'{}'", s.replace('\'', "''")),
-                    other => format!("'{}'", other.to_string().replace('\'', "''")),
-                };
-                set_clauses.push(format!("\"{}\" = {}", col, escaped_val));
+                set_clauses.push(format!("{} = ?", duck_quote_ident(col)));
+                parameters.push(json_to_duck_param(val));
             }
 
             let mut where_clauses = Vec::new();
             for (pk_col, pk_val) in &update.primary_keys {
-                let escaped_pk = match pk_val {
-                    serde_json::Value::Null => "NULL".to_string(),
-                    serde_json::Value::Number(n) => n.to_string(),
-                    serde_json::Value::Bool(b) => (if *b { "true" } else { "false" }).to_string(),
-                    serde_json::Value::String(s) => format!("'{}'", s.replace('\'', "''")),
-                    other => format!("'{}'", other.to_string().replace('\'', "''")),
-                };
-                where_clauses.push(format!("\"{}\" = {}", pk_col, escaped_pk));
+                where_clauses.push(format!("{} = ?", duck_quote_ident(pk_col)));
+                parameters.push(json_to_duck_param(pk_val));
             }
 
             let sql = format!(
-                "UPDATE \"{}\" SET {} WHERE {}",
-                update.table,
+                "UPDATE {} SET {} WHERE {}",
+                duck_quote_ident(&update.table),
                 set_clauses.join(", "),
                 where_clauses.join(" AND ")
             );
 
-            match conn.execute(&sql, []) {
+            let param_refs: Vec<&dyn duckdb::ToSql> =
+                parameters.iter().map(|p| p.as_ref()).collect();
+
+            match conn.execute(&sql, param_refs.as_slice()) {
                 Ok(affected) => {
+                    if let Err(message) = update.check_affected_rows(affected as u64) {
+                        let _ = conn.execute("ROLLBACK", []);
+                        return Err(AppError::Database(message));
+                    }
                     total_affected += affected as u64;
                 }
                 Err(e) => {
@@ -344,12 +525,29 @@ impl DatabaseDriver for DuckDbDriver {
     }
 
     /// @brief Generates an execution plan tree for the provided SQL query using DuckDB EXPLAIN.
+    /// @details Requests the JSON plan so the real operator tree is returned instead of a constant
+    /// placeholder; a text plan is used as a fallback when JSON formatting is unavailable.
     /// @param sql SQL statement to explain.
     /// @return ExecutionPlanNode root representation.
     async fn explain_query(&self, sql: &str) -> Result<ExecutionPlanNode, AppError> {
         let conn = self.conn.lock().await;
-        let explain_sql = format!("EXPLAIN {}", sql);
+        let clean_sql = sql.trim().trim_end_matches(';');
+        let json_sql = format!("EXPLAIN (FORMAT JSON) {}", clean_sql);
 
+        if let Ok(mut stmt) = conn.prepare(&json_sql) {
+            if let Ok(mut rows) = stmt.query([]) {
+                if let Some(row) = rows.next().map_err(|e| AppError::Database(e.to_string()))? {
+                    if let Ok(text) = row.get::<_, String>(1) {
+                        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&text) {
+                            return Ok(parse_duckdb_plan_document(&parsed));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fallback: textual plan, surfaced as the detail of a single root node.
+        let explain_sql = format!("EXPLAIN {}", clean_sql);
         let mut stmt = conn
             .prepare(&explain_sql)
             .map_err(|e| AppError::Database(format!("DuckDB EXPLAIN prepare failed: {}", e)))?;
@@ -365,19 +563,17 @@ impl DatabaseDriver for DuckDbDriver {
             }
         }
 
-        Ok(ExecutionPlanNode {
-            node_type: "DuckDB Physical Plan".to_string(),
-            relation_name: if plan_text.is_empty() {
-                None
-            } else {
-                Some("Optimized Vectorized Pipeline".to_string())
-            },
-            cost: 10.0,
-            actual_time_ms: None,
-            rows: 100,
-            detail: None,
-            children: vec![],
-        })
+        if plan_text.trim().is_empty() {
+            return Ok(ExecutionPlanNode::new("Query Plan", None, 0.0, 0, None));
+        }
+
+        Ok(ExecutionPlanNode::new(
+            "DuckDB Physical Plan",
+            None,
+            0.0,
+            0,
+            Some(plan_text),
+        ))
     }
 
     /// @brief Reports DuckDb engine type.

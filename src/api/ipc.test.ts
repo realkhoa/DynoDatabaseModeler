@@ -84,11 +84,15 @@ describe('Tauri IPC client API', () => {
   const createMockDiff = (): SchemaDiff => ({
     tables_to_create: [],
     tables_to_drop: [],
+    tables_to_rename: [],
+    tables_to_rebuild: [],
     columns_to_add: [],
     columns_to_drop: [],
     columns_to_alter: [],
     foreign_keys_to_add: [],
     foreign_keys_to_drop: [],
+    indexes_to_create: [],
+    indexes_to_drop: [],
   });
 
   /**

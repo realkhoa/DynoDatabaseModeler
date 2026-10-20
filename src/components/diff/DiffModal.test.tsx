@@ -55,6 +55,10 @@ describe('DiffModal component', () => {
       },
     ],
     tables_to_drop: [],
+    tables_to_rename: [],
+    tables_to_rebuild: [],
+    indexes_to_create: [],
+    indexes_to_drop: [],
     columns_to_add: [
       [
         'users',
@@ -107,6 +111,10 @@ describe('DiffModal component', () => {
   const mockDestructiveDiff: SchemaDiff = {
     tables_to_create: [],
     tables_to_drop: ['legacy_logs'],
+    tables_to_rename: [],
+    tables_to_rebuild: [],
+    indexes_to_create: [],
+    indexes_to_drop: [],
     columns_to_add: [],
     columns_to_drop: [['users', 'deprecated_token']],
     columns_to_alter: [
@@ -200,15 +208,21 @@ describe('DiffModal component', () => {
 
     expect(screen.getByText('Destructive Changes Detected')).toBeDefined();
     expect(
-      screen.getByText(
-        /Dropping tables\/columns or narrowing types may cause irreversible data loss/
-      )
+      screen.getByText(/Dropping tables\/columns or narrowing types permanently destroys data/)
     ).toBeDefined();
     expect(screen.getByText(/Drop Table:/)).toBeDefined();
     expect(screen.getByText('legacy_logs')).toBeDefined();
     expect(screen.getByText('deprecated_token')).toBeDefined();
     expect(screen.getByText(/\(Destructive\)/)).toBeDefined();
     expect(screen.getByText(/Drop FK:/)).toBeDefined();
+
+    // Execution must be gated behind an explicit acknowledgement for destructive migrations.
+    const executeBtn = screen.getByRole('button', {
+      name: /Execute Migration/i,
+    }) as HTMLButtonElement;
+    expect(executeBtn.disabled).toBe(true);
+    fireEvent.click(screen.getByRole('checkbox'));
+    expect(executeBtn.disabled).toBe(false);
   });
 
   /**
@@ -228,7 +242,7 @@ describe('DiffModal component', () => {
     expect(screen.queryByText('Destructive Changes Detected')).toBeNull();
     expect(
       screen.queryByText(
-        /Dropping tables\/columns or narrowing types may cause irreversible data loss/
+        /Dropping tables\/columns or narrowing types permanently destroys data/
       )
     ).toBeNull();
   });

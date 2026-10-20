@@ -133,9 +133,9 @@ describe('dataTransfer utility functions', () => {
       );
       const lines = sql.trim().split('\n');
 
-      expect(lines[0]).toBe("INSERT INTO users (id, name, active) VALUES (1, 'Alice', TRUE);");
+      expect(lines[0]).toBe("INSERT INTO \"users\" (\"id\", \"name\", \"active\") VALUES (1, 'Alice', TRUE);");
       // Escapes single quotes by doubling them
-      expect(lines[1]).toBe("INSERT INTO users (id, name, active) VALUES (2, 'O''Connor', FALSE);");
+      expect(lines[1]).toBe("INSERT INTO \"users\" (\"id\", \"name\", \"active\") VALUES (2, 'O''Connor', FALSE);");
     });
 
     it('handles null, undefined, and complex JSON object values in SQL', () => {
@@ -145,7 +145,29 @@ describe('dataTransfer utility functions', () => {
         { tableName: 'events' }
       );
       expect(sql.trim()).toBe(
-        "INSERT INTO events (id, payload, deleted_at) VALUES (10, '{\"count\":5}', NULL);"
+        "INSERT INTO \"events\" (\"id\", \"payload\", \"deleted_at\") VALUES (10, '{\"count\":5}', NULL);"
+      );
+    });
+
+    it('escapes backslashes so literals survive non-standard-conforming servers', () => {
+      const sql = exportAsSqlInserts(
+        ['id', 'path'],
+        [[1, 'C:\\temp\\file']],
+        { tableName: 'files' }
+      );
+      expect(sql.trim()).toBe(
+        "INSERT INTO \"files\" (\"id\", \"path\") VALUES (1, 'C:\\\\temp\\\\file');"
+      );
+    });
+
+    it('quotes reserved-word identifiers and schema-qualified table names', () => {
+      const sql = exportAsSqlInserts(
+        ['order', 'select'],
+        [[1, 'x']],
+        { tableName: 'sales.order' }
+      );
+      expect(sql.trim()).toBe(
+        "INSERT INTO \"sales\".\"order\" (\"order\", \"select\") VALUES (1, 'x');"
       );
     });
 

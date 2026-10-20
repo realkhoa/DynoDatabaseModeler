@@ -5,13 +5,16 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { ConnectionModal } from './ConnectionModal';
+import { ConnectionModal, formatErrorMessage } from './ConnectionModal';
 import { api } from '../api/ipc';
 
 // Mock ipc api methods
 vi.mock('../api/ipc', () => ({
   api: {
     testConnection: vi.fn(),
+    listDatabases: vi.fn(),
+    listActiveDatabases: vi.fn(),
+    switchDatabase: vi.fn(),
   },
 }));
 
@@ -92,7 +95,7 @@ describe('ConnectionModal component', () => {
     );
 
     // Provide database name
-    const dbInput = screen.getByPlaceholderText('Database name');
+    const dbInput = screen.getByLabelText(/defaults to maintenance db/i);
     fireEvent.change(dbInput, { target: { value: 'postgres' } });
 
     const testBtn = screen.getByText('Test Connection');
@@ -122,7 +125,7 @@ describe('ConnectionModal component', () => {
     const nameInput = screen.getByLabelText(/Connection Name/i);
     fireEvent.change(nameInput, { target: { value: 'My Production PG' } });
 
-    const dbInput = screen.getByPlaceholderText('Database name');
+    const dbInput = screen.getByLabelText(/defaults to maintenance db/i);
     fireEvent.change(dbInput, { target: { value: 'prod_db' } });
 
     const connectBtn = screen.getByRole('button', { name: 'Connect' });
@@ -156,7 +159,7 @@ describe('ConnectionModal component', () => {
       />
     );
 
-    const dbInput = screen.getByPlaceholderText('Database name');
+    const dbInput = screen.getByLabelText(/defaults to maintenance db/i);
     fireEvent.change(dbInput, { target: { value: 'remote_db' } });
 
     const sshToggle = screen.getByTestId('ssh-tunnel-enable');
@@ -228,5 +231,105 @@ describe('ConnectionModal component', () => {
       );
       expect(handleClose).toHaveBeenCalled();
     });
+  });
+
+  /**
+   * @brief Verifies error message formatting unpacks serde enum objects cleanly.
+   */
+  it('formats serde error objects into readable strings instead of [object Object]', () => {
+    expect(formatErrorMessage({ Connection: 'Failed to connect to 127.0.0.1:5432' })).toBe(
+      'Connection: Failed to connect to 127.0.0.1:5432'
+    );
+    expect(formatErrorMessage(new Error('Network error'))).toBe('Network error');
+    expect(formatErrorMessage('Simple text error')).toBe('Simple text error');
+    expect(formatErrorMessage({ message: 'Explicit error message' })).toBe('Explicit error message');
+    expect(formatErrorMessage(null)).toBe('Unknown error occurred.');
+  });
+
+  /**
+   * @brief Verifies test connection failure displays formatted error message from rejected promise.
+   */
+  it('displays formatted error banner when test connection fails with serde object', async () => {
+    vi.mocked(api.testConnection).mockRejectedValueOnce({
+      Connection: 'password authentication failed for user "dyno_user"',
+    });
+
+    render(
+      <ConnectionModal
+        isOpen={true}
+        onClose={vi.fn()}
+        onConnect={vi.fn()}
+      />
+    );
+
+    const dbInput = screen.getByLabelText(/defaults to maintenance db/i);
+    fireEvent.change(dbInput, { target: { value: 'dyno_test' } });
+
+    const testBtn = screen.getByText('Test Connection');
+    fireEvent.click(testBtn);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Connection: password authentication failed for user "dyno_user"/i)
+      ).toBeDefined();
+    });
+  });
+
+  /**
+   * @brief Verifies submitting without database name defaults to 'postgres' for Postgres engine.
+   */
+  it('defaults to maintenance database postgres if left blank', async () => {
+    const handleConnect = vi.fn().mockResolvedValue(undefined);
+    const handleClose = vi.fn();
+
+    render(
+      <ConnectionModal
+        isOpen={true}
+        onClose={handleClose}
+        onConnect={handleConnect}
+      />
+    );
+
+    // Leave Database input empty
+    const connectBtn = screen.getByRole('button', { name: 'Connect' });
+    fireEvent.click(connectBtn);
+
+    await waitFor(() => {
+      expect(handleConnect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          db_type: 'Postgres',
+          database: 'postgres',
+        })
+      );
+    });
+  });
+
+  /**
+   * @brief Verifies Fetch Databases button queries api.listDatabases and allows selecting discovered DB.
+   */
+  it('discovers databases on server and allows selecting from results', async () => {
+    vi.mocked(api.listDatabases).mockResolvedValueOnce(['postgres', 'dyno_test', 'custom_db']);
+
+    render(
+      <ConnectionModal
+        isOpen={true}
+        onClose={vi.fn()}
+        onConnect={vi.fn()}
+      />
+    );
+
+    const fetchBtn = screen.getByRole('button', { name: /Fetch Databases/i });
+    fireEvent.click(fetchBtn);
+
+    await waitFor(() => {
+      expect(api.listDatabases).toHaveBeenCalledTimes(1);
+      expect(screen.getByText('dyno_test')).toBeDefined();
+      expect(screen.getByText('custom_db')).toBeDefined();
+    });
+
+    // Clicking custom_db button sets the database input
+    fireEvent.click(screen.getByRole('button', { name: 'custom_db' }));
+    const dbInput = screen.getByLabelText(/defaults to maintenance db/i) as HTMLInputElement;
+    expect(dbInput.value).toBe('custom_db');
   });
 });

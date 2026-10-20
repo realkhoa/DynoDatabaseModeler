@@ -12,11 +12,15 @@ DynoDbModeler is designed for developers, database administrators, and architect
 
 ### Key Capabilities
 - **Native Multi-Database Connectivity**: Direct asynchronous drivers for **SQLite**, **PostgreSQL**, **MySQL / MariaDB**, **Microsoft SQL Server (MSSQL)**, and **DuckDB** (analytical embedded).
-- **Reverse Engineering**: Instant live catalog introspection converting foreign keys, primary keys, and data types into an interactive ERD graph.
+- **Reverse Engineering**: Instant live catalog introspection converting foreign keys, primary keys, indexes, and data types into an interactive ERD graph.
 - **Visual Schema Modeler**: Drag-and-drop table cards powered by `@xyflow/react` with animated foreign key relation handles, inline column search, and one-click Dagre hierarchical auto-layout.
-- **Safe Bidirectional Synchronization**: Deterministic schema diffing engine highlighting added tables, altered columns, and foreign key modifications, paired with a safe transactional DDL migration runner.
-- **Interactive SQL Query Workbench**: Multi-tab Monaco Editor with SQL syntax highlighting, keyboard execution shortcuts (`Ctrl+Enter` / `Cmd+Enter`), execution timing metrics, and responsive virtualized data grids.
-- **High-Fidelity ERD Export**: Clean schema definition export in JSON format, high-resolution SVG vector diagrams, and raster PNG renderings.
+- **Rename-Safe Migrations**: Renaming a table in the modeler is recorded and applied as `ALTER TABLE ... RENAME TO`; every foreign key that referenced the old name follows it, so a rename never becomes a drop plus create.
+- **Safe Bidirectional Synchronization**: Deterministic schema diffing engine highlighting added tables, altered columns, and foreign key modifications, paired with a safe transactional DDL migration runner. Any change a dialect cannot express is reported explicitly instead of being silently skipped.
+- **Interactive SQL Query Workbench**: Multi-tab Monaco Editor with SQL syntax highlighting, keyboard execution shortcuts (`Ctrl+Enter` / `Cmd+Enter`), execution timing metrics, and responsive data grids with primary-key-verified inline editing.
+- **High-Fidelity ERD Export**: Schema definition export in JSON format, high-resolution SVG vector diagrams with inline computed styles, and raster PNG renderings.
+- **Secure Credential Handling**: Database and SSH passwords are stored in the operating system credential store (Windows Credential Manager, macOS Keychain, Linux Secret Service) and are never written to browser storage.
+- **Real SSH Bastion Tunnelling**: Database connections can be routed through an SSH bastion using genuine `direct-tcpip` forwarding with known-hosts verification.
+- **Offline by Default**: Monaco Editor and all assets are bundled locally; the application loads no executable code from a CDN and runs under a restrictive Content Security Policy.
 - **Modern Minimalist Dark UI**: Compact typography, high-contrast dark palette (`#1e1f22`, `#24262b`), and non-intrusive modal drawers.
 
 ---
@@ -77,14 +81,28 @@ DynoDbModeler employs a modern multi-process desktop architecture leveraging Tau
 
 ## 3. Multi-Database Engine Support
 
-DynoDbModeler provides first-class support for four major relational database engines:
+DynoDbModeler provides first-class support for five database engines:
 
 | Engine | Driver Crate | Introspection Source | Key Features & Safeguards |
 | :--- | :--- | :--- | :--- |
-| **SQLite** | `sqlx` (sqlite) | `sqlite_master`, `PRAGMA table_info`, `PRAGMA foreign_key_list` | File-based & `:memory:` support, foreign key pragma enforcement, transactional DDL. |
-| **PostgreSQL** | `sqlx` (postgres) | `information_schema`, `pg_catalog.pg_constraint`, `pg_attribute` | Fully-qualified schema quoting (`"schema"."table"`), CASCADE/RESTRICT referential actions. |
-| **MySQL / MariaDB** | `sqlx` (mysql) | `information_schema.tables`, `columns`, `key_column_usage` | Backtick quoting, safe `MODIFY COLUMN` omitting redundant `PRIMARY KEY` (prevents error 1068). |
-| **Microsoft SQL Server** | `tiberius` (TDS) | `sys.tables`, `sys.columns`, `sys.types`, `sys.foreign_keys` | Square bracket quoting (`[dbo].[table]`), Windows & SQL authentication, identity column mapping. |
+| **SQLite** | `sqlx` (sqlite) | `sqlite_master`, `PRAGMA table_info`/`table_xinfo`, `PRAGMA foreign_key_list`, `PRAGMA index_list` | File-based & `:memory:` support, secondary index introspection, transactional DDL with foreign keys disabled for the batch, rebuild-based column changes. |
+| **PostgreSQL** | `sqlx` (postgres) | `pg_class`/`pg_namespace`, `information_schema.columns`, `pg_constraint`, `pg_index` | Fully-qualified schema quoting (`"schema"."table"`), composite-safe foreign key introspection, numeric precision/scale, identity columns, TLS via `sslmode=require`. |
+| **MySQL / MariaDB** | `sqlx` (mysql) | `information_schema.tables`, `columns`, `key_column_usage`, `statistics` | Backtick quoting, index introspection, safe `MODIFY COLUMN` omitting redundant `PRIMARY KEY` (prevents error 1068), TLS via `MySqlSslMode::Required`. |
+| **Microsoft SQL Server** | `tiberius` (TDS) | `sys.tables`, `sys.columns`, `sys.types`, `sys.foreign_keys`, `sys.indexes` | Parameterized catalog queries, square bracket quoting (`[dbo].[table]`), `COLUMNPROPERTY` identity detection, real execution plans via `SET SHOWPLAN_XML ON`. |
+| **DuckDB** | `duckdb` (bundled) | `information_schema.tables`, `PRAGMA table_info`, `PRAGMA foreign_key_list` | In-process analytical engine (file or `:memory:`), JSON execution plans, parameterized row updates. |
+
+### Dialect Capability Notes
+
+| Change | PostgreSQL | MySQL / MariaDB | SQL Server | SQLite |
+| :--- | :--- | :--- | :--- | :--- |
+| Rename table | `ALTER TABLE … RENAME TO` | `RENAME TABLE` | `sp_rename` | `ALTER TABLE … RENAME TO` |
+| Alter column type / nullability | Native `ALTER COLUMN` (with `USING` cast) | `MODIFY COLUMN` | `ALTER COLUMN` | Full table rebuild |
+| Change default | `SET/DROP DEFAULT` | `MODIFY COLUMN` | Reported as unsupported (named constraint) | Full table rebuild |
+| Add / drop foreign key | Native | Native | Native | Full table rebuild |
+| Change primary key | Reported as unsupported | Reported as unsupported | Reported as unsupported | Full table rebuild |
+
+Anything listed as unsupported is surfaced in the migration dialog as an explicit warning; the
+application never reports a successful migration for a change that produced no SQL.
 
 ---
 
@@ -112,9 +130,23 @@ DynoDbModeler implements a safe, deterministic bidirectional synchronization wor
 ```
 
 ### Safety Features
-1. **Destructive Action Highlighting**: Dropped tables and dropped columns are clearly marked in the diff viewer before execution.
+1. **Destructive Action Highlighting**: Dropped tables, dropped columns, and narrowing alterations are marked in the diff viewer, and executing a migration that contains any of them requires an explicit acknowledgement checkbox.
 2. **Transaction Isolation**: Migration statements execute within an atomic transaction. Any syntax error or foreign key violation triggers an immediate rollback.
-3. **Foreign Key Integrity**: Generated DDL guarantees table creation before foreign key addition to prevent circular or missing reference errors.
+3. **Foreign Key Integrity**: Generated DDL guarantees table creation before foreign key addition to prevent circular or missing reference errors, and every foreign key target is stored schema-qualified.
+4. **Primary-Key-Verified Row Editing**: The data grid only enables in-place editing for a single-table `SELECT` whose table has a real primary key; each write is sent in strict single-row mode, so a locator that matches zero or several rows is rolled back instead of updating the wrong data.
+5. **Bounded Execution**: Queries, migrations, and row updates are cancelled at the application layer after a wall-clock limit (120 s for queries, 300 s for mutations) so a runaway statement cannot freeze the workbench indefinitely.
+
+---
+
+## 4b. Security Posture
+
+| Area | Implementation |
+| :--- | :--- |
+| **Credentials** | Stored in the OS credential store via the `keyring` crate. The frontend can write and delete secrets but never reads them back; connection profiles in `localStorage` never contain a password. Legacy plaintext passwords are stripped on first start. |
+| **Frontend code loading** | Monaco Editor and its workers are bundled locally; no runtime CDN fetch. A strict CSP (`script-src 'self'`, `connect-src 'self' ipc:`) blocks remote script execution even if a dependency attempts it. |
+| **SQL construction** | Row mutations use bound parameters on SQLite, PostgreSQL, MySQL and DuckDB; catalog queries are parameterized; identifiers are quote-escaped per dialect. |
+| **Host key verification** | SSH bastion connections verify the server key against `~/.ssh/known_hosts`; a changed key aborts the connection (first-use trust otherwise). |
+| **Local data** | Query history and diagram metadata live in the application data directory; published Docker development ports bind to `127.0.0.1` only. |
 
 ---
 
@@ -131,8 +163,8 @@ DynoDbModeler implements a safe, deterministic bidirectional synchronization wor
 ### Core Project Dependencies
 - **Tauri**: `tauri 2.2.0`, `@tauri-apps/api 2.2.0`
 - **Frontend UI & Visuals**: `react 19.0.0`, `@xyflow/react 12.4.2`, `lucide-react 1.16.0`, `tailwindcss 4.0.0`
-- **Code & Graph Layout**: `@monaco-editor/react 4.7.0`, `dagre 0.8.5`
-- **Backend Drivers**: `sqlx 0.8` (sqlite, postgres, mysql), `tiberius 0.12` (mssql), `tokio 1.x`
+- **Code & Graph Layout**: `monaco-editor 0.55.1` (bundled locally), `@monaco-editor/react 4.7.0`, `dagre 0.8.5`
+- **Backend Drivers**: `sqlx 0.8` (sqlite, postgres, mysql, `tls-rustls-ring`), `tiberius 0.12` (mssql), `duckdb 1.1` (bundled), `russh 0.64` (SSH tunnelling), `keyring 3` (OS credential store), `tokio 1.x`
 
 ---
 
@@ -161,23 +193,40 @@ DynoDbModeler enforces a strict zero-regression quality gate across both backend
 ```text
 [Commit / PR Gate]
    │
-   ├──▶ bun run test ──────────────────────────────▶ 87/87 Vitest Unit Tests PASS (100%)
-   ├──▶ cargo test ────────────────────────────────▶ 47/47 Rust Unit Tests PASS (100%)
+   ├──▶ bun run test ──────────────────────────────▶ 196/196 Vitest Unit Tests PASS
+   ├──▶ cargo test ────────────────────────────────▶ 82/82 Rust Unit Tests PASS
    ├──▶ cargo clippy (-D warnings) ────────────────▶ 0 Warnings
-   └──▶ bun run build (tsc + vite) ────────────────▶ Clean bundle (All chunks < 400 kB)
+   └──▶ bun run build (tsc + vite) ────────────────▶ Clean bundle (no runtime CDN)
 ```
+
+### Build Output (measured)
+
+| Asset | Size |
+| :--- | :--- |
+| `dist/assets/monaco-editor-*.js` | ~3.7 MB (editor core, SQL grammar, JSON service) |
+| `dist/assets/index-*.js` | ~450 kB (application shell) |
+| `dist/assets/xyflow-*.js` | ~190 kB |
+| `dist/assets/lucide-react-*.js` | ~34 kB |
+| **Total `dist/`** | **~5.3 MB** |
+
+Monaco is bundled rather than fetched from a CDN, which is why the editor chunk is large. Only the
+SQL grammar and the JSON language service are imported, so the TypeScript, CSS and HTML language
+workers (about 9 MB) are not shipped.
 
 ### Test Coverage Highlights
 - **Backend (`src-tauri`)**:
-  - In-memory SQLite driver introspection, query execution, and transaction rollback verification.
-  - Multi-dialect DDL generation tests across SQLite, PostgreSQL, MySQL, and MSSQL.
-  - Schema diff computation covering table additions/drops, column alterations, and foreign key modifications.
+  - In-memory and file-backed SQLite driver introspection, query execution, and transaction rollback verification.
+  - Query history persistence across simulated application restarts, including schema self-healing.
+  - Real SSH tunnel forwarding: an in-process SSH server plus a TCP echo server push bytes through `direct-tcpip`.
+  - Multi-dialect DDL generation tests across SQLite, PostgreSQL, MySQL, MSSQL, and DuckDB, including rename, rebuild and unsupported-change reporting.
+  - Schema diff computation covering table additions/drops, renames, multi-schema identity, column alterations, and foreign key modifications.
   - Tauri command execution and `AppState` transition tests.
 - **Frontend (`src`)**:
   - `ErdCanvas`: Toolbar interactions, Dagre auto-layout triggers, table drawer opening, and node positioning.
-  - `DiffModal`: Visual diff card rendering, dialect SQL display, and migration execution trigger.
-  - `QueryEditorTab`: Monaco editor rendering, SQL query execution, result table display, and timing indicators.
-  - `export`: JSON, SVG foreignObject viewport export, and PNG offscreen canvas rendering without toolbar icon bias.
+  - `DiffModal`: Visual diff card rendering, dialect SQL display, destructive-change acknowledgement gating, and migration execution.
+  - `QueryEditorTab` / `EditableDataGrid`: SQL execution, primary-key-gated editing, strict single-row payloads, and refusal of NULL keys.
+  - `export`: JSON, SVG and PNG export, including computed-style inlining.
+  - `sqlSafety`: conservative single-table editability analysis and quote-aware statement splitting.
 
 ---
 
@@ -195,26 +244,32 @@ DynoDbModeler/
 │   │   ├── HeaderBar.tsx              # Top navigation and connection status bar
 │   │   └── Sidebar.tsx                # Left navigation and table list explorer
 │   ├── types/                         # TypeScript canonical schema and driver models
-│   ├── utils/                         # Layout (Dagre), diff count, and diagram export
+│   ├── utils/                         # Layout (Dagre), diff count, SQL safety analysis,
+│   │                                  #   connection scoping, and diagram export
+│   ├── monacoSetup.ts                 # Bundled Monaco wiring (no CDN, local workers)
 │   ├── App.tsx                        # Root application shell and state orchestrator
 │   └── main.tsx                       # React DOM entry point
 ├── src-tauri/                         # Rust desktop runtime crate (Tauri v2)
 │   ├── src/
 │   │   ├── diff/                      # Schema diff comparator and DDL generators
 │   │   │   ├── ddl/                   # Dialect DDL compilers (sqlite, postgres, mysql, mssql)
-│   │   │   └── mod.rs                 # SchemaDiff engine
+│   │   │   └── mod.rs                 # SchemaDiff engine (renames, multi-schema identity)
 │   │   ├── driver/                    # Asynchronous database drivers
-│   │   │   ├── factory.rs             # Driver factory and connection dispatcher
+│   │   │   ├── factory.rs             # Driver factory, connection dispatcher, tunnel ownership
+│   │   │   ├── tunnel.rs              # SSH bastion forwarding via russh
 │   │   │   ├── sqlite.rs              # SQLite driver implementation
 │   │   │   ├── postgres.rs            # PostgreSQL driver implementation
 │   │   │   ├── mysql.rs               # MySQL / MariaDB driver implementation
-│   │   │   └── mssql.rs               # Microsoft SQL Server driver implementation
+│   │   │   ├── mssql.rs               # Microsoft SQL Server driver implementation
+│   │   │   └── duckdb.rs              # DuckDB driver implementation
 │   │   ├── model/                     # Rust canonical domain types and serialization
+│   │   ├── storage/                   # File-backed query history and OS credential storage
 │   │   ├── commands.rs                # Tauri IPC command definitions
 │   │   ├── state.rs                   # Shared thread-safe AppState manager
-│   │   └── lib.rs                     # Tauri builder and plugin setup
+│   │   └── lib.rs                     # Tauri builder, CSP-driven plugin setup
 │   ├── Cargo.toml                     # Rust workspace dependencies and build configuration
-│   └── tauri.conf.json                # Tauri v2 desktop window and security settings
+│   └── tauri.conf.json                # Tauri v2 desktop window and CSP settings
+├── docker-compose.yml                 # Loopback-bound test database environment
 ├── package.json                       # Frontend dependencies and npm/bun scripts
 ├── tsconfig.json                      # Strict TypeScript compiler options
 ├── vite.config.ts                     # Vite bundler, Vitest, and chunk splitting configuration
@@ -233,16 +288,97 @@ DynoDbModeler/
 - **Problem**: In databases utilizing multiple schemas (e.g. `sales.orders` or `[dbo].[users]`), unquoted or unqualified foreign keys can bind to the wrong default schema.
 - **Resolution**: Both the PostgreSQL and MSSQL DDL generators preserve the table's schema namespace, quoting identifiers as `"schema"."table"` or `[schema].[table]` respectively.
 
-### 3. Canvas SVG/PNG Export Selector Bias
-- **Problem**: Inspecting the root canvas element for the first `<svg>` selects the toolbar Lucide icons (such as the Plus or LayoutGrid icon) instead of the actual entity-relationship graph.
-- **Resolution**: The export utilities in `src/utils/export.ts` explicitly target the `.react-flow__viewport` container, wrapping both HTML table nodes (`.react-flow__nodes`) and SVG relationship edges (`.react-flow__edges`) inside an SVG `<foreignObject>` for high-fidelity export.
+### 3. Canvas SVG/PNG Export Styling
+- **Problem**: The ERD canvas is styled with utility classes, so exporting raw markup produced an
+  SVG or PNG that lost all styling (and rendered blank or unstyled outside the application).
+- **Resolution**: `src/utils/export.ts` resolves every element's computed style into an inline `style`
+  attribute on a clone of the `.react-flow__viewport` subtree before serializing it, so the exported
+  SVG/PNG is self-contained.
 
-### 4. Rollup Chunk Size Limit (> 500 kB)
-- **Problem**: Heavy editor and graph dependencies (`@monaco-editor/react`, `@xyflow/react`) can exceed standard single-chunk size budgets.
-- **Resolution**: Configured `build.rollupOptions.output.manualChunks` in `vite.config.ts` cleanly isolates Monaco Editor, XYFlow, and Lucide into independent chunks, keeping the main application bundle under 370 kB.
+### 4. SQLite Column Changes Require a Rebuild
+- **Problem**: SQLite cannot change a column's type, nullability or default in place, and it cannot
+  add or drop a foreign key on an existing table. Silently emitting no SQL for those changes produced
+  a migration that "succeeded" while changing nothing.
+- **Resolution**: The diff engine schedules such tables for a rebuild; the SQLite generator emits a
+  shadow-table rebuild that copies data and recreates indexes, and it disables foreign key
+  enforcement for the duration of the batch. If the table contains objects a rebuild cannot preserve
+  (triggers, CHECK constraints, generated columns, `WITHOUT ROWID`, COLLATE overrides, dependent
+  views) the rebuild is **refused with an explicit warning** rather than silently dropping them.
+
+### 5. Unsupported Changes Are Reported, Never Silently Skipped
+- **Problem**: Some changes cannot be generated safely (for example a primary key change on
+  PostgreSQL, MySQL or SQL Server, an IDENTITY change on SQL Server, or a default change backed by a
+  named T-SQL constraint). Previously these produced no SQL while the UI reported success.
+- **Resolution**: `cmd_generate_ddl` returns both `statements` and `warnings`. Warnings are shown in
+  the migration dialog, and the change list marks them separately, so the user always knows what the
+  script does and does not cover.
+
+### 6. Query Timeouts
+- **Problem**: A long-running statement had no upper bound and left the workbench unresponsive.
+- **Resolution**: Queries and execution plans are abandoned after 120 s, migrations and row updates
+  after 300 s, with an explanatory error. The database server may still be finishing the abandoned
+  statement, and the message says so; reconnect if a session stops responding.
+
+### 7. MySQL 8 `information_schema` Returns `VARBINARY`
+- **Problem**: MySQL 8.4 reports several `information_schema` string columns (`TABLE_NAME`,
+  `COLUMN_NAME`, `INDEX_NAME`, …) as `VARBINARY`. Decoding them directly as `String` failed with
+  `mismatched types … VARCHAR … VARBINARY` and aborted the whole introspection, so MySQL showed no
+  tables at all.
+- **Resolution**: Catalog string reads go through `mysql_text()`, which falls back to a UTF-8 decode
+  of the raw bytes, and catalog counters (often `BIGINT UNSIGNED`) go through `mysql_int()`.
+
+### 8. SQL Server Catalog Integer Widths
+- **Problem**: `INFORMATION_SCHEMA.COLUMNS.NUMERIC_PRECISION` is `tinyint` while
+  `NUMERIC_SCALE`/`CHARACTER_MAXIMUM_LENGTH` are `int` and `COLUMNPROPERTY` returns `int`. Requesting
+  `i32` for the tinyint column failed with `cannot interpret U8 as an i32 value` and broke MSSQL
+  introspection.
+- **Resolution**: Catalog integers are read through `mssql_int()`, which tries `i32`, `i16`, `u8` and
+  `i64`, and `try_get` is used everywhere so a mismatched type can never panic a query.
+
+### 9. `DECIMAL` / `TIMESTAMP` Cells Rendered as NULL
+- **Problem**: The row formatters only attempted text, integer, float and boolean decodes, so
+  `NUMERIC`/`DECIMAL` and `TIMESTAMP`/`DATETIME` columns were displayed as NULL in the results grid
+  even though the data was present.
+- **Resolution**: `sqlx`/`tiberius` now enable the `rust_decimal` feature, and the formatters attempt
+  decimal, `NaiveDateTime`, `DateTime<Utc>`, `NaiveDate`, `NaiveTime`, JSON and binary decodes before
+  giving up. Binary values render as `<binary N bytes>` instead of NULL.
 
 ---
 
-## 10. License
+## 10. Release Builds
+
+```bash
+bun run tauri build
+```
+
+Produces, on Windows:
+
+| Artifact | Path |
+| :--- | :--- |
+| Executable | `src-tauri/target/release/dyno-db-modeler.exe` |
+| MSI installer | `src-tauri/target/release/bundle/msi/DynoDbModeler_0.1.0_x64_en-US.msi` |
+| NSIS installer | `src-tauri/target/release/bundle/nsis/DynoDbModeler_0.1.0_x64-setup.exe` |
+
+Tauri warns that the bundle identifier ends with `.app`, which is discouraged because it conflicts
+with the application bundle extension on macOS; rename `identifier` before shipping a macOS build.
+
+---
+
+## 11. Known Limitations
+
+- **Identifier dots**: A table or column name containing a literal `.` is treated as `schema.name`,
+  so such names must be managed manually.
+- **Primary key changes** on existing PostgreSQL, MySQL and SQL Server tables are not generated
+  automatically (reported as warnings); SQLite performs them through a rebuild.
+- **Composite foreign keys** are modelled one column pair at a time, which matches the ERD
+  representation but means a multi-column constraint is shown as several relationships.
+- **SSH agent authentication** is not implemented; use a password or a private key file.
+- **DuckDB indexes** are physical optimisations and are intentionally not round-tripped into
+  migrations.
+- **Migrations that mix dialects**: the generated script targets the connected dialect only.
+
+---
+
+## 12. License
 
 DynoDbModeler is open source under the [MIT License](LICENSE).

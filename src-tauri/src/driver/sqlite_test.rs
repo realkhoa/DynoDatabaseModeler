@@ -5,6 +5,8 @@
 
 use super::sqlite::{parse_referential_action, parse_sqlite_type, SqliteDriver};
 use super::DatabaseDriver;
+use crate::diff::compute_schema_diff;
+use crate::diff::ddl::generate_ddl;
 use crate::error::AppError;
 use crate::model::connection::{ConnectionConfig, DatabaseType};
 use crate::model::schema::{CanonicalType, DatabaseSchema, ReferentialAction};
@@ -232,5 +234,136 @@ fn test_sqlite_referential_action_mapping() {
     assert_eq!(
         parse_referential_action("UNKNOWN"),
         ReferentialAction::NoAction
+    );
+}
+
+/// @brief Verifies that a generated SQLite rebuild applies and preserves the table's data.
+/// @details SQLite cannot change column nullability in place, so the diff schedules a shadow-table
+/// rebuild. This test drives the full path: introspect, diff, generate, execute, re-introspect.
+#[tokio::test]
+async fn test_sqlite_rebuild_applies_and_preserves_data() {
+    let driver = create_test_driver().await;
+
+    driver
+        .execute_ddl(&[
+            "CREATE TABLE users (id INTEGER PRIMARY KEY, nickname TEXT, email TEXT NOT NULL);"
+                .to_string(),
+            "CREATE INDEX idx_users_email ON users(email);".to_string(),
+            "INSERT INTO users (id, nickname, email) VALUES (1, 'ada', 'ada@example.com');"
+                .to_string(),
+            "INSERT INTO users (id, nickname, email) VALUES (2, NULL, 'bob@example.com');"
+                .to_string(),
+        ])
+        .await
+        .expect("setup users table");
+
+    let current = driver.introspect_schema().await.expect("introspect");
+    let live_users = current
+        .tables
+        .iter()
+        .find(|t| t.name == "users")
+        .expect("users table");
+    assert!(
+        live_users
+            .indexes
+            .iter()
+            .any(|i| i.name == "idx_users_email"),
+        "secondary indexes must be introspected"
+    );
+
+    // Desired schema: nickname becomes NOT NULL (not expressible with in-place SQLite DDL).
+    let mut desired = current.clone();
+    let users = desired
+        .tables
+        .iter_mut()
+        .find(|t| t.name == "users")
+        .expect("users table");
+    let nickname = users
+        .columns
+        .iter_mut()
+        .find(|c| c.name == "nickname")
+        .expect("nickname column");
+    nickname.is_nullable = false;
+
+    let diff = compute_schema_diff(&current, &desired);
+    assert_eq!(diff.tables_to_rebuild.len(), 1);
+
+    let generated = generate_ddl(&diff, DatabaseType::Sqlite);
+    // The rebuild is announced, but nothing may be refused for a plain table.
+    assert!(
+        generated.warnings.iter().any(|w| w.contains("rebuilt")),
+        "rebuild must be announced: {:?}",
+        generated.warnings
+    );
+    assert!(
+        !generated
+            .warnings
+            .iter()
+            .any(|w| w.contains("not generated") || w.contains("No SQL was generated")),
+        "plain table rebuild must not be refused: {:?}",
+        generated.warnings
+    );
+    assert!(generated
+        .statements
+        .iter()
+        .any(|s| s.contains("__dyno_rebuild")));
+
+    // Fill the NULL before tightening the constraint, then run the generated rebuild.
+    driver
+        .execute_ddl(&["UPDATE users SET nickname = 'unknown' WHERE nickname IS NULL;".to_string()])
+        .await
+        .expect("backfill nulls");
+
+    let report = driver
+        .execute_ddl(&generated.statements)
+        .await
+        .expect("generated rebuild must apply");
+    assert!(report.success);
+
+    let after = driver.introspect_schema().await.expect("re-introspect");
+    let users_after = after
+        .tables
+        .iter()
+        .find(|t| t.name == "users")
+        .expect("users table after rebuild");
+
+    let nickname_after = users_after
+        .columns
+        .iter()
+        .find(|c| c.name == "nickname")
+        .expect("nickname column after rebuild");
+    assert!(!nickname_after.is_nullable, "nullability change must apply");
+    assert!(
+        users_after
+            .indexes
+            .iter()
+            .any(|i| i.name == "idx_users_email"),
+        "indexes must survive the rebuild"
+    );
+
+    let rows = driver
+        .execute_query("SELECT id, nickname, email FROM users ORDER BY id;")
+        .await
+        .expect("query rebuilt table");
+    assert_eq!(
+        rows.rows.len(),
+        2,
+        "rows must be copied into the rebuilt table"
+    );
+    assert_eq!(
+        rows.rows[0][2],
+        serde_json::Value::String("ada@example.com".to_string())
+    );
+
+    // The shadow table must not be left behind.
+    let leftovers = driver
+        .execute_query(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%__dyno_rebuild%';",
+        )
+        .await
+        .expect("query leftover tables");
+    assert!(
+        leftovers.rows.is_empty(),
+        "shadow table must be renamed away"
     );
 }

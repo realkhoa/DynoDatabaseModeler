@@ -10,6 +10,7 @@ import type {
   ConnectionConfig,
   DatabaseSchema,
   ExecutionPlanNode,
+  GeneratedDdl,
   MigrationReport,
   QueryResult,
   QueryHistoryRecord,
@@ -40,6 +41,32 @@ export const api = {
   },
 
   /**
+   * @brief Queries all accessible databases on a remote database server using supplied configuration.
+   * @param config Connection parameters.
+   * @return Promise resolving to array of database names.
+   */
+  listDatabases: (config: ConnectionConfig): Promise<string[]> => {
+    return invoke<string[]>('cmd_list_databases', { config });
+  },
+
+  /**
+   * @brief Queries all accessible databases on the currently connected active server.
+   * @return Promise resolving to array of database names.
+   */
+  listActiveDatabases: (): Promise<string[]> => {
+    return invoke<string[]>('cmd_list_active_databases');
+  },
+
+  /**
+   * @brief Switches the active database catalog and returns newly introspected schema.
+   * @param database Target database catalog name.
+   * @return Promise resolving to refreshed DatabaseSchema.
+   */
+  switchDatabase: (database: string): Promise<DatabaseSchema> => {
+    return invoke<DatabaseSchema>('cmd_switch_database', { database });
+  },
+
+  /**
    * @brief Disconnects the active database connection and clears backend connection state.
    * @return Promise resolving to true on successful disconnect.
    */
@@ -56,6 +83,15 @@ export const api = {
   },
 
   /**
+   * @brief Resolves the primary key columns of a table on the active connection.
+   * @param table Table name, optionally schema qualified.
+   * @return Promise resolving to the ordered primary key column names (empty when none).
+   */
+  getPrimaryKeys: (table: string): Promise<string[]> => {
+    return invoke<string[]>('cmd_get_primary_keys', { table });
+  },
+
+  /**
    * @brief Calculates structural differences between the current live schema and target desired schema.
    * @param current Reference to the current live database schema.
    * @param desired Reference to the target desired database schema design.
@@ -68,10 +104,52 @@ export const api = {
   /**
    * @brief Generates dialect-accurate SQL DDL migration statements for a computed schema diff.
    * @param diff Schema difference model describing planned modifications.
-   * @return Promise resolving to ordered list of executable SQL DDL migration statements.
+   * @return Promise resolving to generated statements plus warnings for unsupported changes.
    */
-  generateDdl: (diff: SchemaDiff): Promise<string[]> => {
-    return invoke<string[]>('cmd_generate_ddl', { diff });
+  generateDdl: (diff: SchemaDiff): Promise<GeneratedDdl> => {
+    return invoke<GeneratedDdl>('cmd_generate_ddl', { diff });
+  },
+
+  /**
+   * @brief Stores connection credentials in the operating system secret store.
+   * @details Secrets can be written but never read back by the frontend; only the backend resolves
+   * them while connecting.
+   * @param id Saved connection profile identifier.
+   * @param dbPassword Database password to remember, if any.
+   * @param sshPassword SSH bastion password to remember, if any.
+   * @param sshPassphrase SSH private key passphrase to remember, if any.
+   * @return Promise resolving to true once the secret store has been updated.
+   */
+  saveConnectionSecrets: (
+    id: string,
+    dbPassword?: string,
+    sshPassword?: string,
+    sshPassphrase?: string
+  ): Promise<boolean> => {
+    return invoke<boolean>('cmd_save_connection_secrets', {
+      id,
+      dbPassword,
+      sshPassword,
+      sshPassphrase,
+    });
+  },
+
+  /**
+   * @brief Removes stored credentials for a connection profile.
+   * @param id Saved connection profile identifier.
+   * @return Promise resolving to true once the entry is gone.
+   */
+  deleteConnectionSecrets: (id: string): Promise<boolean> => {
+    return invoke<boolean>('cmd_delete_connection_secrets', { id });
+  },
+
+  /**
+   * @brief Reports whether credentials are stored for a connection profile.
+   * @param id Saved connection profile identifier.
+   * @return Promise resolving to true when the secret store holds an entry.
+   */
+  hasConnectionSecrets: (id: string): Promise<boolean> => {
+    return invoke<boolean>('cmd_has_connection_secrets', { id });
   },
 
   /**

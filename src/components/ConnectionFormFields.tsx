@@ -5,7 +5,7 @@
  */
 
 import React from 'react';
-import { CheckCircle2, AlertCircle, Shield, Terminal } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Shield, Terminal, RefreshCw, Loader2 } from 'lucide-react';
 import type { DatabaseType } from '../types/database';
 
 /**
@@ -48,6 +48,12 @@ export interface ConnectionFormFieldsProps {
   ssl: boolean;
   /** @brief State setter for SSL encryption flag. */
   setSsl: (val: boolean) => void;
+  /** @brief Whether the password should be stored in the operating system secret store. */
+  rememberPassword: boolean;
+  /** @brief State setter for the remember-password preference. */
+  setRememberPassword: (val: boolean) => void;
+  /** @brief Whether a credential is already held for the profile being edited. */
+  hasStoredSecret?: boolean;
   /** @brief Whether SSH bastion tunnel is enabled. */
   sshEnabled: boolean;
   /** @brief State setter for SSH tunnel enabled flag. */
@@ -82,6 +88,12 @@ export interface ConnectionFormFieldsProps {
   testStatus: 'idle' | 'success' | 'error';
   /** @brief Connectivity test message. */
   testMessage: string;
+  /** @brief Optional callback to discover available databases on remote server. */
+  onFetchDatabases?: () => void;
+  /** @brief Flag indicating active discovery query on remote server. */
+  isFetchingDatabases?: boolean;
+  /** @brief Discovered list of database names available on remote server. */
+  availableDatabases?: string[];
 }
 
 /**
@@ -108,6 +120,12 @@ export const ConnectionFormFields: React.FC<ConnectionFormFieldsProps> = ({
   setFilePath,
   ssl,
   setSsl,
+  rememberPassword,
+  setRememberPassword,
+  hasStoredSecret = false,
+  onFetchDatabases,
+  isFetchingDatabases = false,
+  availableDatabases = [],
   sshEnabled,
   setSshEnabled,
   sshHost,
@@ -245,20 +263,81 @@ export const ConnectionFormFields: React.FC<ConnectionFormFieldsProps> = ({
 
           {/* Database Name */}
           <div>
-            <label
-              htmlFor="conn-database"
-              className="block text-[11px] font-semibold text-[#8c919a] uppercase tracking-wider mb-1"
-            >
-              Database
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label
+                htmlFor="conn-database"
+                className="block text-[11px] font-semibold text-[#8c919a] uppercase tracking-wider"
+              >
+                Database{' '}
+                <span className="text-[10px] font-normal lowercase text-[#8c919a]/70">
+                  (optional · defaults to maintenance db)
+                </span>
+              </label>
+              {onFetchDatabases && (
+                <button
+                  type="button"
+                  onClick={onFetchDatabases}
+                  disabled={isFetchingDatabases}
+                  className="text-[11px] text-[#3a82f7] hover:text-[#5a9cff] hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                  title="Discover databases on this server"
+                >
+                  {isFetchingDatabases ? (
+                    <Loader2 className="w-3 h-3 animate-spin text-[#3a82f7]" />
+                  ) : (
+                    <RefreshCw className="w-3 h-3" />
+                  )}
+                  <span>{isFetchingDatabases ? 'Fetching...' : 'Fetch Databases'}</span>
+                </button>
+              )}
+            </div>
             <input
               id="conn-database"
               type="text"
+              list="conn-available-databases"
               value={database}
               onChange={(e) => setDatabase(e.target.value)}
-              placeholder="Database name"
+              placeholder={
+                dbType === 'Postgres'
+                  ? 'postgres (default if blank - like pgAdmin)'
+                  : dbType === 'Mssql'
+                  ? 'master (default if blank)'
+                  : dbType === 'MySql'
+                  ? 'mysql (optional)'
+                  : 'Database name'
+              }
               className="w-full bg-[#18191c] border border-[#35373c] rounded px-3 py-1.5 text-[#e6e8ea] focus:outline-none focus:border-[#3a82f7]"
             />
+            {availableDatabases.length > 0 && (
+              <datalist id="conn-available-databases">
+                {availableDatabases.map((db) => (
+                  <option key={db} value={db} />
+                ))}
+              </datalist>
+            )}
+
+            {/* Discovered database quick select badges */}
+            {availableDatabases.length > 0 && (
+              <div className="mt-1.5 flex flex-wrap gap-1 items-center">
+                <span className="text-[10px] text-[#8c919a] mr-1">Found ({availableDatabases.length}):</span>
+                {availableDatabases.map((db) => {
+                  const isSelected = database.trim() === db;
+                  return (
+                    <button
+                      key={db}
+                      type="button"
+                      onClick={() => setDatabase(db)}
+                      className={`text-[10px] px-1.5 py-0.5 rounded cursor-pointer transition-colors border ${
+                        isSelected
+                          ? 'bg-[#3a82f7]/20 border-[#3a82f7] text-[#3a82f7] font-medium'
+                          : 'bg-[#26282d] border-[#35373c] text-[#8c919a] hover:text-[#e6e8ea] hover:bg-[#35373c]'
+                      }`}
+                    >
+                      {db}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* Username and Password */}
@@ -292,26 +371,60 @@ export const ConnectionFormFields: React.FC<ConnectionFormFieldsProps> = ({
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
+                autoComplete="new-password"
                 className="w-full bg-[#18191c] border border-[#35373c] rounded px-3 py-1.5 text-[#e6e8ea] focus:outline-none focus:border-[#3a82f7]"
               />
+              <p className="mt-1 text-[10px] text-[#8c919a]">
+                {hasStoredSecret
+                  ? 'A password is already stored for this profile. Leave this field empty to keep it.'
+                  : 'Passwords are kept in the operating system credential store and are never written to browser storage.'}
+              </p>
             </div>
           </div>
 
-          {/* SSL Checkbox */}
+          {/* Credential storage preference */}
           <div className="flex items-center gap-2 pt-1">
+            <input
+              id="conn-remember-password"
+              type="checkbox"
+              checked={rememberPassword}
+              onChange={(e) => setRememberPassword(e.target.checked)}
+              className="rounded bg-[#18191c] border-[#35373c] text-[#3a82f7] focus:ring-0 focus:ring-offset-0"
+            />
+            <label
+              htmlFor="conn-remember-password"
+              className="text-xs text-[#e6e8ea] cursor-pointer select-none"
+            >
+              Remember password in the system credential store
+            </label>
+          </div>
+
+          {/* SSL Checkbox */}
+          <div className="flex items-start gap-2 pt-1">
             <input
               id="conn-ssl"
               type="checkbox"
               checked={ssl}
               onChange={(e) => setSsl(e.target.checked)}
-              className="rounded bg-[#18191c] border-[#35373c] text-[#3a82f7] focus:ring-0 focus:ring-offset-0"
+              className="mt-0.5 rounded bg-[#18191c] border-[#35373c] text-[#3a82f7] focus:ring-0 focus:ring-offset-0"
             />
             <label
               htmlFor="conn-ssl"
-              className="flex items-center gap-1.5 text-xs text-[#e6e8ea] cursor-pointer select-none"
+              className="flex flex-col gap-0.5 text-xs text-[#e6e8ea] cursor-pointer select-none"
             >
-              <Shield className="w-3.5 h-3.5 text-[#8c919a]" />
-              <span>Use SSL / TLS Encryption</span>
+              <span className="flex items-center gap-1.5">
+                <Shield className="w-3.5 h-3.5 text-[#8c919a]" />
+                <span>
+                  {dbType === 'Mssql' ? 'Verify server TLS certificate' : 'Require TLS encryption'}
+                </span>
+              </span>
+              <span className="text-[10px] text-[#8c919a]">
+                {dbType === 'Mssql'
+                  ? 'SQL Server always negotiates TLS; disabling this trusts any certificate.'
+                  : dbType === 'MySql'
+                  ? 'Requires an encrypted connection to the MySQL server.'
+                  : 'Requires an encrypted connection to the PostgreSQL server.'}
+              </span>
             </label>
           </div>
 
@@ -470,9 +583,9 @@ export const ConnectionFormFields: React.FC<ConnectionFormFieldsProps> = ({
       )}
 
       {testStatus === 'error' && (
-        <div className="flex items-center gap-2 p-2.5 rounded bg-red-500/10 border border-red-500/30 text-red-400">
-          <AlertCircle className="w-4 h-4 shrink-0" />
-          <span className="truncate">{testMessage}</span>
+        <div className="flex items-start gap-2 p-2.5 rounded bg-red-500/10 border border-red-500/30 text-red-400">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span className="break-words leading-relaxed">{testMessage}</span>
         </div>
       )}
     </div>

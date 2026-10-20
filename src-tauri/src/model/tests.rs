@@ -34,6 +34,8 @@ fn create_sample_database_schema() -> DatabaseSchema {
             foreign_keys: vec![],
             indexes: vec![],
             ui_position: Some(Point { x: 100.0, y: 150.0 }),
+            rename_from: None,
+            unsupported_features: vec![],
         }],
     }
 }

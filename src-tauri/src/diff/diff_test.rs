@@ -20,6 +20,8 @@ fn test_detect_added_and_dropped_tables() {
             foreign_keys: vec![],
             indexes: vec![],
             ui_position: None,
+            rename_from: None,
+            unsupported_features: vec![],
         }],
     };
 
@@ -32,6 +34,8 @@ fn test_detect_added_and_dropped_tables() {
             foreign_keys: vec![],
             indexes: vec![],
             ui_position: None,
+            rename_from: None,
+            unsupported_features: vec![],
         }],
     };
 
@@ -62,6 +66,8 @@ fn test_detect_added_and_altered_columns() {
             foreign_keys: vec![],
             indexes: vec![],
             ui_position: None,
+            rename_from: None,
+            unsupported_features: vec![],
         }],
     };
 
@@ -91,6 +97,8 @@ fn test_detect_added_and_altered_columns() {
             foreign_keys: vec![],
             indexes: vec![],
             ui_position: None,
+            rename_from: None,
+            unsupported_features: vec![],
         }],
     };
 
@@ -138,6 +146,8 @@ fn test_detect_dropped_columns() {
             foreign_keys: vec![],
             indexes: vec![],
             ui_position: None,
+            rename_from: None,
+            unsupported_features: vec![],
         }],
     };
 
@@ -157,6 +167,8 @@ fn test_detect_dropped_columns() {
             foreign_keys: vec![],
             indexes: vec![],
             ui_position: None,
+            rename_from: None,
+            unsupported_features: vec![],
         }],
     };
 
@@ -186,6 +198,8 @@ fn test_detect_destructive_column_alteration() {
             foreign_keys: vec![],
             indexes: vec![],
             ui_position: None,
+            rename_from: None,
+            unsupported_features: vec![],
         }],
     };
 
@@ -205,6 +219,8 @@ fn test_detect_destructive_column_alteration() {
             foreign_keys: vec![],
             indexes: vec![],
             ui_position: None,
+            rename_from: None,
+            unsupported_features: vec![],
         }],
     };
 
@@ -235,6 +251,8 @@ fn test_detect_nondestructive_column_alteration() {
             foreign_keys: vec![],
             indexes: vec![],
             ui_position: None,
+            rename_from: None,
+            unsupported_features: vec![],
         }],
     };
 
@@ -254,6 +272,8 @@ fn test_detect_nondestructive_column_alteration() {
             foreign_keys: vec![],
             indexes: vec![],
             ui_position: None,
+            rename_from: None,
+            unsupported_features: vec![],
         }],
     };
 
@@ -283,6 +303,8 @@ fn test_detect_added_and_dropped_foreign_keys() {
             }],
             indexes: vec![],
             ui_position: None,
+            rename_from: None,
+            unsupported_features: vec![],
         }],
     };
 
@@ -302,6 +324,8 @@ fn test_detect_added_and_dropped_foreign_keys() {
             }],
             indexes: vec![],
             ui_position: None,
+            rename_from: None,
+            unsupported_features: vec![],
         }],
     };
 
@@ -338,6 +362,8 @@ fn test_detect_altered_foreign_key() {
             }],
             indexes: vec![],
             ui_position: None,
+            rename_from: None,
+            unsupported_features: vec![],
         }],
     };
 
@@ -357,6 +383,8 @@ fn test_detect_altered_foreign_key() {
             }],
             indexes: vec![],
             ui_position: None,
+            rename_from: None,
+            unsupported_features: vec![],
         }],
     };
 
@@ -390,6 +418,8 @@ fn test_identical_schemas_diff_is_empty() {
             foreign_keys: vec![],
             indexes: vec![],
             ui_position: None,
+            rename_from: None,
+            unsupported_features: vec![],
         }],
     };
 
@@ -407,4 +437,197 @@ fn test_empty_schemas_diff_is_empty() {
 
     let diff = compute_schema_diff(&empty_schema, &empty_schema);
     assert!(diff.is_empty());
+}
+
+/// @brief Builds a single-table schema for rename and rebuild tests.
+/// @param name Table name.
+/// @param schema Optional schema namespace.
+/// @param rename_from Optional previous name recorded by the modeler.
+/// @param columns Table columns.
+/// @return DatabaseSchema containing exactly one table.
+fn schema_with(
+    name: &str,
+    schema: Option<&str>,
+    rename_from: Option<&str>,
+    columns: Vec<ColumnSchema>,
+) -> DatabaseSchema {
+    DatabaseSchema {
+        database_name: "test".to_string(),
+        tables: vec![TableSchema {
+            name: name.to_string(),
+            schema: schema.map(|s| s.to_string()),
+            columns,
+            foreign_keys: vec![],
+            indexes: vec![],
+            ui_position: None,
+            rename_from: rename_from.map(|s| s.to_string()),
+            unsupported_features: vec![],
+        }],
+    }
+}
+
+/// @brief Builds a plain non-identity column definition for diff tests.
+/// @param name Column name.
+/// @param data_type Canonical data type.
+/// @param nullable Whether the column accepts NULL.
+/// @return ColumnSchema instance.
+fn simple_col(name: &str, data_type: CanonicalType, nullable: bool) -> ColumnSchema {
+    ColumnSchema {
+        name: name.to_string(),
+        data_type,
+        is_primary_key: false,
+        is_nullable: nullable,
+        is_auto_increment: false,
+        default_value: None,
+    }
+}
+
+/// @brief Tests that a recorded rename becomes a rename operation, never DROP + CREATE.
+#[test]
+fn test_rename_detected_instead_of_drop_create() {
+    let columns = vec![simple_col("id", CanonicalType::Integer, false)];
+    let current = schema_with("orders", None, None, columns.clone());
+    let desired = schema_with("purchases", None, Some("orders"), columns);
+
+    let diff = compute_schema_diff(&current, &desired);
+    assert!(
+        diff.tables_to_drop.is_empty(),
+        "rename must not drop the table"
+    );
+    assert!(
+        diff.tables_to_create.is_empty(),
+        "rename must not recreate the table"
+    );
+    assert_eq!(diff.tables_to_rename.len(), 1);
+    assert_eq!(diff.tables_to_rename[0].from, "orders");
+    assert_eq!(diff.tables_to_rename[0].to, "purchases");
+    // Columns are unchanged, so no column churn either.
+    assert!(diff.columns_to_add.is_empty());
+    assert!(diff.columns_to_drop.is_empty());
+    assert!(!diff.is_empty());
+}
+
+/// @brief Tests that the same table name in two schemas is diffed independently.
+#[test]
+fn test_multi_schema_tables_do_not_collide() {
+    let columns = vec![simple_col("id", CanonicalType::Integer, false)];
+    let current = DatabaseSchema {
+        database_name: "test".to_string(),
+        tables: vec![
+            TableSchema {
+                name: "orders".to_string(),
+                schema: Some("sales".to_string()),
+                columns: columns.clone(),
+                foreign_keys: vec![],
+                indexes: vec![],
+                ui_position: None,
+                rename_from: None,
+                unsupported_features: vec![],
+            },
+            TableSchema {
+                name: "orders".to_string(),
+                schema: Some("public".to_string()),
+                columns: columns.clone(),
+                foreign_keys: vec![],
+                indexes: vec![],
+                ui_position: None,
+                rename_from: None,
+                unsupported_features: vec![],
+            },
+        ],
+    };
+
+    // Drop only the public variant and add a column to the sales variant.
+    let mut sales_desired = current.tables[0].clone();
+    sales_desired
+        .columns
+        .push(simple_col("ref", CanonicalType::Text, true));
+
+    let desired = DatabaseSchema {
+        database_name: "test".to_string(),
+        tables: vec![sales_desired],
+    };
+
+    let diff = compute_schema_diff(&current, &desired);
+    assert_eq!(diff.tables_to_drop, vec!["public.orders".to_string()]);
+    assert!(diff.tables_to_create.is_empty());
+    assert_eq!(diff.columns_to_add.len(), 1);
+    assert_eq!(diff.columns_to_add[0].0, "sales.orders");
+}
+
+/// @brief Tests that shrinking a column type is flagged as destructive.
+#[test]
+fn test_narrowing_type_is_destructive() {
+    let current = schema_with(
+        "metrics",
+        None,
+        None,
+        vec![simple_col("score", CanonicalType::BigInt, false)],
+    );
+    let desired = schema_with(
+        "metrics",
+        None,
+        None,
+        vec![simple_col("score", CanonicalType::Integer, false)],
+    );
+
+    let diff = compute_schema_diff(&current, &desired);
+    assert_eq!(diff.columns_to_alter.len(), 1);
+    assert!(diff.columns_to_alter[0].is_destructive);
+    // The alteration also schedules a rebuild for dialects without ALTER COLUMN.
+    assert_eq!(diff.tables_to_rebuild.len(), 1);
+    assert_eq!(diff.tables_to_rebuild[0].table_name, "metrics");
+}
+
+/// @brief Tests that widening a column type is not flagged as destructive.
+#[test]
+fn test_widening_type_is_not_destructive() {
+    let current = schema_with(
+        "metrics",
+        None,
+        None,
+        vec![simple_col("score", CanonicalType::Integer, false)],
+    );
+    let desired = schema_with(
+        "metrics",
+        None,
+        None,
+        vec![simple_col("score", CanonicalType::BigInt, false)],
+    );
+
+    let diff = compute_schema_diff(&current, &desired);
+    assert_eq!(diff.columns_to_alter.len(), 1);
+    assert!(!diff.columns_to_alter[0].is_destructive);
+}
+
+/// @brief Tests that a rebuild records which columns can be copied across.
+#[test]
+fn test_rebuild_copy_columns_exclude_new_columns() {
+    let current = schema_with(
+        "people",
+        None,
+        None,
+        vec![
+            simple_col("id", CanonicalType::Integer, false),
+            simple_col("name", CanonicalType::Text, false),
+        ],
+    );
+    let desired = schema_with(
+        "people",
+        None,
+        None,
+        vec![
+            simple_col("id", CanonicalType::Integer, false),
+            simple_col("name", CanonicalType::Varchar(Some(50)), false),
+            simple_col("email", CanonicalType::Text, true),
+        ],
+    );
+
+    let diff = compute_schema_diff(&current, &desired);
+    assert_eq!(diff.tables_to_rebuild.len(), 1);
+    assert_eq!(
+        diff.tables_to_rebuild[0].copy_columns,
+        vec!["id".to_string(), "name".to_string()]
+    );
+    assert_eq!(diff.tables_to_rebuild[0].target.columns.len(), 3);
 }

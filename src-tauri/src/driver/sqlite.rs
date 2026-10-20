@@ -4,10 +4,13 @@
 //! arbitrary query execution, and transactional DDL execution for SQLite.
 
 use async_trait::async_trait;
-use sqlx::{sqlite::SqlitePoolOptions, Column, Row, SqlitePool};
+use sqlx::{sqlite::SqlitePoolOptions, Column, Connection, Row, SqlitePool};
 use std::time::Instant;
 
-use super::{DatabaseDriver, ExecutionPlanNode, MigrationReport, QueryResult, RowUpdatePayload};
+use super::{
+    is_row_returning, DatabaseDriver, ExecutionPlanNode, MigrationReport, QueryResult,
+    RowUpdatePayload,
+};
 use crate::error::AppError;
 use crate::model::connection::{ConnectionConfig, DatabaseType};
 use crate::model::schema::*;
@@ -41,6 +44,217 @@ impl SqliteDriver {
             database_name: config.database.clone(),
         })
     }
+
+    /// @brief Introspects secondary indexes on one table.
+    /// @details Implicit indexes (`sqlite_autoindex_*`, primary key indexes) are skipped because
+    /// they cannot be created explicitly.
+    /// @param table_name Name of the table to inspect.
+    /// @return Vector of IndexSchema definitions.
+    async fn introspect_indexes(&self, table_name: &str) -> Result<Vec<IndexSchema>, AppError> {
+        let list_sql = format!("PRAGMA index_list('{}')", table_name.replace('\'', "''"));
+        let rows = sqlx::query(&list_sql)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| AppError::Introspection(e.to_string()))?;
+
+        let mut indexes = Vec::new();
+        for row in rows {
+            let name: String = row.try_get("name").unwrap_or_default();
+            let is_unique: i64 = row.try_get("unique").unwrap_or(0);
+            let origin: String = row.try_get("origin").unwrap_or_default();
+
+            // Skip primary-key and implicit indexes: they cannot be recreated by name.
+            if origin == "pk" || name.starts_with("sqlite_") {
+                continue;
+            }
+
+            let info_sql = format!("PRAGMA index_info('{}')", name.replace('\'', "''"));
+            let col_rows = sqlx::query(&info_sql)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|e| AppError::Introspection(e.to_string()))?;
+
+            let mut columns: Vec<(i64, String)> = Vec::new();
+            for col_row in col_rows {
+                let seqno: i64 = col_row.try_get("seqno").unwrap_or(0);
+                let col_name: Option<String> = col_row.try_get("name").ok();
+                if let Some(col_name) = col_name {
+                    columns.push((seqno, col_name));
+                }
+            }
+            columns.sort_by_key(|(seqno, _)| *seqno);
+
+            if columns.is_empty() {
+                continue;
+            }
+
+            indexes.push(IndexSchema {
+                name,
+                columns: columns.into_iter().map(|(_, c)| c).collect(),
+                is_unique: is_unique != 0,
+            });
+        }
+
+        Ok(indexes)
+    }
+
+    /// @brief Detects dialect constructs that make a full table rebuild unsafe.
+    /// @details A rebuild re-creates the table from the canonical model, which cannot represent
+    /// triggers, CHECK constraints, generated columns, `WITHOUT ROWID` tables, COLLATE overrides,
+    /// or dependent views. Reporting them lets the SQLite DDL generator refuse the rebuild instead
+    /// of silently dropping those objects.
+    /// @param table_name Name of the table to inspect.
+    /// @return Vector of human-readable blocker descriptions.
+    async fn introspect_rebuild_blockers(&self, table_name: &str) -> Vec<String> {
+        let mut blockers = Vec::new();
+
+        // Triggers attached to the table.
+        if let Ok(rows) = sqlx::query(
+            "SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = ? ORDER BY name",
+        )
+        .bind(table_name)
+        .fetch_all(&self.pool)
+        .await
+        {
+            for row in rows {
+                if let Ok(name) = row.try_get::<String, _>("name") {
+                    blockers.push(format!("trigger: {}", name));
+                }
+            }
+        }
+
+        // Views that mention the table by name (conservative: a false positive only blocks a rebuild).
+        if let Ok(rows) = sqlx::query(
+            "SELECT name FROM sqlite_master WHERE type = 'view' AND sql LIKE ? ORDER BY name",
+        )
+        .bind(format!("%{}%", table_name))
+        .fetch_all(&self.pool)
+        .await
+        {
+            for row in rows {
+                if let Ok(name) = row.try_get::<String, _>("name") {
+                    blockers.push(format!("view: {}", name));
+                }
+            }
+        }
+
+        // Generated columns (hidden = 2 virtual, 3 stored).
+        let xinfo_sql = format!("PRAGMA table_xinfo('{}')", table_name.replace('\'', "''"));
+        if let Ok(rows) = sqlx::query(&xinfo_sql).fetch_all(&self.pool).await {
+            for row in rows {
+                let hidden: i64 = row.try_get("hidden").unwrap_or(0);
+                if hidden == 2 || hidden == 3 {
+                    let name: String = row.try_get("name").unwrap_or_default();
+                    blockers.push(format!("generated column: {}", name));
+                }
+            }
+        }
+
+        // Table SQL features the canonical model cannot round-trip.
+        if let Ok(Some(sql)) = sqlx::query_scalar::<_, String>(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+        )
+        .bind(table_name)
+        .fetch_optional(&self.pool)
+        .await
+        {
+            let upper = sql.to_uppercase();
+            if upper.contains("CHECK") {
+                blockers.push("CHECK constraint".to_string());
+            }
+            if upper.contains("WITHOUT ROWID") {
+                blockers.push("WITHOUT ROWID table".to_string());
+            }
+            if upper.contains("COLLATE") {
+                blockers.push("column COLLATE override".to_string());
+            }
+        }
+
+        blockers
+    }
+
+    /// @brief Runs a DDL batch inside a single transaction on one dedicated connection.
+    /// @details Foreign key enforcement is toggled on the same connection that owns the transaction:
+    /// `PRAGMA foreign_keys` is per connection, so setting it on the pool could leave the transaction
+    /// running on a connection where enforcement is still active, which would abort the rebuild
+    /// sequence that drops a referenced table. The previous setting is restored regardless of outcome.
+    /// @param statements Ordered list of SQL DDL statements to execute.
+    /// @param start Instant captured before the batch began, for duration reporting.
+    /// @return MigrationReport on success, or AppError::Migration after rollback.
+    async fn run_ddl_batch(
+        &self,
+        statements: &[String],
+        start: Instant,
+    ) -> Result<MigrationReport, AppError> {
+        let mut conn = self
+            .pool
+            .acquire()
+            .await
+            .map_err(|e| AppError::Migration(e.to_string()))?;
+
+        let fk_was_enabled: bool = sqlx::query_scalar::<_, i64>("PRAGMA foreign_keys")
+            .fetch_one(&mut *conn)
+            .await
+            .map(|v| v != 0)
+            .unwrap_or(false);
+
+        if fk_was_enabled {
+            let _ = sqlx::query("PRAGMA foreign_keys = OFF")
+                .execute(&mut *conn)
+                .await;
+        }
+
+        let result = Self::apply_statements(&mut conn, statements, start).await;
+
+        if fk_was_enabled {
+            let _ = sqlx::query("PRAGMA foreign_keys = ON")
+                .execute(&mut *conn)
+                .await;
+        }
+
+        result
+    }
+
+    /// @brief Applies the statement list transactionally on an already-acquired connection.
+    /// @param conn Dedicated pooled connection that will own the transaction.
+    /// @param statements Ordered list of SQL DDL statements to execute.
+    /// @param start Instant captured before the batch began, for duration reporting.
+    /// @return MigrationReport on success, or AppError::Migration after rollback.
+    async fn apply_statements(
+        conn: &mut sqlx::SqliteConnection,
+        statements: &[String],
+        start: Instant,
+    ) -> Result<MigrationReport, AppError> {
+        let mut tx = conn
+            .begin()
+            .await
+            .map_err(|e| AppError::Migration(e.to_string()))?;
+
+        for stmt in statements {
+            let trimmed = stmt.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if let Err(e) = sqlx::query(trimmed).execute(&mut *tx).await {
+                let _ = tx.rollback().await;
+                return Err(AppError::Migration(format!(
+                    "Failed on statement: {}: {}",
+                    trimmed, e
+                )));
+            }
+        }
+
+        tx.commit()
+            .await
+            .map_err(|e| AppError::Migration(e.to_string()))?;
+
+        Ok(MigrationReport {
+            success: true,
+            statements_executed: statements.len(),
+            execution_time_ms: start.elapsed().as_millis() as u64,
+            error_message: None,
+        })
+    }
 }
 
 #[async_trait]
@@ -55,13 +269,16 @@ impl DatabaseDriver for SqliteDriver {
         Ok(())
     }
 
-    /// @brief Introspects tables, columns, primary keys, and foreign keys from SQLite catalog.
+    /// @brief Introspects tables, columns, primary keys, foreign keys, and indexes from SQLite catalog.
     /// @details Queries `sqlite_master` for user tables, `PRAGMA table_info` for column definitions,
-    /// and `PRAGMA foreign_key_list` for foreign key relationships.
+    /// `PRAGMA foreign_key_list` for foreign key relationships, and `PRAGMA index_list`/`index_info`
+    /// for secondary indexes. AUTOINCREMENT is only reported for a single-column INTEGER primary key
+    /// that is actually declared AUTOINCREMENT, so round-tripping a plain `INTEGER PRIMARY KEY` table
+    /// does not silently upgrade it.
     /// @return Returns a fully populated DatabaseSchema or AppError::Introspection on failure.
     async fn introspect_schema(&self) -> Result<DatabaseSchema, AppError> {
         let tables_rows = sqlx::query(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+            "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
         )
         .fetch_all(&self.pool)
         .await
@@ -71,16 +288,22 @@ impl DatabaseDriver for SqliteDriver {
 
         for row in tables_rows {
             let table_name: String = row.get("name");
+            let table_sql: Option<String> = row.try_get("sql").ok();
+            let declares_autoincrement = table_sql
+                .as_deref()
+                .map(|s| s.to_uppercase().contains("AUTOINCREMENT"))
+                .unwrap_or(false);
 
             // Query columns via PRAGMA table_info
-            let col_query = format!("PRAGMA table_info('{}')", table_name);
+            let col_query = format!("PRAGMA table_info('{}')", table_name.replace('\'', "''"));
             let col_rows = sqlx::query(&col_query)
                 .fetch_all(&self.pool)
                 .await
                 .map_err(|e| AppError::Introspection(e.to_string()))?;
 
             let mut columns = Vec::new();
-            for col in col_rows {
+            let mut pk_columns: Vec<(String, String)> = Vec::new();
+            for col in &col_rows {
                 let col_name: String = col.get("name");
                 let raw_type: String = col.get("type");
                 let not_null: i64 = col.get("notnull");
@@ -89,18 +312,35 @@ impl DatabaseDriver for SqliteDriver {
 
                 let data_type = parse_sqlite_type(&raw_type);
 
+                if pk > 0 {
+                    pk_columns.push((col_name.clone(), raw_type.clone()));
+                }
+
                 columns.push(ColumnSchema {
                     name: col_name,
                     data_type,
                     is_primary_key: pk > 0,
                     is_nullable: not_null == 0,
-                    is_auto_increment: pk > 0 && raw_type.to_uppercase().contains("INTEGER"),
+                    is_auto_increment: false,
                     default_value: dflt_value,
                 });
             }
 
+            // AUTOINCREMENT is only valid on a single INTEGER PRIMARY KEY column.
+            if declares_autoincrement && pk_columns.len() == 1 {
+                let (pk_name, pk_type) = &pk_columns[0];
+                if pk_type.to_uppercase().contains("INT") {
+                    if let Some(target) = columns.iter_mut().find(|c| &c.name == pk_name) {
+                        target.is_auto_increment = true;
+                    }
+                }
+            }
+
             // Query foreign keys via PRAGMA foreign_key_list
-            let fk_query = format!("PRAGMA foreign_key_list('{}')", table_name);
+            let fk_query = format!(
+                "PRAGMA foreign_key_list('{}')",
+                table_name.replace('\'', "''")
+            );
             let fk_rows = sqlx::query(&fk_query)
                 .fetch_all(&self.pool)
                 .await
@@ -129,13 +369,18 @@ impl DatabaseDriver for SqliteDriver {
                 });
             }
 
+            let indexes = self.introspect_indexes(&table_name).await?;
+            let unsupported_features = self.introspect_rebuild_blockers(&table_name).await;
+
             tables.push(TableSchema {
                 name: table_name,
                 schema: None,
                 columns,
                 foreign_keys,
-                indexes: vec![],
+                indexes,
                 ui_position: None,
+                rename_from: None,
+                unsupported_features,
             });
         }
 
@@ -146,12 +391,26 @@ impl DatabaseDriver for SqliteDriver {
     }
 
     /// @brief Executes an arbitrary SQL query against the SQLite database.
-    /// @details Records execution duration, extracts column labels, and converts cell values
-    /// into JSON string/null values for uniform tabular representation.
+    /// @details Row-returning statements are fetched as a result set; other statements are executed
+    /// and report the database's affected row count, so an UPDATE or DELETE never reports zero rows.
     /// @param sql SQL query string to execute.
     /// @return Returns QueryResult or AppError::Database on error.
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, AppError> {
         let start = Instant::now();
+
+        if !is_row_returning(sql) {
+            let res = sqlx::query(sql)
+                .execute(&self.pool)
+                .await
+                .map_err(|e| AppError::Database(e.to_string()))?;
+            return Ok(QueryResult {
+                columns: vec![],
+                rows: vec![],
+                rows_affected: res.rows_affected(),
+                execution_time_ms: start.elapsed().as_millis() as u64,
+            });
+        }
+
         let rows = sqlx::query(sql)
             .fetch_all(&self.pool)
             .await
@@ -194,50 +453,23 @@ impl DatabaseDriver for SqliteDriver {
     }
 
     /// @brief Executes a series of DDL statements inside an atomic database transaction.
-    /// @details If any statement fails, the entire transaction is rolled back and an AppError::Migration is returned.
-    /// Empty or whitespace-only statements are skipped.
+    /// @details Runs on one dedicated connection so foreign key enforcement can be disabled for the
+    /// duration of the batch on the connection that owns the transaction, matching the documented
+    /// SQLite procedure for schema migrations (the rebuild sequence drops and recreates a table that
+    /// other tables reference). Empty or whitespace-only statements are skipped.
     /// @param statements Ordered list of SQL DDL statements to execute.
     /// @return Returns MigrationReport on success, or AppError::Migration on rollback.
     async fn execute_ddl(&self, statements: &[String]) -> Result<MigrationReport, AppError> {
         let start = Instant::now();
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| AppError::Migration(e.to_string()))?;
-
-        for stmt in statements {
-            let trimmed = stmt.trim();
-            if trimmed.is_empty() {
-                continue;
-            }
-            if let Err(e) = sqlx::query(trimmed).execute(&mut *tx).await {
-                let _ = tx.rollback().await;
-                return Err(AppError::Migration(format!(
-                    "Failed on statement: {}: {}",
-                    trimmed, e
-                )));
-            }
-        }
-
-        tx.commit()
-            .await
-            .map_err(|e| AppError::Migration(e.to_string()))?;
-
-        Ok(MigrationReport {
-            success: true,
-            statements_executed: statements.len(),
-            execution_time_ms: start.elapsed().as_millis() as u64,
-            error_message: None,
-        })
+        self.run_ddl_batch(statements, start).await
     }
 
     /// @brief Executes a batch of row mutations transactionally against the SQLite database.
     /// @details Begins a transaction on the connection pool, builds parameterized UPDATE statements
-    /// for each payload (`UPDATE "table" SET "col" = ? WHERE "pk" = ?`), binds column and primary key values,
-    /// and executes each statement sequentially. If any statement encounters an error (syntax, missing column,
-    /// constraint violation), the transaction is explicitly rolled back and an `AppError::Database` is returned.
-    /// On success, the transaction is committed and the total affected rows count is returned.
+    /// for each payload (`UPDATE "table" SET "col" = ? WHERE "pk" = ?`), binds column and primary key
+    /// values, and executes each statement sequentially. In strict single-row mode a locator that
+    /// matches anything other than exactly one row aborts and rolls back the whole batch instead of
+    /// silently modifying the wrong rows.
     /// @param updates List of row update payloads specifying tables, PKs, and modified column values.
     /// @return Returns the total count of rows affected across all updates, or AppError on rollback/failure.
     async fn update_rows(&self, updates: Vec<RowUpdatePayload>) -> Result<u64, AppError> {
@@ -257,11 +489,9 @@ impl DatabaseDriver for SqliteDriver {
             if update.updated_values.is_empty() {
                 continue;
             }
-            if update.primary_keys.is_empty() {
+            if let Err(message) = update.validate_locator() {
                 let _ = tx.rollback().await;
-                return Err(AppError::Database(
-                    "Primary keys must not be empty for row mutation".to_string(),
-                ));
+                return Err(AppError::Database(message));
             }
 
             let mut set_clauses = Vec::with_capacity(update.updated_values.len());
@@ -293,6 +523,10 @@ impl DatabaseDriver for SqliteDriver {
 
             match query.execute(&mut *tx).await {
                 Ok(res) => {
+                    if let Err(message) = update.check_affected_rows(res.rows_affected()) {
+                        let _ = tx.rollback().await;
+                        return Err(AppError::Database(message));
+                    }
                     total_affected += res.rows_affected();
                 }
                 Err(e) => {
@@ -350,9 +584,16 @@ impl DatabaseDriver for SqliteDriver {
         fn extract_relation(detail: &str) -> Option<String> {
             let words: Vec<&str> = detail.split_whitespace().collect();
             for i in 0..words.len() {
-                if (words[i] == "TABLE" || words[i] == "SCAN" || words[i] == "SEARCH") && i + 1 < words.len() {
-                    let candidate = words[i + 1].trim_matches(|c: char| !c.is_alphanumeric() && c != '_');
-                    if candidate != "TABLE" && candidate != "SUBQUERY" && candidate != "USING" && !candidate.is_empty() {
+                if (words[i] == "TABLE" || words[i] == "SCAN" || words[i] == "SEARCH")
+                    && i + 1 < words.len()
+                {
+                    let candidate =
+                        words[i + 1].trim_matches(|c: char| !c.is_alphanumeric() && c != '_');
+                    if candidate != "TABLE"
+                        && candidate != "SUBQUERY"
+                        && candidate != "USING"
+                        && !candidate.is_empty()
+                    {
                         return Some(candidate.to_string());
                     }
                 }
@@ -361,15 +602,16 @@ impl DatabaseDriver for SqliteDriver {
         }
 
         fn item_to_node(detail: &str) -> ExecutionPlanNode {
-            let (node_type, rel, cost) = if detail.contains("SCAN TABLE") || detail.contains("SCAN ") {
-                (String::from("Scan Table"), extract_relation(detail), 100.0)
-            } else if detail.contains("SEARCH TABLE") || detail.contains("SEARCH ") {
-                (String::from("Index Search"), extract_relation(detail), 15.0)
-            } else if detail.contains("USE TEMP B-TREE") {
-                (String::from("Sort (Temp B-Tree)"), None, 45.0)
-            } else {
-                (String::from("Execution Step"), None, 10.0)
-            };
+            let (node_type, rel, cost) =
+                if detail.contains("SCAN TABLE") || detail.contains("SCAN ") {
+                    (String::from("Scan Table"), extract_relation(detail), 100.0)
+                } else if detail.contains("SEARCH TABLE") || detail.contains("SEARCH ") {
+                    (String::from("Index Search"), extract_relation(detail), 15.0)
+                } else if detail.contains("USE TEMP B-TREE") {
+                    (String::from("Sort (Temp B-Tree)"), None, 45.0)
+                } else {
+                    (String::from("Execution Step"), None, 10.0)
+                };
             ExecutionPlanNode::new(node_type, rel, cost, 0, Some(detail.to_string()))
         }
 
@@ -488,16 +730,10 @@ pub fn parse_sqlite_type(t: &str) -> CanonicalType {
 }
 
 /// @brief Maps SQLite foreign key referential action strings to ReferentialAction enum variants.
-/// @details Supports standard SQL actions (CASCADE, SET NULL, RESTRICT, SET DEFAULT, NO ACTION).
-/// Defaults to ReferentialAction::NoAction for unrecognized actions.
+/// @details Delegates to the shared dialect-neutral parser so a single implementation is used by all
+/// drivers.
 /// @param action Raw string action from PRAGMA foreign_key_list (e.g. "CASCADE", "SET NULL").
 /// @return Corresponding ReferentialAction enum variant.
 pub fn parse_referential_action(action: &str) -> ReferentialAction {
-    match action.to_uppercase().as_str() {
-        "CASCADE" => ReferentialAction::Cascade,
-        "SET NULL" => ReferentialAction::SetNull,
-        "RESTRICT" => ReferentialAction::Restrict,
-        "SET DEFAULT" => ReferentialAction::SetDefault,
-        _ => ReferentialAction::NoAction,
-    }
+    super::parse_referential_action(action)
 }

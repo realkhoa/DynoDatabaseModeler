@@ -120,10 +120,19 @@ pub async fn get_history(
             id: row.try_get::<i64, _>("id").unwrap_or(0),
             query_text: row.try_get::<String, _>("query_text").unwrap_or_default(),
             executed_at: row.try_get::<String, _>("executed_at").unwrap_or_default(),
-            duration_ms: row.try_get::<i64, _>("duration_ms").map(|v| v as u64).unwrap_or(0),
-            rows_count: row.try_get::<i64, _>("rows_count").map(|v| v as u64).unwrap_or(0),
+            duration_ms: row
+                .try_get::<i64, _>("duration_ms")
+                .map(|v| v as u64)
+                .unwrap_or(0),
+            rows_count: row
+                .try_get::<i64, _>("rows_count")
+                .map(|v| v as u64)
+                .unwrap_or(0),
             status: row.try_get::<String, _>("status").unwrap_or_default(),
-            is_favorite: row.try_get::<i64, _>("is_favorite").map(|v| v != 0).unwrap_or(false),
+            is_favorite: row
+                .try_get::<i64, _>("is_favorite")
+                .map(|v| v != 0)
+                .unwrap_or(false),
         });
     }
 

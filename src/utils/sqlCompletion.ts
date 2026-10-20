@@ -67,50 +67,13 @@ export function formatCanonicalType(type: CanonicalType): string {
  * @brief Standard ANSI SQL keywords supported across relational databases.
  */
 export const STANDARD_SQL_KEYWORDS: readonly string[] = [
-  'SELECT',
-  'FROM',
-  'WHERE',
-  'AND',
-  'OR',
-  'NOT',
-  'IN',
-  'IS NULL',
-  'IS NOT NULL',
-  'JOIN',
-  'INNER JOIN',
-  'LEFT JOIN',
-  'RIGHT JOIN',
-  'FULL JOIN',
-  'CROSS JOIN',
-  'ON',
-  'GROUP BY',
-  'HAVING',
-  'ORDER BY',
-  'ASC',
-  'DESC',
-  'LIMIT',
-  'OFFSET',
-  'INSERT INTO',
-  'VALUES',
-  'UPDATE',
-  'SET',
-  'DELETE FROM',
-  'CREATE TABLE',
-  'ALTER TABLE',
-  'DROP TABLE',
-  'AS',
-  'DISTINCT',
-  'UNION',
-  'UNION ALL',
-  'CASE',
-  'WHEN',
-  'THEN',
-  'ELSE',
-  'END',
-  'EXISTS',
-  'BETWEEN',
-  'LIKE',
-  'ILIKE',
+  'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'NOT', 'IN', 'IS NULL', 'IS NOT NULL',
+  'JOIN', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'FULL JOIN', 'CROSS JOIN', 'ON',
+  'GROUP BY', 'HAVING', 'ORDER BY', 'ASC', 'DESC', 'LIMIT', 'OFFSET',
+  'INSERT INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE FROM',
+  'CREATE TABLE', 'ALTER TABLE', 'DROP TABLE', 'AS', 'DISTINCT',
+  'UNION', 'UNION ALL', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END',
+  'EXISTS', 'BETWEEN', 'LIKE', 'ILIKE',
 ];
 
 /**
@@ -122,7 +85,11 @@ export const STANDARD_SQL_FUNCTIONS: readonly { name: string; snippet: string; d
   { name: 'AVG', snippet: 'AVG(${1:column})', detail: 'AVG(expr) - Computes average value' },
   { name: 'MIN', snippet: 'MIN(${1:column})', detail: 'MIN(expr) - Finds minimum value' },
   { name: 'MAX', snippet: 'MAX(${1:column})', detail: 'MAX(expr) - Finds maximum value' },
-  { name: 'COALESCE', snippet: 'COALESCE(${1:expr1}, ${2:expr2})', detail: 'COALESCE(val, ...) - Returns first non-null' },
+  {
+    name: 'COALESCE',
+    snippet: 'COALESCE(${1:expr1}, ${2:expr2})',
+    detail: 'COALESCE(val, ...) - Returns first non-null',
+  },
   { name: 'CONCAT', snippet: 'CONCAT(${1:str1}, ${2:str2})', detail: 'CONCAT(s1, s2) - Concatenates strings' },
   { name: 'NOW', snippet: 'NOW()', detail: 'NOW() - Current date and time' },
   { name: 'ROUND', snippet: 'ROUND(${1:val}, ${2:2})', detail: 'ROUND(n, decimals) - Rounds number' },
@@ -166,7 +133,9 @@ export interface CompletionContextResult {
  */
 export function detectCompletionContext(lineTextBeforeCursor: string): CompletionContextResult {
   // Check for dot-triggered column access: e.g. "users.", "orders.id", `[dbo].[users].`, "users".
-  const dotMatch = lineTextBeforeCursor.match(/(?:[a-zA-Z0-9_`"\[\]]+\.)*([a-zA-Z0-9_`"\[\]]+)\.([a-zA-Z0-9_]*)$/);
+  const dotRegex =
+    /(?:[a-zA-Z0-9_`"\[\]]+\.)*([a-zA-Z0-9_`"\[\]]+)\.([a-zA-Z0-9_]*)$/;
+  const dotMatch = lineTextBeforeCursor.match(dotRegex);
   if (dotMatch && dotMatch[1]) {
     const rawTableName = dotMatch[1].replace(/[`"\[\]]/g, '');
     return {
@@ -176,7 +145,8 @@ export function detectCompletionContext(lineTextBeforeCursor: string): Completio
   }
 
   // Check for table reference clauses: FROM, JOIN, INTO, UPDATE, TABLE
-  const fromTableRegex = /\b(?:FROM|JOIN|LEFT\s+JOIN|RIGHT\s+JOIN|INNER\s+JOIN|FULL\s+JOIN|CROSS\s+JOIN|INTO|UPDATE|TABLE)\s+([a-zA-Z0-9_]*)$/i;
+  const fromTableRegex =
+    /\b(?:FROM|JOIN|LEFT\s+JOIN|RIGHT\s+JOIN|INNER\s+JOIN|FULL\s+JOIN|CROSS\s+JOIN|INTO|UPDATE|TABLE)\s+([a-zA-Z0-9_]*)$/i;
   if (fromTableRegex.test(lineTextBeforeCursor)) {
     return {
       context: 'from_table',
@@ -204,10 +174,11 @@ export function getTableCompletions(
 ): SqlCompletionItem[] {
   return tables.map((t) => {
     const colList = t.columns
-      .map(
-        (c) =>
-          `- **${c.name}**: \`${formatCanonicalType(c.data_type)}\`${c.is_primary_key ? ' [PK]' : ''}${c.is_nullable ? ' (Nullable)' : ''}`
-      )
+      .map((c) => {
+        const pk = c.is_primary_key ? ' [PK]' : '';
+        const nullable = c.is_nullable ? ' (Nullable)' : '';
+        return `- **${c.name}**: \`${formatCanonicalType(c.data_type)}\`${pk}${nullable}`;
+      })
       .join('\n');
 
     const documentation = `### Table: **${t.name}**\n\n*Columns (${t.columns.length}):*\n${colList}`;
@@ -254,8 +225,9 @@ export function getColumnCompletions(
       const pkBadge = col.is_primary_key ? ' • [PK]' : '';
       const nullBadge = col.is_nullable ? ' • Nullable' : '';
       const defaultText = col.default_value ? `\n\n*Default:* \`${col.default_value}\`` : '';
-
-      const documentation = `**Column:** \`${table.name}.${col.name}\`\n\n**Type:** \`${formattedType}\`${pkBadge}${nullBadge}${defaultText}`;
+      const docHeader = `**Column:** \`${table.name}.${col.name}\``;
+      const docType = `**Type:** \`${formattedType}\`${pkBadge}${nullBadge}`;
+      const documentation = `${docHeader}\n\n${docType}${defaultText}`;
 
       // In dot_column context, sort primary keys first with '00_', regular with '01_'
       const sortKey = col.is_primary_key ? `00_${col.name}` : `01_${col.name}`;
@@ -288,7 +260,7 @@ export function buildSqlCompletions(
   schema: DatabaseSchema | null,
   wordRange: any,
   monaco: any
-): any[] {
+): SqlCompletionItem[] {
   const Kinds = monaco?.languages?.CompletionItemKind || {
     Keyword: 13,
     Function: 2,
@@ -307,7 +279,7 @@ export function buildSqlCompletions(
     return getColumnCompletions(tables, tableName, wordRange, Kinds.Field);
   }
 
-  const suggestions: any[] = [];
+  const suggestions: SqlCompletionItem[] = [];
 
   // Table completions (prioritized with '0_' when after FROM / JOIN)
   const tableSortPrefix = context === 'from_table' ? '0_' : '1_';

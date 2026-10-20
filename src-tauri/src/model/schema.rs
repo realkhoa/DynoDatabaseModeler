@@ -127,7 +127,7 @@ pub struct Point {
 
 /// @brief Relational table schema definition including columns, constraints, and layout.
 /// @details Primary entity for ERD rendering and schema comparison operations.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct TableSchema {
     /// @brief Name of the table.
     pub name: String,
@@ -141,6 +141,29 @@ pub struct TableSchema {
     pub indexes: Vec<IndexSchema>,
     /// @brief Optional canvas coordinates for visual diagram persistence.
     pub ui_position: Option<Point>,
+    /// @brief Previous table name when the user renamed the table in the modeler.
+    /// @details Allows the diff engine to emit a non-destructive `ALTER TABLE ... RENAME TO`
+    /// instead of a destructive DROP + CREATE pair. Cleared automatically whenever the schema
+    /// is re-introspected from the live database.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rename_from: Option<String>,
+    /// @brief Dialect constructs discovered during introspection that make a full table
+    /// rebuild unsafe (e.g. triggers, CHECK constraints, generated columns, dependent views).
+    /// @details Populated by the SQLite driver; consumed by the SQLite DDL generator to refuse
+    /// a rebuild rather than silently dropping those objects.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unsupported_features: Vec<String>,
+}
+
+impl TableSchema {
+    /// @brief Fully-qualified identifier for this table (`schema.name` when a schema is present).
+    /// @return Qualified table key used for diff matching and ERD node identity.
+    pub fn qualified_name(&self) -> String {
+        match &self.schema {
+            Some(s) if !s.trim().is_empty() => format!("{}.{}", s, self.name),
+            _ => self.name.clone(),
+        }
+    }
 }
 
 /// @brief Root database schema model containing all tables and metadata.

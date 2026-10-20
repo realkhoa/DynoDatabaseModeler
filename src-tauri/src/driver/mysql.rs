@@ -1,14 +1,18 @@
 //! @file mysql.rs
 //! @brief MySQL / MariaDB database driver adapter using sqlx.
 //! @details Provides connection pooling, schema introspection via information_schema,
-//! arbitrary query execution, and transactional DDL migration execution for MySQL.
+//! arbitrary query execution, and transactional DDL execution for MySQL.
 
 use async_trait::async_trait;
-use sqlx::{mysql::MySqlPoolOptions, mysql::MySqlRow, Column, MySqlPool, Row};
+use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions, MySqlRow, MySqlSslMode};
+use sqlx::{Column, MySqlPool, Row};
 use std::time::Instant;
 
 pub use super::parse_referential_action;
-use super::{DatabaseDriver, ExecutionPlanNode, MigrationReport, QueryResult, RowUpdatePayload};
+use super::{
+    is_row_returning, qualify, with_decimal_metadata, DatabaseDriver, ExecutionPlanNode,
+    MigrationReport, QueryResult, RowUpdatePayload,
+};
 use crate::error::AppError;
 use crate::model::connection::{ConnectionConfig, DatabaseType};
 use crate::model::schema::*;
@@ -21,23 +25,81 @@ const TABLE_QUERY: &str = concat!(
 
 const COL_QUERY: &str = concat!(
     "SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COLUMN_DEFAULT, ",
-    "       COLUMN_KEY, EXTRA, CHARACTER_MAXIMUM_LENGTH ",
+    "       COLUMN_KEY, EXTRA, CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, NUMERIC_SCALE ",
     "FROM information_schema.COLUMNS ",
     "WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ",
     "ORDER BY ORDINAL_POSITION"
 );
 
+/// @brief Foreign key introspection including the referenced schema.
+/// @details The referenced schema is selected so that cross-database foreign keys are stored
+/// qualified; without it a regenerated constraint would bind to whatever schema is current.
 const FK_QUERY: &str = concat!(
     "SELECT k.CONSTRAINT_NAME, k.COLUMN_NAME, k.REFERENCED_TABLE_NAME, ",
-    "       k.REFERENCED_COLUMN_NAME, r.UPDATE_RULE, r.DELETE_RULE ",
+    "       k.REFERENCED_COLUMN_NAME, k.REFERENCED_TABLE_SCHEMA, r.UPDATE_RULE, r.DELETE_RULE ",
     "FROM information_schema.KEY_COLUMN_USAGE k ",
     "JOIN information_schema.REFERENTIAL_CONSTRAINTS r ",
     "  ON k.CONSTRAINT_NAME = r.CONSTRAINT_NAME ",
     " AND k.CONSTRAINT_SCHEMA = r.CONSTRAINT_SCHEMA ",
     "WHERE k.TABLE_SCHEMA = ? AND k.TABLE_NAME = ? ",
     "  AND k.REFERENCED_TABLE_NAME IS NOT NULL ",
-    "ORDER BY k.ORDINAL_POSITION;"
+    "ORDER BY k.CONSTRAINT_NAME, k.ORDINAL_POSITION;"
 );
+
+/// @brief Secondary index introspection, excluding the PRIMARY key index.
+const INDEX_QUERY: &str = concat!(
+    "SELECT INDEX_NAME, COLUMN_NAME, NON_UNIQUE ",
+    "FROM information_schema.STATISTICS ",
+    "WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND INDEX_NAME <> 'PRIMARY' ",
+    "ORDER BY INDEX_NAME, SEQ_IN_INDEX;"
+);
+
+/// @brief Reads a text column from a MySQL catalog row.
+/// @details MySQL 8 reports several `information_schema` string columns as `VARBINARY`, so a direct
+/// `String` decode fails with a type mismatch and aborts introspection. UTF-8 bytes are decoded as a
+/// fallback, and a missing column yields `None` instead of panicking.
+/// @param row MySQL row reference.
+/// @param column Column name (or ordinal index).
+/// @return Decoded text, or `None` when the column is NULL/absent.
+fn mysql_text(row: &MySqlRow, column: &str) -> Option<String> {
+    // Non-null text (sqlx decodes Result<T> for a non-nullable request).
+    if let Ok(value) = row.try_get::<String, _>(column) {
+        return Some(value);
+    }
+    // Nullable text.
+    if let Ok(Some(value)) = row.try_get::<Option<String>, _>(column) {
+        return Some(value);
+    }
+    // MySQL 8 returns some catalog columns as VARBINARY/BLOB.
+    if let Ok(bytes) = row.try_get::<Vec<u8>, _>(column) {
+        return Some(String::from_utf8_lossy(&bytes).into_owned());
+    }
+    row.try_get::<Option<Vec<u8>>, _>(column)
+        .ok()
+        .flatten()
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+}
+
+/// @brief Reads an integer column from a MySQL catalog row regardless of signedness.
+/// @details Catalog counters are frequently `BIGINT UNSIGNED`, which does not decode as `i64`.
+/// @param row MySQL row reference.
+/// @param column Column name (or ordinal index).
+/// @return The value widened to `i64`, or `None` when NULL/absent.
+fn mysql_int(row: &MySqlRow, column: &str) -> Option<i64> {
+    if let Ok(value) = row.try_get::<i64, _>(column) {
+        return Some(value);
+    }
+    if let Ok(Some(value)) = row.try_get::<Option<i64>, _>(column) {
+        return Some(value);
+    }
+    if let Ok(value) = row.try_get::<u64, _>(column) {
+        return i64::try_from(value).ok();
+    }
+    if let Ok(value) = row.try_get::<i32, _>(column) {
+        return Some(i64::from(value));
+    }
+    None
+}
 
 /// @brief MySQL / MariaDB database driver adapter providing connection pooling and introspection.
 /// @details Wraps `sqlx::MySqlPool` to interact with MySQL and MariaDB server instances.
@@ -48,30 +110,47 @@ pub struct MySqlDriver {
 
 impl MySqlDriver {
     /// @brief Connects to a MySQL database using the provided configuration.
-    /// @details Configures connection pooling via MySqlPoolOptions with maximum limit of 5.
+    /// @details Uses `MySqlConnectOptions` rather than a URL string so that credentials containing
+    /// `@`, `:`, `/` or `%` are transmitted literally, and so the SSL flag actually selects a TLS
+    /// mode (a URL without TLS parameters silently connected in cleartext).
     /// @param config Connection configuration options.
     /// @return Returns an initialized MySqlDriver or AppError::Connection on failure.
     pub async fn connect(config: &ConnectionConfig) -> Result<Self, AppError> {
         let host = config.host.as_deref().unwrap_or("localhost");
         let port = config.port.unwrap_or(3306);
         let user = config.username.as_deref().unwrap_or("root");
-        let password = config.password.as_deref().unwrap_or("");
 
-        let conn_str = format!(
-            "mysql://{}:{}@{}:{}/{}",
-            user, password, host, port, config.database
-        );
+        let db_name = if config.database.trim().is_empty() {
+            "mysql"
+        } else {
+            config.database.trim()
+        };
+
+        let mut options = MySqlConnectOptions::new()
+            .host(host)
+            .port(port)
+            .username(user)
+            .database(db_name)
+            .ssl_mode(if config.ssl {
+                MySqlSslMode::Required
+            } else {
+                MySqlSslMode::Disabled
+            });
+
+        if let Some(password) = config.password.as_deref() {
+            options = options.password(password);
+        }
 
         let pool = MySqlPoolOptions::new()
             .max_connections(5)
             .acquire_timeout(std::time::Duration::from_secs(5))
-            .connect(&conn_str)
+            .connect_with(options)
             .await
             .map_err(|e| AppError::Connection(e.to_string()))?;
 
         Ok(Self {
             pool,
-            database_name: config.database.clone(),
+            database_name: db_name.to_string(),
         })
     }
 }
@@ -88,7 +167,10 @@ impl DatabaseDriver for MySqlDriver {
         Ok(())
     }
 
-    /// @brief Introspects tables, columns, primary keys, and foreign keys from MySQL catalog.
+    /// @brief Introspects tables, columns, primary keys, foreign keys, and indexes from MySQL catalog.
+    /// @details Numeric precision/scale and index metadata are read explicitly; foreign key
+    /// targets are stored schema-qualified. Catalog errors propagate instead of degrading to an
+    /// empty foreign key list, which would look like "no constraints exist".
     /// @return Returns a fully populated DatabaseSchema or AppError::Introspection on failure.
     async fn introspect_schema(&self) -> Result<DatabaseSchema, AppError> {
         let table_rows = sqlx::query(TABLE_QUERY)
@@ -99,7 +181,9 @@ impl DatabaseDriver for MySqlDriver {
 
         let mut tables = Vec::new();
         for trow in table_rows {
-            let tname: String = trow.get("TABLE_NAME");
+            let Some(tname) = mysql_text(&trow, "TABLE_NAME") else {
+                continue;
+            };
 
             let col_rows = sqlx::query(COL_QUERY)
                 .bind(&self.database_name)
@@ -110,15 +194,23 @@ impl DatabaseDriver for MySqlDriver {
 
             let mut columns = Vec::new();
             for crow in col_rows {
-                let cname: String = crow.get("COLUMN_NAME");
-                let dtype: String = crow.get("DATA_TYPE");
-                let nullable: String = crow.get("IS_NULLABLE");
-                let cdefault: Option<String> = crow.get("COLUMN_DEFAULT");
-                let ckey: String = crow.get("COLUMN_KEY");
-                let extra: String = crow.get("EXTRA");
-                let max_len: Option<i64> = crow.get("CHARACTER_MAXIMUM_LENGTH");
+                let Some(cname) = mysql_text(&crow, "COLUMN_NAME") else {
+                    continue;
+                };
+                let dtype = mysql_text(&crow, "DATA_TYPE").unwrap_or_default();
+                let nullable = mysql_text(&crow, "IS_NULLABLE").unwrap_or_default();
+                let cdefault = mysql_text(&crow, "COLUMN_DEFAULT");
+                let ckey = mysql_text(&crow, "COLUMN_KEY").unwrap_or_default();
+                let extra = mysql_text(&crow, "EXTRA").unwrap_or_default();
+                let max_len = mysql_int(&crow, "CHARACTER_MAXIMUM_LENGTH");
+                let numeric_precision = mysql_int(&crow, "NUMERIC_PRECISION");
+                let numeric_scale = mysql_int(&crow, "NUMERIC_SCALE");
 
-                let canonical = parse_mysql_type(&dtype, max_len);
+                let canonical = with_decimal_metadata(
+                    parse_mysql_type(&dtype, max_len),
+                    numeric_precision,
+                    numeric_scale,
+                );
 
                 columns.push(ColumnSchema {
                     name: cname,
@@ -135,18 +227,20 @@ impl DatabaseDriver for MySqlDriver {
                 .bind(&tname)
                 .fetch_all(&self.pool)
                 .await
-                .unwrap_or_default();
+                .map_err(|e| AppError::Introspection(e.to_string()))?;
 
             let mut foreign_keys = Vec::new();
             for fk in fk_rows {
-                let on_update_str: Option<String> = fk.try_get("UPDATE_RULE").ok();
-                let on_delete_str: Option<String> = fk.try_get("DELETE_RULE").ok();
+                let on_update_str = mysql_text(&fk, "UPDATE_RULE");
+                let on_delete_str = mysql_text(&fk, "DELETE_RULE");
+                let target_schema = mysql_text(&fk, "REFERENCED_TABLE_SCHEMA");
+                let target_name = mysql_text(&fk, "REFERENCED_TABLE_NAME").unwrap_or_default();
 
                 foreign_keys.push(ForeignKeySchema {
-                    constraint_name: fk.get("CONSTRAINT_NAME"),
-                    source_column: fk.get("COLUMN_NAME"),
-                    target_table: fk.get("REFERENCED_TABLE_NAME"),
-                    target_column: fk.get("REFERENCED_COLUMN_NAME"),
+                    constraint_name: mysql_text(&fk, "CONSTRAINT_NAME").unwrap_or_default(),
+                    source_column: mysql_text(&fk, "COLUMN_NAME").unwrap_or_default(),
+                    target_table: qualify(target_schema.as_deref(), &target_name),
+                    target_column: mysql_text(&fk, "REFERENCED_COLUMN_NAME").unwrap_or_default(),
                     on_delete: parse_referential_action(
                         on_delete_str.as_deref().unwrap_or("NO ACTION"),
                     ),
@@ -156,13 +250,40 @@ impl DatabaseDriver for MySqlDriver {
                 });
             }
 
+            let index_rows = sqlx::query(INDEX_QUERY)
+                .bind(&self.database_name)
+                .bind(&tname)
+                .fetch_all(&self.pool)
+                .await
+                .map_err(|e| AppError::Introspection(e.to_string()))?;
+
+            let mut indexes: Vec<IndexSchema> = Vec::new();
+            for irow in index_rows {
+                let Some(index_name) = mysql_text(&irow, "INDEX_NAME") else {
+                    continue;
+                };
+                let column_name = mysql_text(&irow, "COLUMN_NAME").unwrap_or_default();
+                let non_unique = mysql_int(&irow, "NON_UNIQUE").unwrap_or(1);
+
+                match indexes.iter_mut().find(|i| i.name == index_name) {
+                    Some(existing) => existing.columns.push(column_name),
+                    None => indexes.push(IndexSchema {
+                        name: index_name,
+                        columns: vec![column_name],
+                        is_unique: non_unique == 0,
+                    }),
+                }
+            }
+
             tables.push(TableSchema {
                 name: tname,
                 schema: Some(self.database_name.clone()),
                 columns,
                 foreign_keys,
-                indexes: vec![],
+                indexes,
                 ui_position: None,
+                rename_from: None,
+                unsupported_features: vec![],
             });
         }
 
@@ -173,10 +294,26 @@ impl DatabaseDriver for MySqlDriver {
     }
 
     /// @brief Executes an arbitrary SQL query against MySQL.
+    /// @details Row-returning statements are fetched; other statements report the database's
+    /// affected row count so DML is never reported as zero rows.
     /// @param sql SQL query string to execute.
     /// @return Returns QueryResult or AppError::Database on error.
     async fn execute_query(&self, sql: &str) -> Result<QueryResult, AppError> {
         let start = Instant::now();
+
+        if !is_row_returning(sql) {
+            let res = sqlx::query(sql)
+                .execute(&self.pool)
+                .await
+                .map_err(|e| AppError::Database(e.to_string()))?;
+            return Ok(QueryResult {
+                columns: vec![],
+                rows: vec![],
+                rows_affected: res.rows_affected(),
+                execution_time_ms: start.elapsed().as_millis() as u64,
+            });
+        }
+
         let rows = sqlx::query(sql)
             .fetch_all(&self.pool)
             .await
@@ -247,11 +384,9 @@ impl DatabaseDriver for MySqlDriver {
     }
 
     /// @brief Executes a batch of row mutations transactionally against MySQL.
-    /// @details Begins a transaction on the connection pool, builds parameterized UPDATE statements
-    /// (`UPDATE `table` SET `col` = ? WHERE `pk` = ?`), binds column and primary key values,
-    /// and executes each statement sequentially. If any statement encounters an error, the transaction
-    /// is explicitly rolled back and an `AppError::Database` is returned.
-    /// On success, the transaction is committed and the total affected rows count is returned.
+    /// @details Builds parameterized UPDATE statements (`UPDATE `t` SET `c` = ? WHERE `pk` = ?`),
+    /// binds every value, and in strict single-row mode aborts and rolls back unless exactly one
+    /// row matched.
     /// @param updates List of row update payloads specifying tables, PKs, and modified column values.
     /// @return Returns the total count of rows affected across all updates, or AppError on rollback/failure.
     async fn update_rows(&self, updates: Vec<RowUpdatePayload>) -> Result<u64, AppError> {
@@ -271,11 +406,9 @@ impl DatabaseDriver for MySqlDriver {
             if update.updated_values.is_empty() {
                 continue;
             }
-            if update.primary_keys.is_empty() {
+            if let Err(message) = update.validate_locator() {
                 let _ = tx.rollback().await;
-                return Err(AppError::Database(
-                    "Primary keys must not be empty for row mutation".to_string(),
-                ));
+                return Err(AppError::Database(message));
             }
 
             let mut set_clauses = Vec::with_capacity(update.updated_values.len());
@@ -307,6 +440,10 @@ impl DatabaseDriver for MySqlDriver {
 
             match query.execute(&mut *tx).await {
                 Ok(res) => {
+                    if let Err(message) = update.check_affected_rows(res.rows_affected()) {
+                        let _ = tx.rollback().await;
+                        return Err(AppError::Database(message));
+                    }
                     total_affected += res.rows_affected();
                 }
                 Err(e) => {
@@ -344,10 +481,7 @@ impl DatabaseDriver for MySqlDriver {
             let access_type: String = row
                 .try_get::<String, _>("type")
                 .unwrap_or_else(|_| "ALL".to_string());
-            let rows_est: u64 = row
-                .try_get::<i64, _>("rows")
-                .map(|v| v as u64)
-                .unwrap_or(0);
+            let rows_est: u64 = row.try_get::<i64, _>("rows").map(|v| v as u64).unwrap_or(0);
             let cost = if access_type == "ALL" { 100.0 } else { 20.0 };
             total_cost += cost;
             let extra: Option<String> = row.try_get::<String, _>("Extra").ok();
@@ -362,6 +496,24 @@ impl DatabaseDriver for MySqlDriver {
         }
         root.cost = total_cost;
         Ok(root)
+    }
+
+    /// @brief Lists all databases available on the MySQL server instance.
+    /// @return Vector of database names on the server.
+    async fn list_databases(&self) -> Result<Vec<String>, AppError> {
+        let rows = sqlx::query("SHOW DATABASES;")
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| AppError::Database(e.to_string()))?;
+
+        let names: Vec<String> = rows
+            .into_iter()
+            .filter_map(|r| mysql_text(&r, "Database"))
+            .filter(|db| {
+                !["information_schema", "performance_schema", "sys"].contains(&db.as_str())
+            })
+            .collect();
+        Ok(names)
     }
 
     /// @brief Returns the database type dialect for MySQL.
@@ -397,29 +549,70 @@ fn bind_mysql_val<'a>(
 }
 
 /// @brief Formats a MySQL row cell into a JSON value representation.
+/// @details Every MySQL type a data grid commonly renders is attempted: text, integers, floats,
+/// booleans, decimals, temporal types, JSON and binary. Without the decimal and temporal attempts
+/// DECIMAL and DATETIME columns were rendered as NULL.
 /// @param row MySQL row reference.
 /// @param idx Column ordinal index.
 /// @return Extracted cell JSON value.
 fn format_mysql_cell(row: &MySqlRow, idx: usize) -> serde_json::Value {
-    let val: Option<String> = row
+    let text: Option<String> = row
         .try_get::<String, _>(idx)
         .ok()
+        .or_else(|| row.try_get::<Option<String>, _>(idx).ok().flatten())
         .or_else(|| row.try_get::<i64, _>(idx).ok().map(|v| v.to_string()))
+        .or_else(|| row.try_get::<u64, _>(idx).ok().map(|v| v.to_string()))
         .or_else(|| row.try_get::<i32, _>(idx).ok().map(|v| v.to_string()))
+        .or_else(|| row.try_get::<i16, _>(idx).ok().map(|v| v.to_string()))
+        .or_else(|| row.try_get::<i8, _>(idx).ok().map(|v| v.to_string()))
+        .or_else(|| row.try_get::<u8, _>(idx).ok().map(|v| v.to_string()))
         .or_else(|| row.try_get::<f64, _>(idx).ok().map(|v| v.to_string()))
+        .or_else(|| row.try_get::<f32, _>(idx).ok().map(|v| v.to_string()))
         .or_else(|| row.try_get::<bool, _>(idx).ok().map(|v| v.to_string()))
+        .or_else(|| {
+            row.try_get::<rust_decimal::Decimal, _>(idx)
+                .ok()
+                .map(super::format_decimal)
+        })
+        .or_else(|| {
+            row.try_get::<chrono::NaiveDateTime, _>(idx)
+                .ok()
+                .map(|v| v.to_string())
+        })
+        .or_else(|| {
+            row.try_get::<chrono::DateTime<chrono::Utc>, _>(idx)
+                .ok()
+                .map(|v| v.to_rfc3339())
+        })
+        .or_else(|| {
+            row.try_get::<chrono::NaiveDate, _>(idx)
+                .ok()
+                .map(|v| v.to_string())
+        })
+        .or_else(|| {
+            row.try_get::<chrono::NaiveTime, _>(idx)
+                .ok()
+                .map(|v| v.to_string())
+        })
         .or_else(|| {
             row.try_get::<serde_json::Value, _>(idx)
                 .ok()
                 .map(|v| v.to_string())
+        })
+        .or_else(|| {
+            row.try_get::<Vec<u8>, _>(idx)
+                .ok()
+                .map(|bytes| super::describe_binary(&bytes))
         });
-    match val {
+
+    match text {
         Some(s) => serde_json::Value::String(s),
         None => serde_json::Value::Null,
     }
 }
 
 /// @brief Parses MySQL data type strings and lengths into canonical types.
+/// @details Precision and scale are merged in separately through [`with_decimal_metadata`].
 /// @param dtype Raw MySQL data type string from information_schema (e.g. "int", "varchar", "tinyint").
 /// @param max_len Optional character maximum length constraint.
 /// @return Normalized CanonicalType representation.

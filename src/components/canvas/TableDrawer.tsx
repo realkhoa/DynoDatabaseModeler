@@ -19,6 +19,7 @@ import {
   ColumnSchema,
   CanonicalType,
   formatCanonicalType,
+  tableKey,
 } from '../../types/database';
 
 /**
@@ -119,12 +120,14 @@ export interface TableDrawerProps {
   isOpen: boolean;
   /** @brief Table schema currently selected for inspection/editing, or null if creating new table. */
   table: TableSchema | null;
+  /** @brief Qualified keys of every table already present in the working schema. */
+  existingTableKeys?: string[];
   /** @brief Callback triggered to close the drawer panel. */
   onClose: () => void;
-  /** @brief Callback triggered when saving changes to the table schema. */
-  onSaveTable: (updatedTable: TableSchema, originalName?: string) => void;
-  /** @brief Optional callback triggered when deleting the inspected table. */
-  onDeleteTable?: (tableName: string) => void;
+  /** @brief Callback triggered when saving changes, receiving the previous qualified key on edits. */
+  onSaveTable: (updatedTable: TableSchema, originalKey?: string) => void;
+  /** @brief Optional callback triggered when deleting the inspected table, receiving its key. */
+  onDeleteTable?: (key: string) => void;
 }
 
 /**
@@ -135,15 +138,18 @@ export interface TableDrawerProps {
 export const TableDrawer: React.FC<TableDrawerProps> = ({
   isOpen,
   table,
+  existingTableKeys = [],
   onClose,
   onSaveTable,
   onDeleteTable,
 }) => {
   const isCreatingNew = !table;
+  const originalKey = table ? tableKey(table) : undefined;
 
   const [tableName, setTableName] = useState('');
   const [columns, setColumns] = useState<ColumnSchema[]>([]);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   // Synchronize state when table prop changes or drawer opens
   useEffect(() => {
@@ -163,6 +169,7 @@ export const TableDrawer: React.FC<TableDrawerProps> = ({
       ]);
     }
     setValidationError(null);
+    setConfirmingDelete(false);
   }, [table, isOpen]);
 
   if (!isOpen) return null;
@@ -246,9 +253,26 @@ export const TableDrawer: React.FC<TableDrawerProps> = ({
       foreign_keys: table?.foreign_keys || [],
       indexes: table?.indexes || [],
       ui_position: table?.ui_position,
+      // Preserve a previously recorded rename so repeated edits keep comparing against the
+      // original live name instead of degrading into a drop plus create.
+      rename_from: table?.rename_from,
+      unsupported_features: table?.unsupported_features,
     };
 
-    onSaveTable(updatedTable, table?.name);
+    // A table identity must be unique: adding a second table with the same qualified name would
+    // silently collide in the diff engine and on the canvas.
+    const newKey = tableKey(updatedTable);
+    const collides = existingTableKeys.some(
+      (key) => key === newKey && key !== originalKey
+    );
+    if (collides) {
+      setValidationError(
+        `A table named "${newKey}" already exists. Choose a different name or schema.`
+      );
+      return;
+    }
+
+    onSaveTable(updatedTable, originalKey);
     onClose();
   };
 
@@ -279,6 +303,23 @@ export const TableDrawer: React.FC<TableDrawerProps> = ({
           {validationError && (
             <div className="p-2.5 bg-red-950/40 border border-red-800/60 rounded text-xs text-red-300">
               {validationError}
+            </div>
+          )}
+
+          {/* Rename notice: renames are applied with ALTER TABLE ... RENAME TO, never DROP + CREATE */}
+          {!isCreatingNew && originalKey && tableName.trim() && tableName.trim() !== table?.name && (
+            <div className="p-2.5 bg-[#3a82f7]/10 border border-[#3a82f7]/30 rounded text-xs text-[#9dc0fb]">
+              Renaming <strong>{originalKey}</strong> to <strong>{tableName.trim()}</strong> will be
+              applied as a non-destructive rename, and foreign keys pointing at it will follow.
+            </div>
+          )}
+
+          {/* Dialect limitation notice for tables that cannot be rebuilt safely */}
+          {!isCreatingNew && (table?.unsupported_features?.length ?? 0) > 0 && (
+            <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded text-xs text-amber-300">
+              This table contains objects that a rebuild cannot preserve (
+              {table?.unsupported_features?.join(', ')}). Some changes may be reported as
+              unsupported instead of being applied.
             </div>
           )}
 
@@ -428,18 +469,40 @@ export const TableDrawer: React.FC<TableDrawerProps> = ({
         <div className="px-4 py-3 border-t border-[#35373c] bg-[#18191c] flex items-center justify-between">
           <div>
             {!isCreatingNew && onDeleteTable && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (table) {
-                    onDeleteTable(table.name);
-                    onClose();
-                  }
-                }}
-                className="text-xs text-red-400 hover:text-red-300 font-medium px-2 py-1 rounded hover:bg-red-950/30 transition-colors"
-              >
-                Delete Table
-              </button>
+              confirmingDelete ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-red-300">
+                    Drops the table and its data on sync.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (originalKey) {
+                        onDeleteTable(originalKey);
+                        onClose();
+                      }
+                    }}
+                    className="text-xs text-white bg-red-600 hover:bg-red-500 font-semibold px-2 py-1 rounded"
+                  >
+                    Delete permanently
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingDelete(false)}
+                    className="text-xs text-[#8c919a] hover:text-[#e6e8ea] px-1 py-1"
+                  >
+                    Keep
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDelete(true)}
+                  className="text-xs text-red-400 hover:text-red-300 font-medium px-2 py-1 rounded hover:bg-red-950/30 transition-colors"
+                >
+                  Delete Table
+                </button>
+              )
             )}
           </div>
 

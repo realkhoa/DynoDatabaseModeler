@@ -43,10 +43,11 @@ async fn test_factory_sqlite_creation() {
     config.database = ":memory:".to_string();
     config.file_path = Some(":memory:".to_string());
 
-    let driver = DriverFactory::create(&config)
+    let handle = DriverFactory::create(&config)
         .await
         .expect("Failed to create driver");
-    assert_eq!(driver.db_type(), DatabaseType::Sqlite);
+    assert_eq!(handle.driver.db_type(), DatabaseType::Sqlite);
+    assert!(handle.tunnel.is_none());
 }
 
 #[tokio::test]

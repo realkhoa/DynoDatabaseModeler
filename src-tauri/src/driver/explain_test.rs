@@ -60,7 +60,9 @@ async fn test_sqlite_explain_query_plan_with_index() {
         .expect("Failed to create sqlite in-memory driver");
 
     driver
-        .execute_query("CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER, amount REAL);")
+        .execute_query(
+            "CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER, amount REAL);",
+        )
         .await
         .expect("Failed to create table");
     driver
@@ -76,7 +78,9 @@ async fn test_sqlite_explain_query_plan_with_index() {
     assert!(!plan.node_type.is_empty());
     let detail_str = format!("{:?}", plan);
     assert!(
-        detail_str.contains("Index") || detail_str.contains("Search") || detail_str.contains("orders"),
+        detail_str.contains("Index")
+            || detail_str.contains("Search")
+            || detail_str.contains("orders"),
         "Expected index search in plan: {:?}",
         plan
     );

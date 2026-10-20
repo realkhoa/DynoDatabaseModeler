@@ -24,9 +24,37 @@ export interface ConnectionModalProps {
   /** @brief Callback triggered to dismiss the modal dialog. */
   onClose: () => void;
   /** @brief Callback triggered when user submits a valid connection configuration. */
-  onConnect: (config: ConnectionConfig) => Promise<void> | void;
+  onConnect: (config: ConnectionConfig) => Promise<boolean> | void;
   /** @brief Optional initial configuration for editing an existing connection profile. */
   initialConfig?: ConnectionConfig | null;
+}
+
+/**
+ * @brief Formats arbitrary error payloads from Tauri IPC or JS runtime into human-readable strings.
+ * @param err Caught error object, string, or Serde enum structure.
+ * @return Human-readable error description string.
+ */
+export function formatErrorMessage(err: unknown): string {
+  if (!err) return 'Unknown error occurred.';
+  if (typeof err === 'string') return err;
+  if (err instanceof Error) return err.message;
+  if (typeof err === 'object') {
+    const obj = err as Record<string, unknown>;
+    if ('message' in obj && typeof obj.message === 'string') {
+      return obj.message;
+    }
+    const values = Object.values(obj);
+    if (values.length === 1 && typeof values[0] === 'string') {
+      const key = Object.keys(obj)[0];
+      return `${key}: ${values[0]}`;
+    }
+    try {
+      return JSON.stringify(err);
+    } catch {
+      return String(err);
+    }
+  }
+  return String(err);
 }
 
 /**
@@ -56,6 +84,10 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
   const [sshAuthType, setSshAuthType] = useState<'Password' | 'PrivateKey'>('Password');
   const [sshPassword, setSshPassword] = useState('');
   const [sshKeyPath, setSshKeyPath] = useState('');
+  // Credentials are stored in the operating system secret store, never in browser storage.
+  const [rememberPassword, setRememberPassword] = useState(true);
+  // Whether the secret store already holds credentials for the profile being edited.
+  const [hasStoredSecret, setHasStoredSecret] = useState(false);
 
   // Status feedback states
   const [isTesting, setIsTesting] = useState(false);
@@ -63,6 +95,8 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
   const [testMessage, setTestMessage] = useState('');
   const [isConnecting, setIsConnecting] = useState(false);
   const [validationError, setValidationError] = useState('');
+  const [availableDatabases, setAvailableDatabases] = useState<string[]>([]);
+  const [isFetchingDatabases, setIsFetchingDatabases] = useState(false);
 
   // Sync state whenever modal opens or initialConfig changes
   useEffect(() => {
@@ -116,6 +150,31 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
     setTestStatus('idle');
     setTestMessage('');
     setValidationError('');
+    setAvailableDatabases([]);
+    setRememberPassword(true);
+  }, [isOpen, initialConfig]);
+
+  // Report whether credentials are already held for this profile, so the user knows an empty
+  // password field means "keep the stored one" rather than "no password".
+  useEffect(() => {
+    if (!isOpen || !initialConfig) {
+      setHasStoredSecret(false);
+      return;
+    }
+
+    let cancelled = false;
+    api
+      .hasConnectionSecrets(initialConfig.id)
+      .then((present) => {
+        if (!cancelled) setHasStoredSecret(present);
+      })
+      .catch(() => {
+        if (!cancelled) setHasStoredSecret(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [isOpen, initialConfig]);
 
   if (!isOpen) return null;
@@ -129,6 +188,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
     setTestStatus('idle');
     setTestMessage('');
     setValidationError('');
+    setAvailableDatabases([]);
 
     const defaultP = getDefaultPort(newType);
     if (defaultP > 0) {
@@ -162,13 +222,18 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
   const buildConfig = (): ConnectionConfig => {
     const id = initialConfig?.id || `conn-${Date.now()}`;
     const isEmbedded = dbType === 'Sqlite' || dbType === 'DuckDb';
+    let targetDb = database.trim();
+    if (!isEmbedded && !targetDb) {
+      targetDb = dbType === 'Postgres' ? 'postgres' : dbType === 'Mssql' ? 'master' : 'mysql';
+    }
+
     return {
       id,
       name: name.trim() || `${dbType} Connection`,
       db_type: dbType,
       host: !isEmbedded ? host.trim() : undefined,
       port: !isEmbedded ? Number(port) : undefined,
-      database: isEmbedded ? (filePath.trim() || database.trim() || ':memory:') : database.trim(),
+      database: isEmbedded ? (filePath.trim() || database.trim() || ':memory:') : targetDb,
       username: !isEmbedded && username.trim() ? username.trim() : undefined,
       password: !isEmbedded && password ? password : undefined,
       file_path: isEmbedded ? (filePath.trim() || database.trim() || ':memory:') : undefined,
@@ -186,6 +251,35 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
             }
           : undefined,
     };
+  };
+
+  /**
+   * @brief Discovers available databases on remote database server using maintenance database.
+   */
+  const handleFetchDatabases = async () => {
+    setIsFetchingDatabases(true);
+    setValidationError('');
+    setTestStatus('idle');
+    setTestMessage('');
+
+    try {
+      const config = buildConfig();
+      const dbs = await api.listDatabases(config);
+      setAvailableDatabases(dbs);
+      if (dbs.length > 0 && !database.trim()) {
+        const preferred = dbs.find(
+          (d) => !['postgres', 'mysql', 'master', 'template0', 'template1'].includes(d)
+        );
+        if (preferred) {
+          setDatabase(preferred);
+        }
+      }
+    } catch (err: unknown) {
+      setTestStatus('error');
+      setTestMessage(formatErrorMessage(err));
+    } finally {
+      setIsFetchingDatabases(false);
+    }
   };
 
   /**
@@ -209,9 +303,44 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
       }
     } catch (err: unknown) {
       setTestStatus('error');
-      setTestMessage(err instanceof Error ? err.message : String(err));
+      setTestMessage(formatErrorMessage(err));
     } finally {
       setIsTesting(false);
+    }
+  };
+
+  /**
+   * @brief Stores or clears this profile's credentials in the OS secret store.
+   * @details Secrets are written through IPC and can never be read back by the frontend. Leaving the
+   * password field empty keeps whatever is already stored: the modal cannot display an existing
+   * credential, so an empty field must not be read as "delete it".
+   * @param config Connection profile whose id keys the stored entry.
+   * @return Error message when the secret store refused the write, otherwise null.
+   */
+  const persistSecrets = async (config: ConnectionConfig): Promise<string | null> => {
+    try {
+      if (!rememberPassword) {
+        await api.deleteConnectionSecrets(config.id);
+        return null;
+      }
+
+      const sshPasswordToStore =
+        config.ssh_tunnel?.auth_type === 'Password' ? sshPassword : undefined;
+
+      if (!password && !sshPasswordToStore) {
+        // Nothing new was typed; keep any credential already held for this profile.
+        return null;
+      }
+
+      await api.saveConnectionSecrets(
+        config.id,
+        password || undefined,
+        sshPasswordToStore || undefined,
+        undefined
+      );
+      return null;
+    } catch (err: unknown) {
+      return formatErrorMessage(err);
     }
   };
 
@@ -229,11 +358,6 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
     }
 
     const isEmbedded = dbType === 'Sqlite' || dbType === 'DuckDb';
-    if (!isEmbedded && !database.trim()) {
-      setValidationError('Database name is required.');
-      return;
-    }
-
     if (isEmbedded && !filePath.trim() && !database.trim()) {
       setValidationError(
         `Database path or :memory: is required for ${dbType === 'DuckDb' ? 'DuckDB' : 'SQLite'}.`
@@ -244,11 +368,22 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
     setIsConnecting(true);
     try {
       const config = buildConfig();
-      await onConnect(config);
-      onClose();
+
+      const secretError = await persistSecrets(config);
+      if (secretError) {
+        setTestStatus('error');
+        setTestMessage(
+          `Could not store credentials in the system secret store (${secretError}). The password will only be used for this session.`
+        );
+      }
+
+      const connected = await onConnect(config);
+      if (connected !== false) {
+        onClose();
+      }
     } catch (err: unknown) {
       setTestStatus('error');
-      setTestMessage(err instanceof Error ? err.message : String(err));
+      setTestMessage(formatErrorMessage(err));
     } finally {
       setIsConnecting(false);
     }
@@ -301,6 +436,9 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
             setFilePath={setFilePath}
             ssl={ssl}
             setSsl={setSsl}
+            rememberPassword={rememberPassword}
+            setRememberPassword={setRememberPassword}
+            hasStoredSecret={hasStoredSecret}
             sshEnabled={sshEnabled}
             setSshEnabled={setSshEnabled}
             sshHost={sshHost}
@@ -318,6 +456,9 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
             validationError={validationError}
             testStatus={testStatus}
             testMessage={testMessage}
+            onFetchDatabases={handleFetchDatabases}
+            isFetchingDatabases={isFetchingDatabases}
+            availableDatabases={availableDatabases}
           />
 
           {/* Modal Footer / Actions */}

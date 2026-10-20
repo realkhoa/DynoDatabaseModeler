@@ -2,22 +2,22 @@ import { VirtualRelationship } from '../types/database';
 
 /**
  * @brief Constructs a consistent localStorage persistence key for virtual relationships.
- * @param dbName Database name or catalog identifier.
+ * @param scopeId Connection scope identifier (see `connectionScope`).
  * @return LocalStorage key string.
  */
-export function getVirtualRelationsKey(dbName: string): string {
-  const sanitized = (dbName || 'default').trim().toLowerCase();
+export function getVirtualRelationsKey(scopeId: string): string {
+  const sanitized = (scopeId || 'default').trim().toLowerCase();
   return `dyno_virtual_relations_${sanitized}`;
 }
 
 /**
- * @brief Retrieves all persisted virtual relationships for a given database.
- * @param dbName Database name.
+ * @brief Retrieves all persisted virtual relationships for a given connection scope.
+ * @param scopeId Connection scope identifier.
  * @return Array of VirtualRelationship records.
  */
-export function loadVirtualRelationships(dbName: string): VirtualRelationship[] {
+export function loadVirtualRelationships(scopeId: string): VirtualRelationship[] {
   try {
-    const raw = localStorage.getItem(getVirtualRelationsKey(dbName));
+    const raw = localStorage.getItem(getVirtualRelationsKey(scopeId));
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
@@ -29,12 +29,12 @@ export function loadVirtualRelationships(dbName: string): VirtualRelationship[] 
 
 /**
  * @brief Persists an updated list of virtual relationships to localStorage.
- * @param dbName Database name.
+ * @param scopeId Connection scope identifier.
  * @param rels Array of VirtualRelationship records to persist.
  */
-export function saveVirtualRelationships(dbName: string, rels: VirtualRelationship[]): void {
+export function saveVirtualRelationships(scopeId: string, rels: VirtualRelationship[]): void {
   try {
-    localStorage.setItem(getVirtualRelationsKey(dbName), JSON.stringify(rels));
+    localStorage.setItem(getVirtualRelationsKey(scopeId), JSON.stringify(rels));
   } catch (err) {
     console.error('Failed to save virtual relationships to localStorage:', err);
   }
@@ -42,34 +42,34 @@ export function saveVirtualRelationships(dbName: string, rels: VirtualRelationsh
 
 /**
  * @brief Adds a new virtual relationship and saves it to persistence.
- * @param dbName Database name.
+ * @param scopeId Connection scope identifier.
  * @param rel New VirtualRelationship record.
  * @return Updated list of VirtualRelationship records.
  */
 export function addVirtualRelationship(
-  dbName: string,
+  scopeId: string,
   rel: VirtualRelationship
 ): VirtualRelationship[] {
-  const existing = loadVirtualRelationships(dbName);
+  const existing = loadVirtualRelationships(scopeId);
   // Avoid duplicate connections between same source and target columns
   const filtered = existing.filter((item) => item.id !== rel.id);
   const updated = [...filtered, rel];
-  saveVirtualRelationships(dbName, updated);
+  saveVirtualRelationships(scopeId, updated);
   return updated;
 }
 
 /**
  * @brief Removes an existing virtual relationship by its identifier.
- * @param dbName Database name.
+ * @param scopeId Connection scope identifier.
  * @param relId Unique identifier of the virtual relationship to remove.
  * @return Updated list of VirtualRelationship records after removal.
  */
 export function removeVirtualRelationship(
-  dbName: string,
+  scopeId: string,
   relId: string
 ): VirtualRelationship[] {
-  const existing = loadVirtualRelationships(dbName);
+  const existing = loadVirtualRelationships(scopeId);
   const updated = existing.filter((item) => item.id !== relId);
-  saveVirtualRelationships(dbName, updated);
+  saveVirtualRelationships(scopeId, updated);
   return updated;
 }

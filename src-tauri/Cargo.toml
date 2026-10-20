@@ -19,12 +19,40 @@ serde_json = "1"
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
 thiserror = "2"
-sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "postgres", "mysql", "chrono", "uuid"] }
-tiberius = { version = "0.12", features = ["tokio", "chrono"] }
+sqlx = { version = "0.8", features = [
+    "runtime-tokio",
+    "sqlite",
+    "postgres",
+    "mysql",
+    "chrono",
+    "uuid",
+    "tls-rustls-ring",
+    "rust_decimal",
+] }
+tiberius = { version = "0.12", features = ["tokio", "chrono", "rust_decimal"] }
 tokio-util = { version = "0.7", features = ["compat"] }
 chrono = { version = "0.4", features = ["serde"] }
+# Explicit decimal decoding: without this, NUMERIC/DECIMAL columns decode to NULL in the grid.
+rust_decimal = "1"
 uuid = { version = "1", features = ["v4", "serde"] }
 duckdb = { version = "1.1", features = ["bundled"] }
+# Pure-Rust SSH client used to implement real bastion port forwarding for database connections.
+# The aws-lc-rs backend is disabled because it requires a full C toolchain; ring is already
+# present through rustls.
+russh = { version = "0.64", default-features = false, features = ["ring", "rsa"] }
+
+# Credentials are stored in the operating system's secret store rather than in the webview's
+# localStorage, so they are never readable by frontend JavaScript or left in plaintext app data.
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["sync-secret-service"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }
+rand_core = "0.10"
+getrandom = "0.3"

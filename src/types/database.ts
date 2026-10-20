@@ -167,6 +167,20 @@ export interface TableSchema {
   indexes: IndexSchema[];
   /** @brief Optional canvas coordinates for visual diagram persistence. */
   ui_position?: Point;
+  /** @brief Previous name when the user renamed the table in the modeler. */
+  rename_from?: string;
+  /** @brief Dialect constructs that make a full table rebuild unsafe (SQLite introspection). */
+  unsupported_features?: string[];
+}
+
+/**
+ * @brief Fully-qualified identity key for a table (`schema.name`, or the bare name).
+ * @param table Table schema to identify.
+ * @return Stable key used for diff matching, canvas node ids and selection state.
+ */
+export function tableKey(table: Pick<TableSchema, 'name' | 'schema'>): string {
+  const schema = table.schema?.trim();
+  return schema ? `${schema}.${table.name}` : table.name;
 }
 
 /**
@@ -194,6 +208,28 @@ export interface ColumnAlteration {
 }
 
 /**
+ * @brief A table rename expressed as `ALTER TABLE ... RENAME TO`.
+ */
+export interface TableRename {
+  /** @brief Current (live) table name. */
+  from: string;
+  /** @brief Desired new table name. */
+  to: string;
+}
+
+/**
+ * @brief A table that must be rebuilt because the dialect cannot change it in place (SQLite).
+ */
+export interface TableRebuild {
+  /** @brief Name of the table to rebuild. */
+  table_name: string;
+  /** @brief Complete desired definition of the table. */
+  target: TableSchema;
+  /** @brief Columns copied from the existing table into the rebuilt one. */
+  copy_columns: string[];
+}
+
+/**
  * @brief Structural difference model between current live and desired target schemas.
  */
 export interface SchemaDiff {
@@ -201,6 +237,10 @@ export interface SchemaDiff {
   tables_to_create: TableSchema[];
   /** @brief Names of tables to drop. */
   tables_to_drop: string[];
+  /** @brief Tables renamed by the user (non-destructive). */
+  tables_to_rename: TableRename[];
+  /** @brief Tables requiring a full rebuild on dialects without ALTER COLUMN. */
+  tables_to_rebuild: TableRebuild[];
   /** @brief Tuples of [table_name, column_schema] to add. */
   columns_to_add: [string, ColumnSchema][];
   /** @brief Tuples of [table_name, column_name] to drop. */
@@ -211,6 +251,22 @@ export interface SchemaDiff {
   foreign_keys_to_add: [string, ForeignKeySchema][];
   /** @brief Tuples of [table_name, constraint_name] to drop. */
   foreign_keys_to_drop: [string, string][];
+  /** @brief Tuples of [table_name, index_schema] to create. */
+  indexes_to_create: [string, IndexSchema][];
+  /** @brief Tuples of [table_name, index_name] to drop. */
+  indexes_to_drop: [string, string][];
+}
+
+/**
+ * @brief Generated migration script plus explicit reporting of changes that were not generated.
+ * @details The backend never silently omits a change: anything a dialect cannot express is returned
+ * as a warning so the UI can block or inform instead of reporting a hollow success.
+ */
+export interface GeneratedDdl {
+  /** @brief Ordered executable SQL statements. */
+  statements: string[];
+  /** @brief Human-readable descriptions of changes that were NOT generated, and why. */
+  warnings: string[];
 }
 
 /**
@@ -252,6 +308,12 @@ export interface RowUpdatePayload {
   primary_keys: Record<string, any>;
   /** @brief Modified column names mapped to their new desired values. */
   updated_values: Record<string, any>;
+  /**
+   * @brief Require the statement to affect exactly one row.
+   * @details Set by the data grid so a non-unique or null primary key locator can never silently
+   * modify unrelated rows; the backend rolls the whole batch back on a mismatch.
+   */
+  expect_single_row?: boolean;
 }
 
 /**

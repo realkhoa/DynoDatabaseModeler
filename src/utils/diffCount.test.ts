@@ -208,6 +208,8 @@ describe('computePendingChangesCount', () => {
       ],
     };
 
-    expect(computePendingChangesCount(withFk, withAlteredFk)).toBe(1);
+    // An altered constraint is replaced: the old constraint is dropped and the new one added, and
+    // the change tree shows both entries.
+    expect(computePendingChangesCount(withFk, withAlteredFk)).toBe(2);
   });
 });

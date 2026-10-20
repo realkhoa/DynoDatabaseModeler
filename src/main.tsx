@@ -6,6 +6,8 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+// Bundle Monaco locally before any editor mounts, so no executable code is fetched from a CDN.
+import './monacoSetup';
 import './index.css';
 
 /**

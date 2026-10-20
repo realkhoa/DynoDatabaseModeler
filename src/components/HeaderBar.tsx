@@ -11,7 +11,6 @@ import {
   Code,
   Settings,
   Unplug,
-  Database,
   Plus,
   GitCompare,
 } from 'lucide-react';
@@ -60,9 +59,11 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
     <header className="h-11 bg-[#18191c] border-b border-[#35373c] flex items-center justify-between px-3 select-none shrink-0 text-xs">
       {/* Brand & Logo */}
       <div className="flex items-center space-x-2 mr-4">
-        <div className="w-6 h-6 rounded bg-[#3a82f7] flex items-center justify-center text-white font-bold text-[11px] shadow-sm">
-          <Database className="w-3.5 h-3.5" />
-        </div>
+        <img
+          src="/icon.png"
+          alt="DynoDbModeler Logo"
+          className="w-6 h-6 rounded-md shadow-xs object-contain"
+        />
         <span className="font-semibold text-sm text-[#e6e8ea] tracking-tight">
           DynoDbModeler
         </span>
