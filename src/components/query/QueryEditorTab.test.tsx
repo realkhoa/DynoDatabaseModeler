@@ -14,6 +14,7 @@ vi.mock('../../api/ipc', () => ({
     executeQuery: vi.fn(),
     updateRows: vi.fn(),
     explainQuery: vi.fn(),
+    getPrimaryKeys: vi.fn().mockResolvedValue([]),
     recordQueryHistory: vi.fn().mockResolvedValue({ id: 1 }),
     getQueryHistory: vi.fn().mockResolvedValue([]),
     toggleFavoriteQuery: vi.fn().mockResolvedValue(true),
@@ -197,6 +198,7 @@ describe('QueryEditorTab component', () => {
       rows_affected: 1,
       execution_time_ms: 10,
     });
+    vi.mocked(api.getPrimaryKeys).mockResolvedValue(['id']);
     vi.mocked(api.updateRows).mockResolvedValue(1);
 
     render(
@@ -212,6 +214,11 @@ describe('QueryEditorTab component', () => {
 
     await waitFor(() => {
       expect(screen.getByText('john_doe')).toBeDefined();
+    });
+
+    // The grid is editable because the table primary key was resolved.
+    await waitFor(() => {
+      expect(screen.getByTestId('grid-edit-mode').textContent).toContain('Editable');
     });
 
     // Edit cell
@@ -234,6 +241,7 @@ describe('QueryEditorTab component', () => {
           table: 'users',
           primary_keys: { id: 1 },
           updated_values: { username: 'johnny' },
+          expect_single_row: true,
         },
       ]);
       expect(screen.getByTestId('save-status-banner')).toBeDefined();
@@ -536,6 +544,256 @@ describe('QueryEditorTab component', () => {
     it('formats strings directly', () => {
       const strNode = formatCellValue('hello world');
       expect(strNode).toBeDefined();
+    });
+  });
+
+  /**
+   * @brief Verifies Safe Limit toolbar selector and query interception behaviors.
+   */
+  describe('Safe Limit and Server-Side Pagination', () => {
+    /**
+     * @brief Verifies Safe Limit dropdown selector renders with default 500 and allows option changes.
+     */
+    it('renders Safe Limit selector in toolbar and allows changing limit', () => {
+      render(<QueryEditorTab activeConnection={mockConnection} />);
+
+      const safeLimitSelect = screen.getByRole('combobox', {
+        name: /safe limit/i,
+      }) as HTMLSelectElement;
+      expect(safeLimitSelect).toBeDefined();
+      expect(safeLimitSelect.value).toBe('500');
+
+      fireEvent.change(safeLimitSelect, { target: { value: '100' } });
+      expect(safeLimitSelect.value).toBe('100');
+
+      fireEvent.change(safeLimitSelect, { target: { value: '0' } });
+      expect(safeLimitSelect.value).toBe('0');
+    });
+
+    /**
+     * @brief Verifies safe limit injection into unbounded SELECT queries and displays badge.
+     */
+    it('applies safe limit to unbounded SELECT query when safe limit is enabled and displays badge', async () => {
+      vi.mocked(api.executeQuery).mockResolvedValue({
+        columns: ['id'],
+        rows: [[1]],
+        rows_affected: 1,
+        execution_time_ms: 10,
+      });
+
+      render(
+        <QueryEditorTab
+          activeConnection={mockConnection}
+          initialQuery="SELECT * FROM large_table"
+        />
+      );
+
+      const runButton = screen.getByRole('button', { name: /run query/i });
+      fireEvent.click(runButton);
+
+      await waitFor(() => {
+        expect(api.executeQuery).toHaveBeenCalledWith(
+          expect.stringContaining('LIMIT 500')
+        );
+      });
+
+      const badge = await screen.findByTestId('safe-limit-badge');
+      expect(badge).toBeDefined();
+      expect(badge.textContent).toContain('Safe Limit');
+    });
+
+    /**
+     * @brief Verifies safe limit is omitted when user selects Off (limit 0).
+     */
+    it('does not apply safe limit when Safe Limit is turned Off', async () => {
+      vi.mocked(api.executeQuery).mockResolvedValue({
+        columns: ['id'],
+        rows: [[1]],
+        rows_affected: 1,
+        execution_time_ms: 10,
+      });
+
+      render(
+        <QueryEditorTab
+          activeConnection={mockConnection}
+          initialQuery="SELECT * FROM large_table"
+        />
+      );
+
+      const safeLimitSelect = screen.getByRole('combobox', {
+        name: /safe limit/i,
+      });
+      fireEvent.change(safeLimitSelect, { target: { value: '0' } });
+
+      const runButton = screen.getByRole('button', { name: /run query/i });
+      fireEvent.click(runButton);
+
+      await waitFor(() => {
+        expect(api.executeQuery).toHaveBeenCalledWith('SELECT * FROM large_table');
+      });
+
+      expect(screen.queryByTestId('safe-limit-badge')).toBeNull();
+    });
+
+    /**
+     * @brief Verifies pagination navigation generates updated query statements and re-executes.
+     */
+    it('handles pagination navigation and updates query with new limit and offset', async () => {
+      vi.mocked(api.executeQuery).mockImplementation(async (sql: string) => {
+        if (/COUNT\(\*\)/i.test(sql)) {
+          return {
+            columns: ['total_count'],
+            rows: [[500]],
+            rows_affected: 0,
+            execution_time_ms: 4,
+          };
+        }
+        return {
+          columns: ['id', 'name'],
+          rows: Array.from({ length: 50 }, (_, i) => [i + 1, `User ${i + 1}`]),
+          rows_affected: 50,
+          execution_time_ms: 12,
+        };
+      });
+
+      render(
+        <QueryEditorTab
+          activeConnection={mockConnection}
+          initialQuery="SELECT * FROM users LIMIT 50 OFFSET 0;"
+        />
+      );
+
+      // Run query to populate results and pagination bar
+      fireEvent.click(screen.getByRole('button', { name: /run query/i }));
+
+      const paginationBar = await screen.findByTestId('pagination-bar');
+      expect(paginationBar).toBeDefined();
+
+      // Navigate to next page
+      const nextBtn = screen.getByRole('button', { name: /next page/i });
+      fireEvent.click(nextBtn);
+
+      await waitFor(() => {
+        expect(api.executeQuery).toHaveBeenCalledWith(
+          expect.stringContaining('OFFSET 50')
+        );
+      });
+
+      // Change page size to 100
+      const pageSizeSelect = screen.getByRole('combobox', {
+        name: /rows per page/i,
+      });
+      fireEvent.change(pageSizeSelect, { target: { value: '100' } });
+
+      await waitFor(() => {
+        expect(api.executeQuery).toHaveBeenCalledWith(
+          expect.stringContaining('LIMIT 100 OFFSET 0')
+        );
+      });
+    });
+
+    /**
+     * @brief Verifies autoRun executes initialQuery on mount without manual user click.
+     */
+    it('auto-runs initial query upon mount when autoRun is true', async () => {
+      vi.mocked(api.executeQuery).mockResolvedValue({
+        columns: ['id'],
+        rows: [[100]],
+        rows_affected: 1,
+        execution_time_ms: 8,
+      });
+
+      render(
+        <QueryEditorTab
+          activeConnection={mockConnection}
+          initialQuery="SELECT * FROM auto_table LIMIT 50 OFFSET 0;"
+          autoRun={true}
+        />
+      );
+
+      await waitFor(() => {
+        expect(api.executeQuery).toHaveBeenCalledWith(
+          'SELECT * FROM auto_table LIMIT 50 OFFSET 0;'
+        );
+      });
+    });
+
+    /**
+     * @brief Verifies autoRun re-executes when initialQuery prop updates from parent.
+     */
+    it('re-runs query when initialQuery prop changes and autoRun is true', async () => {
+      vi.mocked(api.executeQuery).mockResolvedValue({
+        columns: ['id'],
+        rows: [[1]],
+        rows_affected: 1,
+        execution_time_ms: 5,
+      });
+
+      const { rerender } = render(
+        <QueryEditorTab
+          activeConnection={mockConnection}
+          initialQuery="SELECT 1 as id;"
+          autoRun={true}
+        />
+      );
+
+      await waitFor(() => {
+        expect(api.executeQuery).toHaveBeenCalledWith(expect.stringContaining('SELECT 1'));
+      });
+
+      rerender(
+        <QueryEditorTab
+          activeConnection={mockConnection}
+          initialQuery="SELECT 2 as id;"
+          autoRun={true}
+        />
+      );
+
+      await waitFor(() => {
+        expect(api.executeQuery).toHaveBeenCalledWith(expect.stringContaining('SELECT 2'));
+      });
+    });
+
+    /**
+     * @brief Verifies background count query resolves totalRows for single-table SELECT queries.
+     */
+    it('resolves totalRows via background count query for single-table queries', async () => {
+      vi.mocked(api.executeQuery).mockImplementation(async (sql: string) => {
+        if (/COUNT\(\*\)/i.test(sql)) {
+          return {
+            columns: ['total_count'],
+            rows: [[350]],
+            rows_affected: 0,
+            execution_time_ms: 4,
+          };
+        }
+        return {
+          columns: ['id', 'title'],
+          rows: [[1, 'Item 1'], [2, 'Item 2']],
+          rows_affected: 2,
+          execution_time_ms: 10,
+        };
+      });
+
+      render(
+        <QueryEditorTab
+          activeConnection={mockConnection}
+          initialQuery="SELECT * FROM products LIMIT 50 OFFSET 0;"
+        />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: /run query/i }));
+
+      await waitFor(() => {
+        expect(api.executeQuery).toHaveBeenCalledWith(
+          expect.stringContaining('SELECT COUNT(*) AS total_count FROM "products"')
+        );
+      });
+
+      // Check that pagination bar displays resolved total
+      await waitFor(() => {
+        expect(screen.getByText(/of 350 rows/i)).toBeDefined();
+      });
     });
   });
 });

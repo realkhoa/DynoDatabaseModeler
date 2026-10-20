@@ -5,16 +5,42 @@
  * executes statements via Tauri IPC, and renders tabular results with sticky headers and value type formatting.
  */
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import Editor, { OnMount } from '@monaco-editor/react';
-import { Play, Loader2, AlertCircle, FileCode, CheckCircle2, Eye, Download, Zap, History } from 'lucide-react';
+import {
+  Play,
+  Loader2,
+  AlertCircle,
+  FileCode,
+  CheckCircle2,
+  Eye,
+  Download,
+  Zap,
+  History,
+  Lock,
+  ShieldCheck,
+  ShieldAlert,
+} from 'lucide-react';
 import { api } from '../../api/ipc';
-import type { ConnectionConfig, QueryResult, RowUpdatePayload, ExecutionPlanNode } from '../../types/database';
+import type {
+  ConnectionConfig,
+  QueryResult,
+  RowUpdatePayload,
+  ExecutionPlanNode,
+  DatabaseType,
+} from '../../types/database';
 import { EditableDataGrid, EditableDataGridHandle } from './EditableDataGrid';
 import { ValueInspectorDrawer } from './ValueInspectorDrawer';
 import { ExportModal } from './ExportModal';
 import { ExplainPlanModal } from './ExplainPlanModal';
 import { QueryHistoryModal } from './QueryHistoryModal';
+import { analyzeEditableQuery } from '../../utils/sqlSafety';
+import type { EditableQueryAnalysis } from '../../utils/sqlSafety';
+import {
+  applySafeLimit,
+  buildCountQuery,
+  extractPaginationInfo,
+} from '../../utils/sqlPagination';
 
 /**
  * @brief Properties accepted by the QueryEditorTab component.
@@ -26,6 +52,51 @@ export interface QueryEditorTabProps {
   initialQuery?: string;
   /** @brief Optional callback triggered upon successful query execution. */
   onQuerySuccess?: (result: QueryResult) => void;
+  /** @brief Whether to automatically execute the query on mount or when initialQuery changes. */
+  autoRun?: boolean;
+}
+
+/**
+ * @brief Updates or appends pagination clauses (LIMIT/OFFSET or MSSQL OFFSET/FETCH) in a SQL query.
+ * @param sql Existing SQL query text.
+ * @param dbType Database dialect.
+ * @param pageSize Number of rows per page.
+ * @param pageIndex Zero-based page index.
+ * @return Updated SQL statement with adjusted pagination clauses.
+ */
+export function updateQueryPagination(
+  sql: string,
+  dbType: DatabaseType = 'Postgres',
+  pageSize: number,
+  pageIndex: number
+): string {
+  const offset = Math.max(0, pageIndex * pageSize);
+  const trimmed = sql.trim().replace(/;+$/, '');
+
+  if (dbType === 'Mssql') {
+    const mssqlRegex = /OFFSET\s+\d+\s+ROWS\s+FETCH\s+(?:FIRST|NEXT)\s+\d+\s+ROWS(?:\s+ONLY)?/i;
+    if (mssqlRegex.test(trimmed)) {
+      return trimmed.replace(mssqlRegex, `OFFSET ${offset} ROWS FETCH NEXT ${pageSize} ROWS ONLY`) + ';';
+    }
+    const hasOrderBy = /\bORDER\s+BY\b/i.test(trimmed);
+    const orderPrefix = hasOrderBy ? '' : ' ORDER BY (SELECT NULL)';
+    return `${trimmed}${orderPrefix} OFFSET ${offset} ROWS FETCH NEXT ${pageSize} ROWS ONLY;`;
+  }
+
+  const hasLimit = /\bLIMIT\s+\d+/i.test(trimmed);
+  const hasOffset = /\bOFFSET\s+\d+/i.test(trimmed);
+
+  if (hasLimit && hasOffset) {
+    return (
+      trimmed
+        .replace(/\bLIMIT\s+\d+/i, `LIMIT ${pageSize}`)
+        .replace(/\bOFFSET\s+\d+/i, `OFFSET ${offset}`) + ';'
+    );
+  } else if (hasLimit) {
+    return trimmed.replace(/\bLIMIT\s+\d+/i, `LIMIT ${pageSize} OFFSET ${offset}`) + ';';
+  } else {
+    return `${trimmed} LIMIT ${pageSize} OFFSET ${offset};`;
+  }
 }
 
 /**
@@ -85,6 +156,7 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
   activeConnection,
   initialQuery = 'SELECT 1 as id, "Hello DynoDbModeler" as message;',
   onQuerySuccess,
+  autoRun = false,
 }) => {
   const [query, setQuery] = useState(initialQuery);
   const [result, setResult] = useState<QueryResult | null>(null);
@@ -101,13 +173,43 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
   const [explainError, setExplainError] = useState<string | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
+  // Safe limit state
+  const [safeLimit, setSafeLimit] = useState<number>(500);
+  const [safeLimitNotice, setSafeLimitNotice] = useState<string | null>(null);
+
+  // Server-side pagination state
+  const [pageIndex, setPageIndex] = useState<number>(0);
+  const [pageSize, setPageSize] = useState<number>(50);
+  const [totalRows, setTotalRows] = useState<number | null>(null);
+  const [activeTableTarget, setActiveTableTarget] = useState<string | null>(null);
+
+  // In-place editing is gated on a verified primary key for a single-table projection.
+  const [editAnalysis, setEditAnalysis] = useState<EditableQueryAnalysis | null>(null);
+  const [primaryKeyColumns, setPrimaryKeyColumns] = useState<string[]>([]);
+
   const gridRef = useRef<EditableDataGridHandle | null>(null);
+  const primaryKeyCache = useRef<Map<string, string[]>>(new Map());
 
   const detectedTableName = extractTableNameFromSql(query);
 
-  // Keep latest query in ref for Monaco action callback
+  // Keep latest query and props in refs for callbacks
   const queryRef = useRef(query);
   queryRef.current = query;
+
+  const safeLimitRef = useRef(safeLimit);
+  safeLimitRef.current = safeLimit;
+
+  const activeConnectionRef = useRef(activeConnection);
+  activeConnectionRef.current = activeConnection;
+
+  const pageSizeRef = useRef(pageSize);
+  pageSizeRef.current = pageSize;
+
+  const totalRowsRef = useRef(totalRows);
+  totalRowsRef.current = totalRows;
+
+  const activeTableTargetRef = useRef(activeTableTarget);
+  activeTableTargetRef.current = activeTableTarget;
 
   /**
    * @brief Selects a query from execution history modal and populates the editor.
@@ -175,39 +277,243 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
   );
 
   /**
-   * @brief Executes the current SQL statement string via Tauri IPC backend.
+   * @brief Determines whether the executed statement may be edited and resolves its primary key.
+   * @details Without a real primary key there is no safe row locator, so the grid stays read-only.
+   * The lookup is cached per table to avoid re-introspecting on every execution.
+   * @param sql Executed SQL statement text.
+   * @return Analysis describing editability plus the resolved primary key columns.
    */
-  const handleRun = useCallback(async () => {
-    const sqlToRun = queryRef.current.trim();
-    if (!sqlToRun) return;
-
-    setIsLoading(true);
-    setError(null);
-    setSaveStatus(null);
-    const startTime = Date.now();
-
-    try {
-      const res = await api.executeQuery(sqlToRun);
-      const durationMs = Date.now() - startTime;
-      setResult(res);
-      api
-        .recordQueryHistory(sqlToRun, durationMs, res.rows.length, 'success')
-        .catch((e) => console.error('Failed to log query history:', e));
-      if (onQuerySuccess) {
-        onQuerySuccess(res);
+  const resolveEditability = useCallback(
+    async (sql: string): Promise<{ analysis: EditableQueryAnalysis; keys: string[] }> => {
+      const analysis = analyzeEditableQuery(sql);
+      if (!analysis.editable || !analysis.table) {
+        return { analysis, keys: [] };
       }
-    } catch (err: unknown) {
-      const durationMs = Date.now() - startTime;
-      const msg = err instanceof Error ? err.message : String(err);
-      api
-        .recordQueryHistory(sqlToRun, durationMs, 0, 'error')
-        .catch((e) => console.error('Failed to log query history:', e));
-      setError(msg || 'Execution failed');
-      setResult(null);
-    } finally {
-      setIsLoading(false);
+
+      const cached = primaryKeyCache.current.get(analysis.table);
+      if (cached) {
+        return {
+          analysis: cached.length
+            ? analysis
+            : {
+                editable: false,
+                table: analysis.table,
+                reason: `Read-only: table "${analysis.table}" has no primary key, so rows cannot be identified safely.`,
+              },
+          keys: cached,
+        };
+      }
+
+      try {
+        const keys = await api.getPrimaryKeys(analysis.table);
+        primaryKeyCache.current.set(analysis.table, keys);
+        if (keys.length === 0) {
+          return {
+            analysis: {
+              editable: false,
+              table: analysis.table,
+              reason: `Read-only: table "${analysis.table}" has no primary key, so rows cannot be identified safely.`,
+            },
+            keys,
+          };
+        }
+        return { analysis, keys };
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return {
+          analysis: {
+            editable: false,
+            table: analysis.table,
+            reason: `Read-only: could not resolve the primary key of "${analysis.table}" (${message}).`,
+          },
+          keys: [],
+        };
+      }
+    },
+    []
+  );
+
+  /**
+   * @brief Executes the current SQL statement string via Tauri IPC backend.
+   * @details Intercepts unbounded queries with safe limit when active, resolves single-table editability,
+   * extracts pagination parameters, and triggers background count resolution.
+   * @param sqlOverride Optional SQL statement string to run instead of current editor text.
+   * @param forceCountRefresh When true, re-executes table COUNT(*) query even if table has not changed.
+   */
+  const handleRun = useCallback(
+    async (sqlOverride?: string, forceCountRefresh?: boolean) => {
+      const sqlToRun = (typeof sqlOverride === 'string' ? sqlOverride : queryRef.current).trim();
+      if (!sqlToRun) return;
+
+      setIsLoading(true);
+      setError(null);
+      setSaveStatus(null);
+      const startTime = Date.now();
+
+      // Apply Safe Limit if enabled and connection exists
+      let effectiveSql = sqlToRun;
+      let limitApplied = false;
+      if (safeLimitRef.current > 0 && activeConnectionRef.current) {
+        const safeRes = applySafeLimit(
+          sqlToRun,
+          activeConnectionRef.current.db_type,
+          safeLimitRef.current
+        );
+        effectiveSql = safeRes.sql;
+        limitApplied = safeRes.applied;
+      }
+
+      if (limitApplied) {
+        setSafeLimitNotice(`Safe Limit: ${safeLimitRef.current}`);
+      } else {
+        setSafeLimitNotice(null);
+      }
+
+      // Synchronize pagination state from the query statement
+      const paginationInfo = extractPaginationInfo(sqlToRun);
+      if (paginationInfo) {
+        if (paginationInfo.limit !== undefined) {
+          setPageSize(paginationInfo.limit);
+        }
+        if (paginationInfo.offset !== undefined && paginationInfo.limit !== undefined) {
+          setPageIndex(Math.floor(paginationInfo.offset / paginationInfo.limit));
+        } else if (paginationInfo.offset !== undefined) {
+          setPageIndex(Math.floor(paginationInfo.offset / pageSizeRef.current));
+        }
+      } else if (!limitApplied) {
+        setPageIndex(0);
+      }
+
+      try {
+        const res = await api.executeQuery(effectiveSql);
+        const durationMs = Date.now() - startTime;
+        setResult(res);
+
+        const { analysis, keys } = await resolveEditability(effectiveSql);
+        setEditAnalysis(analysis);
+        setPrimaryKeyColumns(keys);
+
+        // Record history using original user query text
+        api
+          .recordQueryHistory(sqlToRun, durationMs, res.rows.length, 'success')
+          .catch((e) => console.error('Failed to log query history:', e));
+        if (onQuerySuccess) {
+          onQuerySuccess(res);
+        }
+
+        // Automatic background count resolution for single-table queries
+        const targetTable =
+          analysis.table || (detectedTableName !== 'unknown' ? detectedTableName : null);
+        const hasPagination = paginationInfo !== null || limitApplied;
+
+        if (activeConnectionRef.current && targetTable && hasPagination) {
+          setActiveTableTarget(targetTable);
+          if (
+            forceCountRefresh ||
+            totalRowsRef.current === null ||
+            activeTableTargetRef.current !== targetTable
+          ) {
+            api
+              .executeQuery(
+                buildCountQuery(targetTable, activeConnectionRef.current.db_type)
+              )
+              .then((countRes) => {
+                const rawCount = countRes.rows?.[0]?.[0];
+                const parsedCount = Number(rawCount);
+                if (!Number.isNaN(parsedCount)) {
+                  setTotalRows(parsedCount);
+                }
+              })
+              .catch((err) => {
+                console.warn('Failed to resolve total table row count:', err);
+                setTotalRows(null);
+              });
+          }
+        } else if (!targetTable) {
+          setActiveTableTarget(null);
+          setTotalRows(null);
+        }
+      } catch (err: unknown) {
+        const durationMs = Date.now() - startTime;
+        const msg = err instanceof Error ? err.message : String(err);
+        api
+          .recordQueryHistory(sqlToRun, durationMs, 0, 'error')
+          .catch((e) => console.error('Failed to log query history:', e));
+        setError(msg || 'Execution failed');
+        setResult(null);
+        setEditAnalysis(null);
+        setPrimaryKeyColumns([]);
+        setTotalRows(null);
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [detectedTableName, onQuerySuccess, resolveEditability]
+  );
+
+  /**
+   * @brief Navigates to a new page index by rebuilding the paginated query and re-executing.
+   * @param newPage Zero-based target page index.
+   */
+  const handlePageChange = useCallback(
+    async (newPage: number) => {
+      setPageIndex(newPage);
+      const currentSql = queryRef.current;
+      const dbType = activeConnection?.db_type ?? 'Postgres';
+      const updatedSql = updateQueryPagination(currentSql, dbType, pageSize, newPage);
+      setQuery(updatedSql);
+      queryRef.current = updatedSql;
+      await handleRun(updatedSql);
+    },
+    [activeConnection?.db_type, handleRun, pageSize]
+  );
+
+  /**
+   * @brief Updates the pagination page size, resets to page 0, rebuilds the query, and re-executes.
+   * @param newPageSize Target rows per page.
+   */
+  const handlePageSizeChange = useCallback(
+    async (newPageSize: number) => {
+      setPageSize(newPageSize);
+      setPageIndex(0);
+      const currentSql = queryRef.current;
+      const dbType = activeConnection?.db_type ?? 'Postgres';
+      const updatedSql = updateQueryPagination(currentSql, dbType, newPageSize, 0);
+      setQuery(updatedSql);
+      queryRef.current = updatedSql;
+      await handleRun(updatedSql);
+    },
+    [activeConnection?.db_type, handleRun]
+  );
+
+  /**
+   * @brief Refreshes the currently active query and resolves an updated table count.
+   */
+  const handleRefresh = useCallback(async () => {
+    await handleRun(queryRef.current, true);
+  }, [handleRun]);
+
+  // Synchronize initialQuery updates from parent
+  const prevInitialQueryRef = useRef(initialQuery);
+  useEffect(() => {
+    if (initialQuery !== prevInitialQueryRef.current) {
+      prevInitialQueryRef.current = initialQuery;
+      setQuery(initialQuery);
+      queryRef.current = initialQuery;
+      if (autoRun && initialQuery.trim()) {
+        handleRun(initialQuery, true);
+      }
     }
-  }, [onQuerySuccess]);
+  }, [initialQuery, autoRun, handleRun]);
+
+  // Handle autoRun on initial mount
+  const hasAutoRunOnMount = useRef(false);
+  useEffect(() => {
+    if (autoRun && !hasAutoRunOnMount.current && initialQuery.trim()) {
+      hasAutoRunOnMount.current = true;
+      handleRun(initialQuery, true);
+    }
+  }, [autoRun, initialQuery, handleRun]);
 
   /**
    * @brief Persists batch row updates via backend Tauri IPC and refreshes current query results.
@@ -307,7 +613,7 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
 
           <button
             type="button"
-            onClick={handleRun}
+            onClick={() => handleRun()}
             disabled={isLoading}
             className="flex items-center space-x-1.5 bg-[#3a82f7] hover:bg-[#2b6fd6] text-white px-3 py-1 rounded font-semibold disabled:opacity-50 transition-colors shadow-xs cursor-pointer"
           >
@@ -346,6 +652,33 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
             <span>History</span>
           </button>
 
+          {/* Safe Limit Selector Dropdown */}
+          <div className="flex items-center space-x-1.5 bg-[#18191c] px-2 py-1 rounded border border-[#35373c] text-xs">
+            <ShieldCheck
+              className={`w-3.5 h-3.5 ${safeLimit > 0 ? 'text-[#20c997]' : 'text-[#8c919a]'}`}
+            />
+            <span className="text-[11px] text-[#8c919a]">Safe Limit:</span>
+            <select
+              aria-label="Safe Limit"
+              value={safeLimit}
+              onChange={(e) => setSafeLimit(Number(e.target.value))}
+              className="bg-transparent text-[#e6e8ea] text-[11px] font-mono outline-none cursor-pointer"
+            >
+              <option value={100} className="bg-[#1e1f22]">
+                100 rows
+              </option>
+              <option value={500} className="bg-[#1e1f22]">
+                500 rows
+              </option>
+              <option value={1000} className="bg-[#1e1f22]">
+                1000 rows
+              </option>
+              <option value={0} className="bg-[#1e1f22]">
+                Off
+              </option>
+            </select>
+          </div>
+
           {activeConnection && (
             <span className="text-[10px] text-[#8c919a] font-mono hidden sm:inline">
               Target: {activeConnection.name} ({activeConnection.db_type})
@@ -355,6 +688,36 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
 
         {/* Execution Metadata Telemetry */}
         <div className="flex items-center space-x-3 text-[#8c919a] font-mono text-[11px]">
+          {safeLimitNotice && (
+            <span
+              data-testid="safe-limit-badge"
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-amber-500/10 border border-amber-500/30 text-amber-300 font-mono"
+              title="Safe limit was automatically applied to this query."
+            >
+              <ShieldAlert className="w-3 h-3 text-amber-400" />
+              <span>{safeLimitNotice}</span>
+            </span>
+          )}
+
+          {result && editAnalysis && (
+            <span
+              data-testid="grid-edit-mode"
+              className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border ${
+                editAnalysis.editable
+                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                  : 'bg-[#24262b] border-[#35373c] text-[#8c919a]'
+              }`}
+              title={editAnalysis.reason ?? `Editable via primary key (${primaryKeyColumns.join(', ')})`}
+            >
+              {editAnalysis.editable ? (
+                <CheckCircle2 className="w-3 h-3" />
+              ) : (
+                <Lock className="w-3 h-3" />
+              )}
+              <span>{editAnalysis.editable ? 'Editable' : 'Read-only'}</span>
+            </span>
+          )}
+
           {result && (
             <div className="flex items-center space-x-2">
               <span data-testid="row-count">{result.rows.length} rows returned</span>
@@ -453,9 +816,25 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = ({
           <div className="flex-1 min-h-0 overflow-hidden">
             <EditableDataGrid
               ref={gridRef}
-              tableName={detectedTableName}
+              tableName={editAnalysis?.table ?? detectedTableName}
+              primaryKeyColumns={primaryKeyColumns}
+              editDisabledReason={
+                editAnalysis && !editAnalysis.editable
+                  ? editAnalysis.reason
+                  : primaryKeyColumns.length > 0
+                  ? undefined
+                  : 'Read-only: run a single-table SELECT to load the table primary key before editing.'
+              }
               columns={result.columns}
               rows={result.rows}
+              pagination={{
+                currentPage: pageIndex,
+                pageSize: pageSize,
+                totalRows: totalRows,
+                onPageChange: handlePageChange,
+                onPageSizeChange: handlePageSizeChange,
+                onRefresh: handleRefresh,
+              }}
               onSave={handleSave}
               isSaving={isSaving}
               onCellSelect={handleCellSelect}

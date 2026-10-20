@@ -689,7 +689,7 @@ export const EditableDataGrid = React.forwardRef<EditableDataGridHandle, Editabl
                 disabled={
                   pagination.totalRows !== null && pagination.totalRows !== undefined
                     ? (pagination.currentPage + 1) * pagination.pageSize >= pagination.totalRows
-                    : rows.length < pagination.pageSize
+                    : true
                 }
                 onClick={() => {
                   if (pagination.totalRows !== null && pagination.totalRows !== undefined) {

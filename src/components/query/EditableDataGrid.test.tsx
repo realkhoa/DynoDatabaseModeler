@@ -381,6 +381,9 @@ describe('EditableDataGrid component', () => {
       expect(screen.getByText(/showing 2 rows/i)).toBeDefined();
       expect(screen.getByText(/page 1/i)).toBeDefined();
       expect(screen.queryByText(/page 1 of/i)).toBeNull();
+
+      const lastBtn = screen.getByRole('button', { name: /last page/i }) as HTMLButtonElement;
+      expect(lastBtn.disabled).toBe(true);
     });
 
     /**
