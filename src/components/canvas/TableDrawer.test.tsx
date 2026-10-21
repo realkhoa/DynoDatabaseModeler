@@ -163,4 +163,25 @@ describe('TableDrawer component', () => {
 
     expect(onClose).toHaveBeenCalled();
   });
+
+  /**
+   * @brief Verifies that clicking Export ORM button triggers onExportOrm with table name.
+   */
+  it('calls onExportOrm with table name when Export ORM button is clicked', () => {
+    const onExportOrm = vi.fn();
+    render(
+      <TableDrawer
+        isOpen={true}
+        table={sampleTable}
+        onClose={vi.fn()}
+        onSaveTable={vi.fn()}
+        onExportOrm={onExportOrm}
+      />
+    );
+
+    const exportBtn = screen.getByTestId('drawer-export-orm-btn');
+    fireEvent.click(exportBtn);
+
+    expect(onExportOrm).toHaveBeenCalledWith('users');
+  });
 });

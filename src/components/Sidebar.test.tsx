@@ -312,6 +312,31 @@ describe('Sidebar component', () => {
   });
 
   /**
+   * @brief Verifies clicking export ORM button in table row invokes onExportOrm with table name.
+   */
+  it('invokes onExportOrm when table row export ORM action button is clicked', () => {
+    const handleExportOrm = vi.fn();
+    render(
+      <Sidebar
+        connections={mockConnections}
+        activeConnection={mockConnections[0]}
+        tables={mockTables}
+        onOpenNewConnection={vi.fn()}
+        onSelectConnection={vi.fn()}
+        onSelectTable={vi.fn()}
+        onRefresh={vi.fn()}
+        onExportOrm={handleExportOrm}
+      />
+    );
+
+    const ormBtn = screen.getByTestId('export-orm-users');
+    expect(ormBtn).toBeDefined();
+
+    fireEvent.click(ormBtn);
+    expect(handleExportOrm).toHaveBeenCalledWith('users');
+  });
+
+  /**
    * @brief Verifies default expanded mode layout with 256px width and search bar.
    */
   it('renders 256px width, search bar, and full table tree in expanded mode by default', () => {

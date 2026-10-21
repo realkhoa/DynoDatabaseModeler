@@ -233,6 +233,8 @@ src/components/
     ├── ExplainPlanModal.tsx      # Visual EXPLAIN query plan modal
     ├── ExportModal.tsx           # Data export wizard (CSV, JSON, SQL)
     ├── MockDataGeneratorModal.tsx# Fake mock data generator modal
+    ├── OrmExportModal.tsx        # Multi-language ORM & Entity code generator modal (Prisma, Drizzle, GORM, SeaORM, EF Core, SQLAlchemy, TypeORM)
+    ├── OrmExportModal.test.tsx   # OrmExportModal unit tests
     ├── ProcessListModal.tsx      # Active DB threads and query killer dialog
     ├── QueryEditorTab.tsx        # Monaco editor SQL worksheet
     ├── QueryHistoryModal.tsx     # Query execution log and favorites

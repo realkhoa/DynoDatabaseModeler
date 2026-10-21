@@ -20,6 +20,7 @@ import {
   FileCode2,
   PanelLeftClose,
   PanelLeftOpen,
+  Code2,
 } from 'lucide-react';
 import type { ConnectionConfig, TableSchema } from '../types/database';
 import { tableKey } from '../types/database';
@@ -78,6 +79,8 @@ export interface SidebarProps {
   onFilterChange?: (filter: string) => void;
   /** @brief Optional callback triggered to create a new table. */
   onNewTable?: () => void;
+  /** @brief Optional callback triggered when user requests ORM code export for a table. */
+  onExportOrm?: (tableName: string) => void;
 }
 
 /**
@@ -109,6 +112,8 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   onToggleMode,
   debounceMs = 150,
   onFilterChange,
+  onNewTable,
+  onExportOrm,
 }) => {
   const [filter, setFilter] = useState('');
   const debouncedFilter = useDebouncedValue(filter, debounceMs);
@@ -435,12 +440,26 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
       <div className="flex-1 overflow-y-auto p-1 space-y-0.5">
         <div className="flex items-center justify-between text-[10px] uppercase font-semibold text-[#8c919a] px-2 py-1">
           <span>Tables ({filteredTables.length})</span>
-          {activeConnection && (
-            <span className="text-[#20c997] font-normal lowercase flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#20c997] inline-block" />
-              connected
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {onNewTable && (
+              <button
+                type="button"
+                data-testid="sidebar-new-table-btn"
+                onClick={onNewTable}
+                title="Create new table"
+                aria-label="Create new table"
+                className="hover:text-[#e6e8ea] transition-colors p-0.5"
+              >
+                <Plus className="w-3 h-3 text-[#3a82f7]" />
+              </button>
+            )}
+            {activeConnection && (
+              <span className="text-[#20c997] font-normal lowercase flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#20c997] inline-block" />
+                connected
+              </span>
+            )}
+          </div>
         </div>
 
         {!activeConnection ? (
@@ -524,6 +543,21 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
                       className="p-1 text-[#8c919a] hover:text-amber-400 hover:bg-[#1e2024] rounded transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 shrink-0 ml-1 cursor-pointer"
                     >
                       <FileCode2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  {onExportOrm && (
+                    <button
+                      type="button"
+                      data-testid={`export-orm-${key}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onExportOrm(t.name);
+                      }}
+                      title={`Generate ORM entity code for ${key}`}
+                      aria-label={`Generate ORM entity code for ${key}`}
+                      className="p-1 text-[#8c919a] hover:text-[#a855f7] hover:bg-[#1e2024] rounded transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 shrink-0 ml-1 cursor-pointer"
+                    >
+                      <Code2 className="w-3.5 h-3.5" />
                     </button>
                   )}
                 </div>

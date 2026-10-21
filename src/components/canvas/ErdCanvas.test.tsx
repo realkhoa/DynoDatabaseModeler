@@ -388,4 +388,27 @@ describe('ErdCanvas component', () => {
     });
     expect(['#000000', 'rgb(0, 0, 0)']).toContain(canvasContainer.style.backgroundColor);
   });
+
+  it('triggers onOpenOrmExport from toolbar button and export menu', () => {
+    const onOpenOrmExport = vi.fn();
+    render(
+      <ErdCanvas
+        schema={mockSchema}
+        onEditTable={vi.fn()}
+        onOpenOrmExport={onOpenOrmExport}
+      />
+    );
+
+    // 1. Click pill toolbar ORM Models button
+    const ormToolbarBtn = screen.getByTestId('erd-orm-export-btn');
+    fireEvent.click(ormToolbarBtn);
+    expect(onOpenOrmExport).toHaveBeenCalledTimes(1);
+
+    // 2. Open export dropdown and click Export ORM Models
+    const exportDropdown = screen.getByTestId('export-dropdown-button');
+    fireEvent.click(exportDropdown);
+    const exportOrmItem = screen.getByTestId('export-orm-btn');
+    fireEvent.click(exportOrmItem);
+    expect(onOpenOrmExport).toHaveBeenCalledTimes(2);
+  });
 });

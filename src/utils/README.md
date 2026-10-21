@@ -89,7 +89,29 @@ export function buildPaginatedQuery(
 
 ---
 
-### 4. `layout`
+### 4. `ormExporter`
+
+Compiles database schemas or selected tables into production-ready ORM entity and model code across 8 popular frameworks:
+- **Prisma** (`schema.prisma`): Models, `@id`, `@default(autoincrement())`, `@map()`, `@relation()`.
+- **Drizzle ORM (PostgreSQL)** (`schema.ts`): `pgTable`, `serial`, `integer`, `varchar`, `text`, `timestamp`, `references()`.
+- **Drizzle ORM (SQLite)** (`schema.ts`): `sqliteTable`, `integer`, `text`, `real`, `blob`.
+- **Golang GORM** (`models.go`): Go structs with `gorm:"primaryKey;autoIncrement;column:..."` tags.
+- **Rust SeaORM** (`entities.rs`): `DeriveEntityModel`, `PrimaryProp`, `ColumnType`, `RelationDef` attributes.
+- **C# EF Core** (`Entities.cs`): `[Table]`, `[Key]`, `[Column]`, `[DatabaseGenerated]`, `[ForeignKey]` attributes.
+- **Python SQLAlchemy 2.0** (`models.py`): `Mapped[T]`, `mapped_column`, `ForeignKey`, `relationship`.
+- **TypeORM** (`entities.ts`): `@Entity`, `@PrimaryGeneratedColumn`, `@Column`, `@ManyToOne`, `@JoinColumn`.
+
+```typescript
+export function exportOrmCode(
+  target: OrmTarget,
+  tables: TableSchema[],
+  options?: OrmExportOptions
+): OrmExportResult;
+```
+
+---
+
+### 5. `layout`
 
 Computes automatic 2D graph layout coordinates for database tables on the ERD canvas using Dagre.
 

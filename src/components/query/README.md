@@ -253,9 +253,18 @@ export const MyTabs: React.FC = () => {
 };
 ```
 
+### `OrmExportModalProps`
+| Property | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `isOpen` | `boolean` | Yes | Controls dialog visibility and modal mount state. |
+| `onClose` | `() => void` | Yes | Callback invoked when modal backdrop, escape key, or close button is clicked. |
+| `tables` | `TableSchema[]` | Yes | Introspected database tables to compile into ORM models. |
+| `initialSelectedTable` | `string` | No | Optional table name pre-selected in the table scope filter. |
+| `selectedTable` | `string` | No | Optional alias for `initialSelectedTable`. |
+
 ---
 
-## 5. Output Structure & Schema
+## 4. Usage Examples
 `QueryEditorTab` operates against the `QueryResult` data model:
 ```ts
 export interface QueryResult {

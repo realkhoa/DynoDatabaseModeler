@@ -13,6 +13,7 @@ import {
   Table as TableIcon,
   Key,
   Save,
+  Code2,
 } from 'lucide-react';
 import {
   TableSchema,
@@ -128,6 +129,8 @@ export interface TableDrawerProps {
   onSaveTable: (updatedTable: TableSchema, originalKey?: string) => void;
   /** @brief Optional callback triggered when deleting the inspected table, receiving its key. */
   onDeleteTable?: (key: string) => void;
+  /** @brief Optional callback triggered when the user requests generating ORM code for this table. */
+  onExportOrm?: (tableName: string) => void;
 }
 
 /**
@@ -143,6 +146,7 @@ export const TableDrawer: React.FC<TableDrawerProps> = React.memo(({
   onClose,
   onSaveTable,
   onDeleteTable,
+  onExportOrm,
 }) => {
   const isCreatingNew = !table;
   const originalKey = table ? tableKey(table) : undefined;
@@ -468,7 +472,7 @@ export const TableDrawer: React.FC<TableDrawerProps> = React.memo(({
 
         {/* Drawer Footer Actions */}
         <div className="px-4 py-3 border-t border-[#35373c] bg-[#18191c] flex items-center justify-between">
-          <div>
+          <div className="flex items-center gap-2">
             {!isCreatingNew && onDeleteTable && (
               confirmingDelete ? (
                 <div className="flex items-center gap-2">
@@ -504,6 +508,19 @@ export const TableDrawer: React.FC<TableDrawerProps> = React.memo(({
                   Delete Table
                 </button>
               )
+            )}
+
+            {!isCreatingNew && onExportOrm && table && (
+              <button
+                type="button"
+                data-testid="drawer-export-orm-btn"
+                onClick={() => onExportOrm(table.name)}
+                className="text-xs text-[#a855f7] hover:text-[#c084fc] font-medium px-2 py-1 rounded hover:bg-[#a855f7]/10 transition-colors inline-flex items-center gap-1"
+                title="Generate ORM entity code for this table"
+              >
+                <Code2 className="w-3.5 h-3.5" />
+                <span>Export ORM</span>
+              </button>
             )}
           </div>
 

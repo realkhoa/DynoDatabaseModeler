@@ -19,6 +19,7 @@ import { QueryEditorTab } from './components/query/QueryEditorTab';
 import { SettingsView } from './components/SettingsView';
 import { ProcessListModal } from './components/query/ProcessListModal';
 import { TableStructureModal } from './components/query/TableStructureModal';
+import { OrmExportModal } from './components/query/OrmExportModal';
 import { api } from './api/ipc';
 import { computePendingChangesCount } from './utils/diffCount';
 import { connectionScope } from './utils/connectionScope';
@@ -135,6 +136,9 @@ export default function App(): React.ReactElement {
   // Process monitor & table structure inspection modal states
   const [isProcessModalOpen, setIsProcessModalOpen] = useState(false);
   const [inspectingTable, setInspectingTable] = useState<TableSchema | null>(null);
+  // Multi-Language ORM & Entity Code Generator modal states
+  const [isOrmExportOpen, setIsOrmExportOpen] = useState(false);
+  const [ormExportTable, setOrmExportTable] = useState<string | undefined>(undefined);
   // SQL Query Execution & Server-side Pagination State
   const [activeSqlQuery, setActiveSqlQuery] = useState<string | null>(null);
   const [autoRunQuery, setAutoRunQuery] = useState<boolean>(false);
@@ -659,6 +663,15 @@ export default function App(): React.ReactElement {
   }, []);
 
   /**
+   * @brief Opens the ORM & Entity code generator modal, optionally scoped to a single table.
+   * @param tableName Optional name of the table to generate models for, or undefined for all tables.
+   */
+  const handleOpenOrmExport = useCallback((tableName?: string) => {
+    setOrmExportTable(tableName);
+    setIsOrmExportOpen(true);
+  }, []);
+
+  /**
    * @brief Handles table node position updates after dragging on canvas.
    */
   const handleTablePositionChange = useCallback((key: string, pos: { x: number; y: number }) => {
@@ -742,6 +755,7 @@ export default function App(): React.ReactElement {
           isLoadingDatabases={isLoadingDatabases}
           onViewTableData={handleViewTableData}
           onInspectTableStructure={(table) => setInspectingTable(table)}
+          onExportOrm={handleOpenOrmExport}
           mode={sidebarMode}
           onToggleMode={setSidebarMode}
         />
@@ -817,6 +831,7 @@ export default function App(): React.ReactElement {
                   onOpenDiff={handleOpenDiff}
                   pendingChangesCount={pendingChangesCount}
                   onViewTableData={handleViewTableData}
+                  onOpenOrmExport={handleOpenOrmExport}
                 />
                 <TableDrawer
                   isOpen={isDrawerOpen}
@@ -825,6 +840,7 @@ export default function App(): React.ReactElement {
                   onClose={() => setIsDrawerOpen(false)}
                   onSaveTable={handleSaveTable}
                   onDeleteTable={handleDeleteTable}
+                  onExportOrm={handleOpenOrmExport}
                 />
               </div>
             )
@@ -906,6 +922,17 @@ export default function App(): React.ReactElement {
           setAutoRunQuery(false);
           setActiveTab('sql');
         }}
+      />
+
+      {/* Multi-Language ORM & Entity Code Generator Modal */}
+      <OrmExportModal
+        isOpen={isOrmExportOpen}
+        onClose={() => {
+          setIsOrmExportOpen(false);
+          setOrmExportTable(undefined);
+        }}
+        tables={activeCanvasSchema.tables}
+        selectedTable={ormExportTable}
       />
     </div>
   );

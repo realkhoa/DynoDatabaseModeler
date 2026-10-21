@@ -50,6 +50,7 @@ import {
   StickyNote as StickyNoteIcon,
   Layers as LayersIcon,
   Search,
+  Code2,
 } from 'lucide-react';
 import {
   exportSchemaAsJson,
@@ -83,6 +84,8 @@ export interface ErdCanvasProps {
   onNotationStyleChange?: (style: ErdNotationStyle) => void;
   /** @brief Optional callback triggered when the user requests viewing rows of a table. */
   onViewTableData?: (tableKey: string) => void;
+  /** @brief Optional callback triggered to open the ORM & Entity code generator modal. */
+  onOpenOrmExport?: (tableName?: string) => void;
 }
 
 /**
@@ -102,6 +105,7 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
   notationStyle: notationStyleProp,
   onNotationStyleChange,
   onViewTableData,
+  onOpenOrmExport,
 }) => {
   // Diagram data is persisted per connection scope, falling back to the database name.
   const scope = storageScope ?? schema.database_name;
@@ -692,6 +696,19 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
           </span>
         </button>
 
+        {onOpenOrmExport && (
+          <button
+            type="button"
+            data-testid="erd-orm-export-btn"
+            onClick={() => onOpenOrmExport()}
+            className="inline-flex items-center gap-1.5 hover:bg-[#2e3138] text-[#e6e8ea] px-2.5 py-1 rounded-md text-xs transition-colors font-medium cursor-pointer"
+            title="Generate multi-language ORM models (Prisma, Drizzle, GORM, SeaORM, EF Core, SQLAlchemy, TypeORM)"
+          >
+            <Code2 className="w-3.5 h-3.5 text-[#a855f7]" />
+            <span>ORM Models</span>
+          </button>
+        )}
+
         <div className="h-4 w-px bg-[#35373c]" aria-hidden="true" />
 
         {/* Export Dropdown */}
@@ -739,6 +756,19 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
               >
                 <ImageIcon className="w-3.5 h-3.5 text-[#e0a82e]" />
                 <span>Export PNG (.png)</span>
+              </button>
+              <div className="h-px bg-[#35373c] my-1" />
+              <button
+                type="button"
+                data-testid="export-orm-btn"
+                onClick={() => {
+                  setIsExportOpen(false);
+                  onOpenOrmExport?.();
+                }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-[#e6e8ea] hover:bg-[#35373c] transition-colors text-left cursor-pointer"
+              >
+                <Code2 className="w-3.5 h-3.5 text-[#a855f7]" />
+                <span>Export ORM Models...</span>
               </button>
             </div>
           )}
