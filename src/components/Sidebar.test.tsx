@@ -337,6 +337,31 @@ describe('Sidebar component', () => {
   });
 
   /**
+   * @brief Verifies clicking import data button in table row invokes onImportData with table name.
+   */
+  it('invokes onImportData when table row import data action button is clicked', () => {
+    const handleImportData = vi.fn();
+    render(
+      <Sidebar
+        connections={mockConnections}
+        activeConnection={mockConnections[0]}
+        tables={mockTables}
+        onOpenNewConnection={vi.fn()}
+        onSelectConnection={vi.fn()}
+        onSelectTable={vi.fn()}
+        onRefresh={vi.fn()}
+        onImportData={handleImportData}
+      />
+    );
+
+    const importBtn = screen.getByTestId('import-data-users');
+    expect(importBtn).toBeDefined();
+
+    fireEvent.click(importBtn);
+    expect(handleImportData).toHaveBeenCalledWith('users');
+  });
+
+  /**
    * @brief Verifies default expanded mode layout with 256px width and search bar.
    */
   it('renders 256px width, search bar, and full table tree in expanded mode by default', () => {

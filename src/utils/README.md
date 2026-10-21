@@ -125,7 +125,21 @@ export function getLayoutedElements(
 
 ---
 
-### 5. `export`
+### 6. `dataImporter`
+
+High-performance data import engine supporting RFC 4180 CSV parsing, multiline text cells, JSON array of objects, heuristic column auto-mapping, and dialect-aware chunked batch SQL generation with conflict handling (`ignore`, `replace`, `abort`):
+
+```typescript
+export function parseCsv(text: string, delimiter?: string): ParsedImportData;
+export function parseJsonData(text: string): ParsedImportData;
+export function inferColumnType(values: unknown[]): CanonicalType;
+export function autoMapColumns(sourceHeaders: string[], targetColumns: ColumnSchema[]): ColumnMapping;
+export function generateBatchInsertSql(options: BatchInsertOptions): string;
+```
+
+---
+
+### 7. `export`
 
 Exports tabular query results to external file formats.
 
@@ -253,6 +267,8 @@ export const FilterableTableList: React.FC<{ tables: string[] }> = ({ tables }) 
 ```
 src/utils/
 ├── connectionScope.ts         # Connection lifecycle and scope management
+├── dataImporter.ts            # CSV/JSON import parser, column mapping, batch SQL
+├── dataImporter.test.ts       # Data importer unit tests
 ├── dataTransfer.ts            # CSV/JSON clipboard and file parsing
 ├── dataTransfer.test.ts       # Data transfer parser unit tests
 ├── ddlExporter.ts             # Generates CREATE TABLE DDL scripts from schema

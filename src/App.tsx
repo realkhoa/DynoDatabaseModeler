@@ -20,6 +20,7 @@ import { SettingsView } from './components/SettingsView';
 import { ProcessListModal } from './components/query/ProcessListModal';
 import { TableStructureModal } from './components/query/TableStructureModal';
 import { OrmExportModal } from './components/query/OrmExportModal';
+import { DataImportModal } from './components/query/DataImportModal';
 import { api } from './api/ipc';
 import { computePendingChangesCount } from './utils/diffCount';
 import { connectionScope } from './utils/connectionScope';
@@ -139,6 +140,9 @@ export default function App(): React.ReactElement {
   // Multi-Language ORM & Entity Code Generator modal states
   const [isOrmExportOpen, setIsOrmExportOpen] = useState(false);
   const [ormExportTable, setOrmExportTable] = useState<string | undefined>(undefined);
+  // Smart Data Import Wizard modal states
+  const [isDataImportOpen, setIsDataImportOpen] = useState(false);
+  const [dataImportTable, setDataImportTable] = useState<string | undefined>(undefined);
   // SQL Query Execution & Server-side Pagination State
   const [activeSqlQuery, setActiveSqlQuery] = useState<string | null>(null);
   const [autoRunQuery, setAutoRunQuery] = useState<boolean>(false);
@@ -672,6 +676,34 @@ export default function App(): React.ReactElement {
   }, []);
 
   /**
+   * @brief Opens the Smart Data Import Wizard, optionally pre-selecting a target table.
+   * @param tableName Optional name of the table to import data into.
+   */
+  const handleOpenDataImport = useCallback((tableName?: string) => {
+    setDataImportTable(tableName);
+    setIsDataImportOpen(true);
+  }, []);
+
+  /**
+   * @brief Executes batch SQL import script directly against the active database.
+   * @param batchSql Generated SQL statements.
+   */
+  const handleExecuteImportSql = useCallback(
+    async (batchSql: string) => {
+      if (!activeConnection) {
+        throw new Error('No active database connection');
+      }
+      await api.executeQuery(batchSql);
+      setNotification({
+        type: 'success',
+        message: 'Data import completed successfully! Refreshing schema...',
+      });
+      void handleRefreshSchema();
+    },
+    [activeConnection, handleRefreshSchema]
+  );
+
+  /**
    * @brief Handles table node position updates after dragging on canvas.
    */
   const handleTablePositionChange = useCallback((key: string, pos: { x: number; y: number }) => {
@@ -756,6 +788,7 @@ export default function App(): React.ReactElement {
           onViewTableData={handleViewTableData}
           onInspectTableStructure={(table) => setInspectingTable(table)}
           onExportOrm={handleOpenOrmExport}
+          onImportData={handleOpenDataImport}
           mode={sidebarMode}
           onToggleMode={setSidebarMode}
         />
@@ -832,6 +865,7 @@ export default function App(): React.ReactElement {
                   pendingChangesCount={pendingChangesCount}
                   onViewTableData={handleViewTableData}
                   onOpenOrmExport={handleOpenOrmExport}
+                  onOpenDataImport={handleOpenDataImport}
                 />
                 <TableDrawer
                   isOpen={isDrawerOpen}
@@ -841,6 +875,7 @@ export default function App(): React.ReactElement {
                   onSaveTable={handleSaveTable}
                   onDeleteTable={handleDeleteTable}
                   onExportOrm={handleOpenOrmExport}
+                  onImportData={handleOpenDataImport}
                 />
               </div>
             )
@@ -933,6 +968,24 @@ export default function App(): React.ReactElement {
         }}
         tables={activeCanvasSchema.tables}
         selectedTable={ormExportTable}
+      />
+
+      {/* Smart Data Import Wizard Modal */}
+      <DataImportModal
+        isOpen={isDataImportOpen}
+        onClose={() => {
+          setIsDataImportOpen(false);
+          setDataImportTable(undefined);
+        }}
+        tables={activeCanvasSchema.tables}
+        initialTable={dataImportTable}
+        dbType={activeConnection?.db_type ?? 'Postgres'}
+        onExecuteSql={handleExecuteImportSql}
+        onOpenInWorksheet={(batchSql) => {
+          setActiveSqlQuery(batchSql);
+          setAutoRunQuery(false);
+          setActiveTab('sql');
+        }}
       />
     </div>
   );

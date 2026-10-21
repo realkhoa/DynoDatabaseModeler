@@ -184,4 +184,25 @@ describe('TableDrawer component', () => {
 
     expect(onExportOrm).toHaveBeenCalledWith('users');
   });
+
+  /**
+   * @brief Verifies that clicking Import Data button triggers onImportData with table name.
+   */
+  it('calls onImportData with table name when Import Data button is clicked', () => {
+    const onImportData = vi.fn();
+    render(
+      <TableDrawer
+        isOpen={true}
+        table={sampleTable}
+        onClose={vi.fn()}
+        onSaveTable={vi.fn()}
+        onImportData={onImportData}
+      />
+    );
+
+    const importBtn = screen.getByTestId('drawer-import-data-btn');
+    fireEvent.click(importBtn);
+
+    expect(onImportData).toHaveBeenCalledWith('users');
+  });
 });

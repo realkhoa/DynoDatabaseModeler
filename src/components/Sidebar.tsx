@@ -21,6 +21,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Code2,
+  Upload,
 } from 'lucide-react';
 import type { ConnectionConfig, TableSchema } from '../types/database';
 import { tableKey } from '../types/database';
@@ -81,6 +82,8 @@ export interface SidebarProps {
   onNewTable?: () => void;
   /** @brief Optional callback triggered when user requests ORM code export for a table. */
   onExportOrm?: (tableName: string) => void;
+  /** @brief Optional callback triggered when user requests data import for a table. */
+  onImportData?: (tableName: string) => void;
 }
 
 /**
@@ -114,6 +117,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   onFilterChange,
   onNewTable,
   onExportOrm,
+  onImportData,
 }) => {
   const [filter, setFilter] = useState('');
   const debouncedFilter = useDebouncedValue(filter, debounceMs);
@@ -558,6 +562,21 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
                       className="p-1 text-[#8c919a] hover:text-[#a855f7] hover:bg-[#1e2024] rounded transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 shrink-0 ml-1 cursor-pointer"
                     >
                       <Code2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  {onImportData && (
+                    <button
+                      type="button"
+                      data-testid={`import-data-${key}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onImportData(t.name);
+                      }}
+                      title={`Import CSV/JSON data into ${key}`}
+                      aria-label={`Import CSV/JSON data into ${key}`}
+                      className="p-1 text-[#8c919a] hover:text-[#20c997] hover:bg-[#1e2024] rounded transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 shrink-0 ml-1 cursor-pointer"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
                     </button>
                   )}
                 </div>

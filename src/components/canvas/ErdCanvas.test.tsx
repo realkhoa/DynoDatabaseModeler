@@ -411,4 +411,19 @@ describe('ErdCanvas component', () => {
     fireEvent.click(exportOrmItem);
     expect(onOpenOrmExport).toHaveBeenCalledTimes(2);
   });
+
+  it('triggers onOpenDataImport from floating pill toolbar button', () => {
+    const onOpenDataImport = vi.fn();
+    render(
+      <ErdCanvas
+        schema={mockSchema}
+        onEditTable={vi.fn()}
+        onOpenDataImport={onOpenDataImport}
+      />
+    );
+
+    const importToolbarBtn = screen.getByTestId('erd-import-data-btn');
+    fireEvent.click(importToolbarBtn);
+    expect(onOpenDataImport).toHaveBeenCalledTimes(1);
+  });
 });

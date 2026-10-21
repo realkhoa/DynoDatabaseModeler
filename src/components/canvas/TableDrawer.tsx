@@ -14,6 +14,7 @@ import {
   Key,
   Save,
   Code2,
+  Upload,
 } from 'lucide-react';
 import {
   TableSchema,
@@ -131,6 +132,8 @@ export interface TableDrawerProps {
   onDeleteTable?: (key: string) => void;
   /** @brief Optional callback triggered when the user requests generating ORM code for this table. */
   onExportOrm?: (tableName: string) => void;
+  /** @brief Optional callback triggered when the user requests importing data into this table. */
+  onImportData?: (tableName: string) => void;
 }
 
 /**
@@ -147,6 +150,7 @@ export const TableDrawer: React.FC<TableDrawerProps> = React.memo(({
   onSaveTable,
   onDeleteTable,
   onExportOrm,
+  onImportData,
 }) => {
   const isCreatingNew = !table;
   const originalKey = table ? tableKey(table) : undefined;
@@ -520,6 +524,19 @@ export const TableDrawer: React.FC<TableDrawerProps> = React.memo(({
               >
                 <Code2 className="w-3.5 h-3.5" />
                 <span>Export ORM</span>
+              </button>
+            )}
+
+            {!isCreatingNew && onImportData && table && (
+              <button
+                type="button"
+                data-testid="drawer-import-data-btn"
+                onClick={() => onImportData(table.name)}
+                className="text-xs text-[#20c997] hover:text-[#38d9a9] font-medium px-2 py-1 rounded hover:bg-[#20c997]/10 transition-colors inline-flex items-center gap-1 cursor-pointer"
+                title="Import CSV or JSON data into this table"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>Import Data</span>
               </button>
             )}
           </div>

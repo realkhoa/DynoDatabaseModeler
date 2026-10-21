@@ -229,6 +229,8 @@ src/components/
 │   ├── DiffModal.tsx             # Side-by-side diff inspection and migration execution
 │   └── README.md                 # Diff engine documentation
 └── query/                        # SQL editor, worksheets, grids, and modal tools
+    ├── DataImportModal.tsx       # Smart Data Import Wizard (CSV/JSON column mapping & batch inserts)
+    ├── DataImportModal.test.tsx  # DataImportModal unit tests
     ├── EditableDataGrid.tsx      # Virtualized tabular data grid with debounced search
     ├── ExplainPlanModal.tsx      # Visual EXPLAIN query plan modal
     ├── ExportModal.tsx           # Data export wizard (CSV, JSON, SQL)

@@ -253,6 +253,19 @@ export const MyTabs: React.FC = () => {
 };
 ```
 
+### `DataImportModalProps`
+| Property | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `isOpen` | `boolean` | Yes | Controls dialog visibility and modal mount state. |
+| `onClose` | `() => void` | Yes | Callback invoked when modal backdrop, escape key, or close button is clicked. |
+| `tables` | `TableSchema[]` | Yes | Available database tables to map and import into. |
+| `initialTable` | `string` | No | Optional pre-selected table name. |
+| `dbType` | `DatabaseType` | No | Database engine dialect for generated batch INSERT SQL. |
+| `onExecuteSql` | `(sql: string) => Promise<void> \| void` | No | Optional callback to execute generated batch SQL directly. |
+| `onOpenInWorksheet` | `(sql: string) => void` | No | Optional callback to open generated SQL in a query worksheet. |
+
+---
+
 ### `OrmExportModalProps`
 | Property | Type | Required | Description |
 | :--- | :--- | :---: | :--- |

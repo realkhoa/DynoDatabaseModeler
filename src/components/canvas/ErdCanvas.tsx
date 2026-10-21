@@ -51,6 +51,7 @@ import {
   Layers as LayersIcon,
   Search,
   Code2,
+  Upload,
 } from 'lucide-react';
 import {
   exportSchemaAsJson,
@@ -86,6 +87,8 @@ export interface ErdCanvasProps {
   onViewTableData?: (tableKey: string) => void;
   /** @brief Optional callback triggered to open the ORM & Entity code generator modal. */
   onOpenOrmExport?: (tableName?: string) => void;
+  /** @brief Optional callback triggered to open the Smart Data Import Wizard. */
+  onOpenDataImport?: (tableName?: string) => void;
 }
 
 /**
@@ -106,6 +109,7 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
   onNotationStyleChange,
   onViewTableData,
   onOpenOrmExport,
+  onOpenDataImport,
 }) => {
   // Diagram data is persisted per connection scope, falling back to the database name.
   const scope = storageScope ?? schema.database_name;
@@ -706,6 +710,19 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
           >
             <Code2 className="w-3.5 h-3.5 text-[#a855f7]" />
             <span>ORM Models</span>
+          </button>
+        )}
+
+        {onOpenDataImport && (
+          <button
+            type="button"
+            data-testid="erd-import-data-btn"
+            onClick={() => onOpenDataImport()}
+            className="inline-flex items-center gap-1.5 hover:bg-[#2e3138] text-[#e6e8ea] px-2.5 py-1 rounded-md text-xs transition-colors font-medium cursor-pointer"
+            title="Import CSV or JSON data with smart column mapping and batch inserts"
+          >
+            <Upload className="w-3.5 h-3.5 text-[#20c997]" />
+            <span>Import Data</span>
           </button>
         )}
 
