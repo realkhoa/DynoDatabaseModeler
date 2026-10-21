@@ -139,7 +139,20 @@ export function generateBatchInsertSql(options: BatchInsertOptions): string;
 
 ---
 
-### 7. `export`
+### 7. `schemaHealthAdvisor`
+
+Autonomous database schema health analyzer and linter evaluating primary keys, foreign key index coverage, redundant indexes, reserved keyword collisions, and data type optimizations:
+
+```typescript
+export function analyzeSchemaHealth(
+  schema: DatabaseSchema,
+  dbType?: DatabaseType
+): SchemaHealthReport;
+```
+
+---
+
+### 8. `export`
 
 Exports tabular query results to external file formats.
 
@@ -281,8 +294,12 @@ src/utils/
 ├── layout.test.ts             # Layout calculation unit tests
 ├── mockDataGenerator.ts       # Fake mock data generator for tables
 ├── mockDataGenerator.test.ts  # Mock data generator unit tests
+├── ormExporter.ts             # Multi-target ORM & Entity code generator
+├── ormExporter.test.ts        # ORM exporter unit tests
 ├── processQueries.ts          # Database process listing and thread management
 ├── processQueries.test.ts     # Process queries unit tests
+├── schemaHealthAdvisor.ts     # Schema linter and health advisor engine
+├── schemaHealthAdvisor.test.ts # Schema health advisor unit tests
 ├── scratchpad.ts              # LocalStorage query scratchpad manager
 ├── scratchpad.test.ts         # Scratchpad unit tests
 ├── sqlCompletion.ts           # Schema-aware Monaco autocompletion provider

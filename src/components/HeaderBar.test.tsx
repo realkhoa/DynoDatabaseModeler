@@ -291,4 +291,25 @@ describe('HeaderBar component', () => {
     expect(dot.className).toContain('bg-[#8c919a]');
     expect(dot.className).not.toContain('bg-emerald-500');
   });
+
+  /**
+   * @brief Verifies schema health button triggers onOpenSchemaHealth when clicked.
+   */
+  it('renders health check button when connected and triggers onOpenSchemaHealth', () => {
+    const handleOpenSchemaHealth = vi.fn();
+    render(
+      <HeaderBar
+        activeTab="erd"
+        onSelectTab={vi.fn()}
+        activeConnection={mockConnection}
+        onOpenNewConnection={vi.fn()}
+        onOpenSchemaHealth={handleOpenSchemaHealth}
+      />
+    );
+
+    const healthBtn = screen.getByTestId('header-schema-health-btn');
+    expect(healthBtn).toBeDefined();
+    fireEvent.click(healthBtn);
+    expect(handleOpenSchemaHealth).toHaveBeenCalledTimes(1);
+  });
 });

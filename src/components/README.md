@@ -234,6 +234,9 @@ src/components/
     ├── EditableDataGrid.tsx      # Virtualized tabular data grid with debounced search
     ├── ExplainPlanModal.tsx      # Visual EXPLAIN query plan modal
     ├── ExportModal.tsx           # Data export wizard (CSV, JSON, SQL)
+    ├── HealthFilterToolbar.tsx   # Filter toolbar for schema health advisor
+    ├── HealthIssueCard.tsx       # Individual health issue finding card
+    ├── HealthSummaryBanner.tsx   # Health score telemetry summary banner
     ├── MockDataGeneratorModal.tsx# Fake mock data generator modal
     ├── OrmExportModal.tsx        # Multi-language ORM & Entity code generator modal (Prisma, Drizzle, GORM, SeaORM, EF Core, SQLAlchemy, TypeORM)
     ├── OrmExportModal.test.tsx   # OrmExportModal unit tests
@@ -244,6 +247,8 @@ src/components/
     ├── ScratchpadModal.tsx       # Reusable SQL snippets modal
     ├── TableStructureModal.tsx   # DDL and table column inspector modal
     ├── ValueInspectorDrawer.tsx  # Drawer for inspecting large cells (JSON/text)
+    ├── SchemaHealthModal.tsx     # Autonomous schema health advisor & linter dialog
+    ├── SchemaHealthModal.test.tsx# SchemaHealthModal unit tests
     └── README.md                 # Query components documentation
 ```
 

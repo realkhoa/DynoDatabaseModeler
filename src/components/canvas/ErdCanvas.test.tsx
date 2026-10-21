@@ -426,4 +426,19 @@ describe('ErdCanvas component', () => {
     fireEvent.click(importToolbarBtn);
     expect(onOpenDataImport).toHaveBeenCalledTimes(1);
   });
+
+  it('triggers onOpenSchemaHealth from floating pill toolbar button', () => {
+    const onOpenSchemaHealth = vi.fn();
+    render(
+      <ErdCanvas
+        schema={mockSchema}
+        onEditTable={vi.fn()}
+        onOpenSchemaHealth={onOpenSchemaHealth}
+      />
+    );
+
+    const healthBtn = screen.getByTestId('erd-schema-health-btn');
+    fireEvent.click(healthBtn);
+    expect(onOpenSchemaHealth).toHaveBeenCalledTimes(1);
+  });
 });

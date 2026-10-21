@@ -21,6 +21,7 @@ import { ProcessListModal } from './components/query/ProcessListModal';
 import { TableStructureModal } from './components/query/TableStructureModal';
 import { OrmExportModal } from './components/query/OrmExportModal';
 import { DataImportModal } from './components/query/DataImportModal';
+import { SchemaHealthModal } from './components/query/SchemaHealthModal';
 import { api } from './api/ipc';
 import { computePendingChangesCount } from './utils/diffCount';
 import { connectionScope } from './utils/connectionScope';
@@ -143,6 +144,8 @@ export default function App(): React.ReactElement {
   // Smart Data Import Wizard modal states
   const [isDataImportOpen, setIsDataImportOpen] = useState(false);
   const [dataImportTable, setDataImportTable] = useState<string | undefined>(undefined);
+  // Database Schema Health Advisor & Linter modal state
+  const [isHealthModalOpen, setIsHealthModalOpen] = useState(false);
   // SQL Query Execution & Server-side Pagination State
   const [activeSqlQuery, setActiveSqlQuery] = useState<string | null>(null);
   const [autoRunQuery, setAutoRunQuery] = useState<boolean>(false);
@@ -704,6 +707,32 @@ export default function App(): React.ReactElement {
   );
 
   /**
+   * @brief Opens the Schema Health Advisor & Linter modal dialog.
+   */
+  const handleOpenSchemaHealth = useCallback(() => {
+    setIsHealthModalOpen(true);
+  }, []);
+
+  /**
+   * @brief Executes a quick-fix SQL statement against the active database.
+   * @param fixSql Remediation SQL statement.
+   */
+  const handleExecuteFixSql = useCallback(
+    async (fixSql: string) => {
+      if (!activeConnection) {
+        throw new Error('No active database connection');
+      }
+      await api.executeQuery(fixSql);
+      setNotification({
+        type: 'success',
+        message: 'Schema fix applied successfully! Re-introspecting schema...',
+      });
+      void handleRefreshSchema();
+    },
+    [activeConnection, handleRefreshSchema]
+  );
+
+  /**
    * @brief Handles table node position updates after dragging on canvas.
    */
   const handleTablePositionChange = useCallback((key: string, pos: { x: number; y: number }) => {
@@ -750,6 +779,7 @@ export default function App(): React.ReactElement {
         onOpenDiff={handleOpenDiff}
         pendingChangesCount={pendingChangesCount}
         onOpenProcesses={() => setIsProcessModalOpen(true)}
+        onOpenSchemaHealth={handleOpenSchemaHealth}
         sidebarMode={sidebarMode}
         onToggleSidebar={() => setSidebarMode((prev) => (prev === 'expanded' ? 'rail' : 'expanded'))}
       />
@@ -866,6 +896,7 @@ export default function App(): React.ReactElement {
                   onViewTableData={handleViewTableData}
                   onOpenOrmExport={handleOpenOrmExport}
                   onOpenDataImport={handleOpenDataImport}
+                  onOpenSchemaHealth={handleOpenSchemaHealth}
                 />
                 <TableDrawer
                   isOpen={isDrawerOpen}
@@ -983,6 +1014,20 @@ export default function App(): React.ReactElement {
         onExecuteSql={handleExecuteImportSql}
         onOpenInWorksheet={(batchSql) => {
           setActiveSqlQuery(batchSql);
+          setAutoRunQuery(false);
+          setActiveTab('sql');
+        }}
+      />
+
+      {/* Database Schema Health Advisor & Linter Modal */}
+      <SchemaHealthModal
+        isOpen={isHealthModalOpen}
+        onClose={() => setIsHealthModalOpen(false)}
+        schema={activeCanvasSchema}
+        dbType={activeConnection?.db_type ?? 'Postgres'}
+        onExecuteFix={handleExecuteFixSql}
+        onOpenInWorksheet={(fixSql) => {
+          setActiveSqlQuery(fixSql);
           setAutoRunQuery(false);
           setActiveTab('sql');
         }}

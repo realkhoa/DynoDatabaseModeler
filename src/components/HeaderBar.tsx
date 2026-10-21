@@ -19,6 +19,7 @@ import {
   Check,
   PanelLeftClose,
   PanelLeftOpen,
+  ShieldCheck,
 } from 'lucide-react';
 import type { ConnectionConfig } from '../types/database';
 import type { AppTheme } from '../types/theme';
@@ -50,6 +51,8 @@ export interface HeaderBarProps {
   pendingChangesCount?: number;
   /** @brief Optional callback triggered to open the active database processes and query monitor. */
   onOpenProcesses?: () => void;
+  /** @brief Optional callback triggered to open the database schema health advisor & linter. */
+  onOpenSchemaHealth?: () => void;
   /** @brief Currently selected application visual theme. */
   currentTheme?: AppTheme;
   /** @brief Callback triggered when a new visual theme is selected. */
@@ -76,6 +79,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
   onOpenDiff,
   pendingChangesCount = 0,
   onOpenProcesses,
+  onOpenSchemaHealth,
   currentTheme,
   onSelectTheme,
   sidebarMode = 'expanded',
@@ -295,6 +299,19 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
               >
                 <Activity className="w-3.5 h-3.5 text-amber-400" />
                 <span>Processes</span>
+              </button>
+            )}
+
+            {onOpenSchemaHealth && (
+              <button
+                type="button"
+                data-testid="header-schema-health-btn"
+                onClick={onOpenSchemaHealth}
+                className="flex items-center space-x-1.5 px-2.5 py-0.5 bg-[#24262b] hover:bg-[#2f3238] border border-[#35373c] text-[#e6e8ea] rounded font-medium shadow-xs transition-colors cursor-pointer"
+                title="Database Schema Health Advisor & Linter"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-[#20c997]" />
+                <span>Health Check</span>
               </button>
             )}
 

@@ -277,6 +277,18 @@ export const MyTabs: React.FC = () => {
 
 ---
 
+### `SchemaHealthModalProps`
+| Property | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `isOpen` | `boolean` | Yes | Controls dialog visibility and modal mount state. |
+| `onClose` | `() => void` | Yes | Callback invoked when modal backdrop, escape key, or close button is clicked. |
+| `schema` | `DatabaseSchema` | Yes | Introspected database schema analyzed for performance, integrity, naming, and security issues. |
+| `dbType` | `DatabaseType` | No | Target database engine dialect for generated quick-fix SQL statements (defaults to `Postgres`). |
+| `onExecuteFix` | `(sql: string) => Promise<void> \| void` | No | Optional callback to execute an individual quick-fix SQL statement directly via database driver. |
+| `onOpenInWorksheet` | `(sql: string) => void` | No | Optional callback to open bundled auto-remediation migration script in a query worksheet. |
+
+---
+
 ## 4. Usage Examples
 `QueryEditorTab` operates against the `QueryResult` data model:
 ```ts

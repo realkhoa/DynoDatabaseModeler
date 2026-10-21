@@ -52,6 +52,7 @@ import {
   Search,
   Code2,
   Upload,
+  ShieldCheck,
 } from 'lucide-react';
 import {
   exportSchemaAsJson,
@@ -89,6 +90,8 @@ export interface ErdCanvasProps {
   onOpenOrmExport?: (tableName?: string) => void;
   /** @brief Optional callback triggered to open the Smart Data Import Wizard. */
   onOpenDataImport?: (tableName?: string) => void;
+  /** @brief Optional callback triggered to open the Database Schema Health Advisor & Linter. */
+  onOpenSchemaHealth?: () => void;
 }
 
 /**
@@ -110,6 +113,7 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
   onViewTableData,
   onOpenOrmExport,
   onOpenDataImport,
+  onOpenSchemaHealth,
 }) => {
   // Diagram data is persisted per connection scope, falling back to the database name.
   const scope = storageScope ?? schema.database_name;
@@ -723,6 +727,19 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
           >
             <Upload className="w-3.5 h-3.5 text-[#20c997]" />
             <span>Import Data</span>
+          </button>
+        )}
+
+        {onOpenSchemaHealth && (
+          <button
+            type="button"
+            data-testid="erd-schema-health-btn"
+            onClick={() => onOpenSchemaHealth()}
+            className="inline-flex items-center gap-1.5 hover:bg-[#2e3138] text-[#e6e8ea] px-2.5 py-1 rounded-md text-xs transition-colors font-medium cursor-pointer"
+            title="Database Schema Health Advisor & Linter"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-[#3a82f7]" />
+            <span>Health Check</span>
           </button>
         )}
 
