@@ -1,13 +1,16 @@
 //! @file factory.rs
 //! @brief Database driver factory for creating engine-specific driver instances.
 //! @details Dispatches creation to SqliteDriver, PostgresDriver, MySqlDriver, MssqlDriver,
-//! DuckDbDriver, or RedisDriver based on the connection configuration database type, and owns
-//! any SSH bastion tunnel that the connection depends on.
+//! DuckDbDriver, RedisDriver, ClickHouseDriver, MongoDbDriver, CassandraDriver, SurrealDbDriver,
+//! CockroachDbDriver, MariaDbDriver, or TiDbDriver based on the connection configuration database type,
+//! and owns any SSH bastion tunnel that the connection depends on.
 
 use super::tunnel::SshTunnel;
 use super::{
-    duckdb::DuckDbDriver, mssql::MssqlDriver, mysql::MySqlDriver, postgres::PostgresDriver,
-    redis::RedisDriver, sqlite::SqliteDriver, DatabaseDriver,
+    cassandra::CassandraDriver, clickhouse::ClickHouseDriver, cockroachdb::CockroachDbDriver,
+    duckdb::DuckDbDriver, mariadb::MariaDbDriver, mongodb::MongoDbDriver, mssql::MssqlDriver,
+    mysql::MySqlDriver, postgres::PostgresDriver, redis::RedisDriver, sqlite::SqliteDriver,
+    surrealdb::SurrealDbDriver, tidb::TiDbDriver, DatabaseDriver,
 };
 use crate::error::AppError;
 use crate::model::connection::{ConnectionConfig, DatabaseType};
@@ -29,9 +32,9 @@ pub struct DriverFactory;
 impl DriverFactory {
     /// @brief Creates and connects a driver handle for the specified connection configuration.
     /// @details Dynamically dispatches between SQLite, PostgreSQL, MySQL, Microsoft SQL Server, DuckDB,
-    /// MariaDB, CockroachDB, LibSQL, Redshift, ClickHouse, Redis, and Universal SQL adapters. When an SSH
-    /// tunnel is configured and enabled, a real tunnel is established first and the driver then
-    /// targets the tunnel's loopback port.
+    /// MariaDB, CockroachDB, LibSQL, Redshift, ClickHouse, MongoDB, Cassandra, ScyllaDB, SurrealDB,
+    /// TiDB, Redis, and Universal SQL adapters. When an SSH tunnel is configured and enabled,
+    /// a real tunnel is established first and the driver then targets the tunnel's loopback port.
     /// @param config Connection parameters specifying database type, endpoint, credentials, or file paths.
     /// @return Returns a driver handle (driver plus optional tunnel) or AppError on failure.
     pub async fn create(config: &ConnectionConfig) -> Result<DriverHandle, AppError> {
@@ -52,7 +55,11 @@ impl DriverFactory {
                     DatabaseType::MariaDb => 3306,
                     DatabaseType::CockroachDb => 26257,
                     DatabaseType::Redshift => 5439,
-                    DatabaseType::ClickHouse => 9004,
+                    DatabaseType::ClickHouse => 8123,
+                    DatabaseType::MongoDb => 27017,
+                    DatabaseType::Cassandra | DatabaseType::ScyllaDb => 9042,
+                    DatabaseType::SurrealDb => 8000,
+                    DatabaseType::TiDb => 4000,
                     DatabaseType::Redis => 6379,
                     DatabaseType::Universal => 5432,
                     DatabaseType::Sqlite | DatabaseType::DuckDb | DatabaseType::LibSql => 0,
@@ -72,11 +79,32 @@ impl DriverFactory {
             DatabaseType::Sqlite | DatabaseType::LibSql => {
                 Box::new(SqliteDriver::connect(&final_config).await?)
             }
-            DatabaseType::Postgres | DatabaseType::CockroachDb | DatabaseType::Redshift => {
+            DatabaseType::Postgres | DatabaseType::Redshift => {
                 Box::new(PostgresDriver::connect(&final_config).await?)
             }
-            DatabaseType::MySql | DatabaseType::MariaDb | DatabaseType::ClickHouse => {
+            DatabaseType::CockroachDb => {
+                Box::new(CockroachDbDriver::connect(&final_config).await?)
+            }
+            DatabaseType::MySql => {
                 Box::new(MySqlDriver::connect(&final_config).await?)
+            }
+            DatabaseType::MariaDb => {
+                Box::new(MariaDbDriver::connect(&final_config).await?)
+            }
+            DatabaseType::TiDb => {
+                Box::new(TiDbDriver::connect(&final_config).await?)
+            }
+            DatabaseType::ClickHouse => {
+                Box::new(ClickHouseDriver::connect(&final_config).await?)
+            }
+            DatabaseType::MongoDb => {
+                Box::new(MongoDbDriver::connect(&final_config).await?)
+            }
+            DatabaseType::Cassandra | DatabaseType::ScyllaDb => {
+                Box::new(CassandraDriver::connect(&final_config).await?)
+            }
+            DatabaseType::SurrealDb => {
+                Box::new(SurrealDbDriver::connect(&final_config).await?)
             }
             DatabaseType::Mssql => Box::new(MssqlDriver::connect(&final_config).await?),
             DatabaseType::DuckDb => Box::new(DuckDbDriver::connect(&final_config).await?),
@@ -89,7 +117,8 @@ impl DriverFactory {
 
     /// @brief Resolves and connects the appropriate driver for a Universal database connection.
     /// @details Inspects connection URL scheme and explicit dialect_family to dispatch
-    /// to PostgresDriver, MySqlDriver, SqliteDriver, MssqlDriver, DuckDbDriver, or RedisDriver.
+    /// to PostgresDriver, MySqlDriver, SqliteDriver, MssqlDriver, DuckDbDriver, RedisDriver,
+    /// ClickHouseDriver, MongoDbDriver, CassandraDriver, or SurrealDbDriver.
     /// @param config Universal connection configuration.
     /// @return Boxed DatabaseDriver handle or AppError.
     async fn create_universal(
@@ -99,8 +128,20 @@ impl DriverFactory {
             let lower = url.to_lowercase();
             if lower.starts_with("postgres://") || lower.starts_with("postgresql://") {
                 "postgres"
-            } else if lower.starts_with("mysql://") || lower.starts_with("mariadb://") {
+            } else if lower.starts_with("mysql://") {
                 "mysql"
+            } else if lower.starts_with("mariadb://") {
+                "mariadb"
+            } else if lower.starts_with("tidb://") {
+                "tidb"
+            } else if lower.starts_with("clickhouse://") || lower.starts_with("clickhouse:") {
+                "clickhouse"
+            } else if lower.starts_with("mongodb://") || lower.starts_with("mongodb+srv://") {
+                "mongodb"
+            } else if lower.starts_with("cassandra://") || lower.starts_with("scylla://") {
+                "cassandra"
+            } else if lower.starts_with("surreal://") || lower.starts_with("surrealdb://") {
+                "surrealdb"
             } else if lower.starts_with("redis://") || lower.starts_with("rediss://") {
                 "redis"
             } else if lower.starts_with("sqlite://")
@@ -125,11 +166,18 @@ impl DriverFactory {
         };
 
         match dialect.to_lowercase().as_str() {
-            "mysql" | "mariadb" => Ok(Box::new(MySqlDriver::connect(config).await?)),
+            "mysql" => Ok(Box::new(MySqlDriver::connect(config).await?)),
+            "mariadb" => Ok(Box::new(MariaDbDriver::connect(config).await?)),
+            "tidb" => Ok(Box::new(TiDbDriver::connect(config).await?)),
+            "clickhouse" => Ok(Box::new(ClickHouseDriver::connect(config).await?)),
+            "mongodb" => Ok(Box::new(MongoDbDriver::connect(config).await?)),
+            "cassandra" | "scylla" => Ok(Box::new(CassandraDriver::connect(config).await?)),
+            "surrealdb" | "surreal" => Ok(Box::new(SurrealDbDriver::connect(config).await?)),
             "sqlite" | "libsql" => Ok(Box::new(SqliteDriver::connect(config).await?)),
             "mssql" | "sqlserver" => Ok(Box::new(MssqlDriver::connect(config).await?)),
             "duckdb" => Ok(Box::new(DuckDbDriver::connect(config).await?)),
             "redis" => Ok(Box::new(RedisDriver::connect(config).await?)),
+            "cockroachdb" => Ok(Box::new(CockroachDbDriver::connect(config).await?)),
             _ => Ok(Box::new(PostgresDriver::connect(config).await?)),
         }
     }

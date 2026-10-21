@@ -97,10 +97,32 @@ pub fn generate_ddl(diff: &SchemaDiff, dialect: DatabaseType) -> GeneratedDdl {
         | DatabaseType::Redshift
         | DatabaseType::Universal => PostgresDdlGenerator::generate(diff),
         DatabaseType::Sqlite | DatabaseType::LibSql => SqliteDdlGenerator::generate(diff),
-        DatabaseType::MySql | DatabaseType::MariaDb | DatabaseType::ClickHouse => {
-            MySqlDdlGenerator::generate(diff)
-        }
+        DatabaseType::MySql
+        | DatabaseType::MariaDb
+        | DatabaseType::ClickHouse
+        | DatabaseType::TiDb => MySqlDdlGenerator::generate(diff),
         DatabaseType::Mssql => MssqlDdlGenerator::generate(diff),
+        DatabaseType::MongoDb => {
+            let mut ddl = GeneratedDdl::default();
+            for t in &diff.tables_to_drop {
+                ddl.push(format!("db.{}.drop();", t));
+            }
+            ddl
+        }
+        DatabaseType::Cassandra | DatabaseType::ScyllaDb => {
+            let mut ddl = GeneratedDdl::default();
+            for t in &diff.tables_to_drop {
+                ddl.push(format!("DROP TABLE \"{}\";", t.replace('"', "\"\"")));
+            }
+            ddl
+        }
+        DatabaseType::SurrealDb => {
+            let mut ddl = GeneratedDdl::default();
+            for t in &diff.tables_to_drop {
+                ddl.push(format!("REMOVE TABLE {};", t));
+            }
+            ddl
+        }
         DatabaseType::Redis => {
             let mut ddl = GeneratedDdl::default();
             for t in &diff.tables_to_drop {

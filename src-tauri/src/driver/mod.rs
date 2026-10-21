@@ -3,23 +3,41 @@
 //! @details Defines the core DatabaseDriver trait, execution report types, query result representations,
 //! and modules for specific database engine adapters (SQLite, PostgreSQL, MySQL, MSSQL, Redis).
 
+pub mod cassandra;
+pub mod clickhouse;
+pub mod cockroachdb;
 pub mod duckdb;
 pub mod explain_model;
 pub mod factory;
+pub mod mariadb;
+pub mod mongodb;
 pub mod mssql;
 pub mod mutation_model;
 pub mod mysql;
 pub mod postgres;
 pub mod redis;
 pub mod sqlite;
+pub mod surrealdb;
+pub mod tidb;
 pub mod tunnel;
 
+pub use cassandra::CassandraDriver;
+pub use clickhouse::ClickHouseDriver;
+pub use cockroachdb::CockroachDbDriver;
 pub use duckdb::DuckDbDriver;
 pub use explain_model::ExecutionPlanNode;
+pub use mariadb::MariaDbDriver;
+pub use mongodb::MongoDbDriver;
 pub use mutation_model::RowUpdatePayload;
 pub use redis::RedisDriver;
+pub use surrealdb::SurrealDbDriver;
+pub use tidb::TiDbDriver;
 pub use tunnel::{SshAuthType, SshTunnel, SshTunnelConfig};
 
+#[cfg(test)]
+mod cassandra_test;
+#[cfg(test)]
+mod clickhouse_test;
 #[cfg(test)]
 mod duckdb_test;
 #[cfg(test)]
@@ -27,11 +45,15 @@ mod explain_test;
 #[cfg(test)]
 mod factory_test;
 #[cfg(test)]
+mod mongodb_test;
+#[cfg(test)]
 mod mutation_test;
 #[cfg(test)]
 mod redis_test;
 #[cfg(test)]
 mod sqlite_test;
+#[cfg(test)]
+mod surrealdb_test;
 #[cfg(test)]
 mod tunnel_test;
 

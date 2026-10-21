@@ -19,6 +19,11 @@ export type DatabaseType =
   | 'LibSql'
   | 'Redshift'
   | 'ClickHouse'
+  | 'MongoDb'
+  | 'Cassandra'
+  | 'ScyllaDb'
+  | 'SurrealDb'
+  | 'TiDb'
   | 'Redis'
   | 'Universal';
 
@@ -471,8 +476,17 @@ export function getDefaultPort(dbType: DatabaseType): number {
     case 'MySql':
     case 'MariaDb':
       return 3306;
+    case 'TiDb':
+      return 4000;
     case 'ClickHouse':
-      return 9004;
+      return 8123;
+    case 'MongoDb':
+      return 27017;
+    case 'Cassandra':
+    case 'ScyllaDb':
+      return 9042;
+    case 'SurrealDb':
+      return 8000;
     case 'Mssql':
       return 1433;
     case 'Redis':
@@ -510,7 +524,7 @@ export function isUniversalEngine(dbType: DatabaseType): boolean {
  */
 export function getEngineDialectFamily(
   dbType: DatabaseType
-): 'postgres' | 'mysql' | 'sqlite' | 'mssql' | 'duckdb' | 'redis' {
+): 'postgres' | 'mysql' | 'sqlite' | 'mssql' | 'duckdb' | 'redis' | 'clickhouse' | 'mongodb' | 'cassandra' | 'surrealdb' {
   switch (dbType) {
     case 'Postgres':
     case 'CockroachDb':
@@ -519,8 +533,17 @@ export function getEngineDialectFamily(
       return 'postgres';
     case 'MySql':
     case 'MariaDb':
-    case 'ClickHouse':
+    case 'TiDb':
       return 'mysql';
+    case 'ClickHouse':
+      return 'clickhouse';
+    case 'MongoDb':
+      return 'mongodb';
+    case 'Cassandra':
+    case 'ScyllaDb':
+      return 'cassandra';
+    case 'SurrealDb':
+      return 'surrealdb';
     case 'Sqlite':
     case 'LibSql':
       return 'sqlite';
@@ -553,8 +576,13 @@ export const DATABASE_ENGINES: DatabaseEngineMeta[] = [
   { type: 'Mssql', label: 'Microsoft SQL Server', description: 'Enterprise relational database & Azure SQL', category: 'popular' },
   { type: 'Sqlite', label: 'SQLite', description: 'Lightweight serverless embedded SQL engine', category: 'popular' },
   { type: 'Redis', label: 'Redis / KeyDB / Valkey', description: 'High-speed in-memory data store, cache & broker', category: 'nosql_cache', badge: 'Cache/KV' },
-  { type: 'CockroachDb', label: 'CockroachDB', description: 'Distributed, cloud-native SQL database', category: 'cloud_analytical', badge: 'Cloud' },
+  { type: 'MongoDb', label: 'MongoDB / DocumentDB', description: 'Leading NoSQL document database', category: 'nosql_cache', badge: 'Document' },
+  { type: 'Cassandra', label: 'Apache Cassandra', description: 'High-throughput distributed NoSQL column-family database', category: 'nosql_cache', badge: 'CQL' },
+  { type: 'ScyllaDb', label: 'ScyllaDB', description: 'Ultra-low latency C++ Cassandra-compatible NoSQL store', category: 'nosql_cache', badge: 'CQL' },
+  { type: 'SurrealDb', label: 'SurrealDB', description: 'Modern multi-model document, graph & relational database', category: 'nosql_cache', badge: 'Multi-Model' },
   { type: 'ClickHouse', label: 'ClickHouse', description: 'Ultra-fast column-oriented analytical DBMS', category: 'cloud_analytical', badge: 'Analytics' },
+  { type: 'TiDb', label: 'TiDB', description: 'Distributed NewSQL HTAP database with MySQL compatibility', category: 'cloud_analytical', badge: 'HTAP' },
+  { type: 'CockroachDb', label: 'CockroachDB', description: 'Distributed, cloud-native SQL database', category: 'cloud_analytical', badge: 'Cloud' },
   { type: 'Redshift', label: 'Amazon Redshift', description: 'AWS petabyte-scale cloud data warehouse', category: 'cloud_analytical', badge: 'Warehouse' },
   { type: 'LibSql', label: 'LibSQL / Turso', description: 'Distributed SQLite fork for the edge', category: 'cloud_analytical', badge: 'Edge' },
   { type: 'DuckDb', label: 'DuckDB', description: 'Fast in-process analytical columnar engine', category: 'cloud_analytical', badge: 'Analytics' },

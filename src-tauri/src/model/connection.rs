@@ -31,6 +31,16 @@ pub enum DatabaseType {
     Redshift,
     /// @brief ClickHouse columnar analytical database engine.
     ClickHouse,
+    /// @brief MongoDB NoSQL document database engine.
+    MongoDb,
+    /// @brief Apache Cassandra distributed NoSQL column-family database engine.
+    Cassandra,
+    /// @brief ScyllaDB high-performance Cassandra-compatible distributed database engine.
+    ScyllaDb,
+    /// @brief SurrealDB multi-model (document, graph, relational) database engine.
+    SurrealDb,
+    /// @brief TiDB distributed NewSQL HTAP database engine (MySQL wire compatible).
+    TiDb,
     /// @brief Redis in-memory key-value data store, cache and message broker.
     Redis,
     /// @brief Universal / Generic SQL adapter supporting any SQL database via connection URL or standard dialect.

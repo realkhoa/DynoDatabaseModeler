@@ -11,7 +11,15 @@ DynoDbModeler bridges visual database architecture and live SQL administration. 
 DynoDbModeler is designed for developers, database administrators, and architects who need a fast, native, and visually elegant database companion without the bloat of traditional heavyweight IDEs.
 
 ### Key Capabilities
-- **Native Multi-Database Connectivity**: Direct asynchronous drivers for **SQLite**, **PostgreSQL**, **MySQL / MariaDB**, **Microsoft SQL Server (MSSQL)**, **DuckDB** (analytical embedded), and **Redis / KeyDB / Valkey** (in-memory key-value cache and store).
+- **Native Multi-Database Connectivity**: Direct asynchronous drivers for **16+ database engines**:
+  - **Relational & SQL**: **PostgreSQL**, **MySQL**, **MariaDB**, **SQLite**, **Microsoft SQL Server (MSSQL)**.
+  - **Distributed NewSQL**: **CockroachDB** (distributed Postgres wire), **TiDB** (distributed hybrid HTAP MySQL wire).
+  - **Analytical & Columnar**: **DuckDB** (embedded in-process columnar), **ClickHouse** (high-performance analytical HTTP JSONCompact).
+  - **Document & Semi-Structured**: **MongoDB** (native OP_MSG pure Rust protocol with document sampling schema inference).
+  - **Wide-Column & Distributed NoSQL**: **Apache Cassandra** & **ScyllaDB** (native CQL v4 binary protocol over TCP).
+  - **Multi-Model & Graph**: **SurrealDB** (native SurrealQL HTTP REST API).
+  - **In-Memory & Key-Value**: **Redis**, **KeyDB**, and **Valkey** (RESP2 / RESP3 protocol).
+  - **Universal Protocol**: Auto-routing connection strings (`postgres://`, `mysql://`, `sqlite:`, `clickhouse://`, `mongodb://`, `cassandra://`, `surreal://`, etc.).
 - **Reverse Engineering**: Instant live catalog introspection converting foreign keys, primary keys, indexes, and data types into an interactive ERD graph.
 - **Visual Schema Modeler**: Drag-and-drop table cards powered by `@xyflow/react` with animated foreign key relation handles, inline column search, and one-click Dagre hierarchical auto-layout.
 - **Rename-Safe Migrations**: Renaming a table in the modeler is recorded and applied as `ALTER TABLE ... RENAME TO`; every foreign key that referenced the old name follows it, so a rename never becomes a drop plus create.
@@ -62,11 +70,11 @@ DynoDbModeler employs a modern multi-process desktop architecture leveraging Tau
 │             │                       │                                  │
 │  ┌──────────▼───────────────┐  ┌────▼───────────────────────────────┐  │
 │  │      Diff Engine         │  │       Database Drivers             │  │
-│  │  - Schema comparator     │  │  - SqliteDriver (sqlx)             │  │
-│  │  - Dialect DDL compilers │  │  - PostgresDriver (sqlx)           │  │
-│  │    (Postgres, SQLite,    │  │  - MySqlDriver (sqlx)              │  │
-│  │     MySQL, MSSQL, DuckDB)│  │  - MssqlDriver (tiberius)          │  │
-│  │                          │  │  - DuckDbDriver (duckdb)           │  │
+│  │  - Schema comparator     │  │  - Sqlite, Postgres, MySql, MariaDB│  │
+│  │  - Dialect DDL compilers │  │  - Mssql, DuckDb, Redis, ClickHouse│  │
+│  │    (Postgres, SQLite,    │  │  - MongoDb, Cassandra, ScyllaDb    │  │
+│  │     MySQL, MSSQL, DuckDB,│  │  - SurrealDb, CockroachDb, TiDb    │  │
+│  │     ClickHouse, Surreal) │  │  - Universal Auto-Detect Driver    │  │
 │  └──────────────────────────┘  └────────────────────────────────────┘  │
 └────────────────────────────────────────────────────────────────────────┘
 ```

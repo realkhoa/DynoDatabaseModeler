@@ -71,16 +71,21 @@ describe('database type helpers', () => {
   });
 
   /**
-   * @brief Verifies default port numbers across all 11 supported database engines.
+   * @brief Verifies default port numbers across all supported database engines.
    */
-  it('resolves correct default ports for all 11 database dialects', () => {
+  it('resolves correct default ports for all database dialects', () => {
     expect(getDefaultPort('Postgres')).toBe(5432);
     expect(getDefaultPort('Universal')).toBe(5432);
     expect(getDefaultPort('CockroachDb')).toBe(26257);
     expect(getDefaultPort('Redshift')).toBe(5439);
     expect(getDefaultPort('MySql')).toBe(3306);
     expect(getDefaultPort('MariaDb')).toBe(3306);
-    expect(getDefaultPort('ClickHouse')).toBe(9004);
+    expect(getDefaultPort('TiDb')).toBe(4000);
+    expect(getDefaultPort('ClickHouse')).toBe(8123);
+    expect(getDefaultPort('MongoDb')).toBe(27017);
+    expect(getDefaultPort('Cassandra')).toBe(9042);
+    expect(getDefaultPort('ScyllaDb')).toBe(9042);
+    expect(getDefaultPort('SurrealDb')).toBe(8000);
     expect(getDefaultPort('Mssql')).toBe(1433);
     expect(getDefaultPort('Redis')).toBe(6379);
     expect(getDefaultPort('Sqlite')).toBe(0);
@@ -119,7 +124,12 @@ describe('database type helpers', () => {
     expect(getEngineDialectFamily('Universal')).toBe('postgres');
     expect(getEngineDialectFamily('MySql')).toBe('mysql');
     expect(getEngineDialectFamily('MariaDb')).toBe('mysql');
-    expect(getEngineDialectFamily('ClickHouse')).toBe('mysql');
+    expect(getEngineDialectFamily('TiDb')).toBe('mysql');
+    expect(getEngineDialectFamily('ClickHouse')).toBe('clickhouse');
+    expect(getEngineDialectFamily('MongoDb')).toBe('mongodb');
+    expect(getEngineDialectFamily('Cassandra')).toBe('cassandra');
+    expect(getEngineDialectFamily('ScyllaDb')).toBe('cassandra');
+    expect(getEngineDialectFamily('SurrealDb')).toBe('surrealdb');
     expect(getEngineDialectFamily('Sqlite')).toBe('sqlite');
     expect(getEngineDialectFamily('LibSql')).toBe('sqlite');
     expect(getEngineDialectFamily('Mssql')).toBe('mssql');
@@ -128,13 +138,18 @@ describe('database type helpers', () => {
   });
 
   /**
-   * @brief Verifies DATABASE_ENGINES contains all 12 options with metadata.
+   * @brief Verifies DATABASE_ENGINES contains all 17 options with metadata.
    */
   it('provides complete DATABASE_ENGINES directory', () => {
-    expect(DATABASE_ENGINES).toHaveLength(12);
+    expect(DATABASE_ENGINES).toHaveLength(17);
     const types = DATABASE_ENGINES.map((e) => e.type);
     expect(types).toContain('Universal');
     expect(types).toContain('Redis');
+    expect(types).toContain('MongoDb');
+    expect(types).toContain('Cassandra');
+    expect(types).toContain('ScyllaDb');
+    expect(types).toContain('SurrealDb');
+    expect(types).toContain('TiDb');
     expect(types).toContain('MariaDb');
     expect(types).toContain('CockroachDb');
     expect(types).toContain('LibSql');

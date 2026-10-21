@@ -175,6 +175,11 @@ fn test_connection_config_serialization() {
         DatabaseType::LibSql,
         DatabaseType::Redshift,
         DatabaseType::ClickHouse,
+        DatabaseType::MongoDb,
+        DatabaseType::Cassandra,
+        DatabaseType::ScyllaDb,
+        DatabaseType::SurrealDb,
+        DatabaseType::TiDb,
         DatabaseType::Redis,
         DatabaseType::Universal,
     ];

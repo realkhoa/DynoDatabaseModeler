@@ -298,3 +298,18 @@ fn test_mssql_type_mapping() {
         CanonicalType::Custom("hierarchyid".to_string())
     );
 }
+
+#[tokio::test]
+async fn test_factory_unreachable_endpoints() {
+    let ch_cfg = create_test_config("ch", DatabaseType::ClickHouse, Some("127.0.0.1"), Some(65431));
+    assert!(DriverFactory::create(&ch_cfg).await.is_err());
+
+    let mongo_cfg = create_test_config("mongo", DatabaseType::MongoDb, Some("127.0.0.1"), Some(65432));
+    assert!(DriverFactory::create(&mongo_cfg).await.is_err());
+
+    let cass_cfg = create_test_config("cass", DatabaseType::Cassandra, Some("127.0.0.1"), Some(65433));
+    assert!(DriverFactory::create(&cass_cfg).await.is_err());
+
+    let surreal_cfg = create_test_config("surreal", DatabaseType::SurrealDb, Some("127.0.0.1"), Some(65434));
+    assert!(DriverFactory::create(&surreal_cfg).await.is_err());
+}

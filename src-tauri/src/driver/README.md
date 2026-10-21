@@ -1,22 +1,22 @@
 # Database Driver Subsystem (`src-tauri/src/driver`)
 
 ## 1. Overview & Purpose
-The `driver` subsystem implements the multi-engine database adapter abstraction layer for DynoDbModeler. It establishes a unified, asynchronous trait interface (`DatabaseDriver`) that abstracts relational database management systems (SQLite, PostgreSQL, MySQL, Microsoft SQL Server, and DuckDB) behind common primitives for:
+The `driver` subsystem implements the multi-engine native database adapter abstraction layer for DynoDbModeler. It establishes a unified, asynchronous trait interface (`DatabaseDriver`) that abstracts traditional relational databases (SQLite, PostgreSQL, MySQL, MariaDB, Microsoft SQL Server), analytical columnar engines (DuckDB, ClickHouse), distributed NewSQL engines (CockroachDB, TiDB), key-value stores (Redis), document databases (MongoDB), wide-column stores (Cassandra, ScyllaDB), and multi-model databases (SurrealDB) behind common primitives for:
 - Connection establishment and health verification (`test_connection`).
 - Metadata catalog introspection into canonical domain models (`introspect_schema`).
-- Arbitrary SQL execution returning tabular serialized JSON values (`execute_query`).
-- Atomic transactional DDL migration batch execution with rollback on failure (`execute_ddl`).
+- Native query execution returning tabular serialized JSON values (`execute_query`).
+- Atomic transactional DDL migration batch execution (`execute_ddl`).
 - Atomic transactional row mutation batches targeted by primary keys (`update_rows`).
 - Dialect identification (`db_type`).
 
-A centralized factory (`DriverFactory`) dynamically selects and initializes the appropriate driver adapter based on the user's `ConnectionConfig.db_type`.
+A centralized factory (`DriverFactory`) dynamically selects and initializes the appropriate driver adapter based on the user's `ConnectionConfig.db_type` or parses universal connection URLs.
 
 ### Architectural Role
-- **Unified Adapter Contract**: Standardizes database interactions across relational database engines via the `DatabaseDriver` trait.
-- **Dynamic Factory Dispatch**: `DriverFactory::create(&ConnectionConfig)` evaluates engine dialect and initializes dedicated connection pools or TDS streams.
-- **Deep Catalog Introspection**: Reverse-engineers native catalogs and schemas into canonical `DatabaseSchema` models containing tables, columns, primary keys, foreign keys, and indexes.
-- **Fail-Safe Transactional Migrations**: Applies DDL scripts atomically within isolated transactions (`BEGIN ... COMMIT`), aborting and rolling back on the first failing statement.
-- **Robust Type Normalization**: Provides dialect-specific type parsers (`parse_sqlite_type`, `parse_postgres_type`, `parse_mysql_type`, `parse_mssql_type`, `parse_duckdb_type`) to map vendor-specific types to the unified `CanonicalType` enum.
+- **Unified Adapter Contract**: Standardizes database interactions across 16+ native database engines via the `DatabaseDriver` trait.
+- **Dynamic Factory Dispatch**: `DriverFactory::create(&ConnectionConfig)` evaluates engine dialect and initializes dedicated connection pools, native TCP frames, or HTTP JSON streams.
+- **Deep Catalog Introspection**: Reverse-engineers native catalogs, system tables, keyspaces, and namespaces into canonical `DatabaseSchema` models containing tables/collections, columns/fields, primary keys, foreign keys, and indexes.
+- **Fail-Safe Transactional Migrations**: Applies DDL scripts atomically within isolated transactions (`BEGIN ... COMMIT` or engine equivalents), aborting on the first failing statement.
+- **Robust Type Normalization**: Provides dialect-specific type parsers to map vendor-specific types to the unified `CanonicalType` enum.
 
 ---
 
@@ -27,120 +27,109 @@ A centralized factory (`DriverFactory`) dynamically selects and initializes the 
   - `sqlx` (v0.8): Async driver pool supporting `sqlite`, `postgres`, and `mysql` runtimes with `chrono` and `uuid`.
   - `tiberius` (v0.12): Async TDS protocol driver for Microsoft SQL Server.
   - `duckdb` (v1.1): Embedded analytical column-oriented database driver (bundled).
-  - `tokio-util` (v0.7): `TokioAsyncWriteCompatExt` adapter bridging Tokio TCP streams to futures-io for Tiberius.
-  - `serde` (v1.0) & `serde_json` (v1.0): Serialization of tabular results and migration reports over Tauri IPC.
   - `tokio` (v1.0): Asynchronous runtime and synchronization primitives (`Mutex`, `RwLock`).
+  - `tokio-util` (v0.7): `TokioAsyncWriteCompatExt` adapter bridging Tokio TCP streams.
+  - `serde` (v1.0) & `serde_json` (v1.0): Serialization of tabular results and migration reports.
+  - `reqwest` (v0.12): HTTP client for ClickHouse HTTP JSONCompact and SurrealDB `/sql` endpoints.
+  - `url` (v2.5): URL parsing for connection strings and protocol routing.
 
 ---
 
-## 3. Driver Architecture & Component Reference
+## 3. Supported Native Engines
+
+| Engine | Protocol / Transport | Default Port | Dialect Family | Primary Use Case |
+| :--- | :--- | :--- | :--- | :--- |
+| **SQLite** | Embedded C FFI / `sqlx` | N/A (file/memory) | Relational / SQLite | Local files, embedded testing |
+| **PostgreSQL** | Native PostgreSQL wire (`sqlx`) | 5432 | Relational / Postgres | Enterprise OLTP, JSONB |
+| **MySQL** | Native MySQL wire (`sqlx`) | 3306 | Relational / MySQL | General web applications |
+| **MariaDB** | Native MySQL/MariaDB wire (`sqlx`) | 3306 | Relational / MySQL | Open-source MySQL fork |
+| **MSSQL** | TDS 7.3+ over TCP (`tiberius`) | 1433 | Relational / T-SQL | Microsoft enterprise workloads |
+| **DuckDB** | Embedded C FFI (`duckdb`) | N/A (file/memory) | Analytical / DuckDB | Embedded columnar analytics |
+| **ClickHouse** | Native HTTP 1.1 JSONCompact | 8123 | Analytical / ClickHouse | Real-time big data analytics |
+| **MongoDB** | OP_MSG (2013) Pure Rust wire | 27017 | Document / Mongo | Document storage, semi-structured |
+| **Cassandra** | CQL v4 binary frame over TCP | 9042 | Wide-Column / CQL | High-throughput distributed write |
+| **ScyllaDB** | CQL v4 binary frame over TCP | 9042 | Wide-Column / CQL | Ultra low-latency C++ Cassandra |
+| **SurrealDB** | SurrealQL HTTP REST API | 8000 | Multi-Model / SurrealQL | Graph, Document, Relational |
+| **CockroachDB**| PostgreSQL v3 wire (`sqlx`) | 26257 | Distributed NewSQL | Horizontally scalable ACID SQL |
+| **TiDB** | MySQL wire protocol (`sqlx`) | 4000 | Distributed NewSQL | Hybrid HTAP (TiKV + TiFlash) |
+| **Redis** | RESP2 / RESP3 binary protocol | 6379 | In-Memory Key-Value | High-speed cache, key-value |
+| **Universal** | Automatic URL protocol router | Any | Auto-detected | Single URL connection strings |
+
+---
+
+## 4. Driver Architecture & Component Reference
 
 ```
                              +------------------------+
                              |    ConnectionConfig    |
                              +------------------------+
-                                         |
-                                         v
+                                          |
+                                          v
                              +------------------------+
                              |     DriverFactory      |
                              +------------------------+
-                               /     |        |      \
-                              /      |        |       \
-                             v       v        v        v
-                      +--------+ +--------+ +-------+ +--------+
-                      | Sqlite | |Postgres| | MySql | | Mssql  |
-                      | Driver | | Driver | | Driver| | Driver |
-                      +--------+ +--------+ +-------+ +--------+
-                             \       |        |        /
-                              \      |        |       /
-                               v     v        v      v
+                                          |
+         +-------------+-------------+----+----+-------------+-------------+
+         |             |             |         |             |             |
+         v             v             v         v             v             v
+    +----------+  +----------+  +---------+ +---------+  +---------+  +----------+
+    | Sqlite   |  | Postgres |  | MySql   | | Mssql   |  | DuckDB  |  | Redis    |
+    +----------+  +----------+  +---------+ +---------+  +---------+  +----------+
+    | Click-   |  | MongoDB  |  | Cass-   | | Scylla  |  | Surreal |  | Cockroach|
+    | House    |  | (OP_MSG) |  | andra   | | DB      |  | DB      |  | / TiDB   |
+    +----------+  +----------+  +---------+ +---------+  +---------+  +----------+
+                                          \
+                                           v
                              +------------------------+
                              |   dyn DatabaseDriver   |
                              +------------------------+
 ```
 
 ### Common Trait: `DatabaseDriver`
-Implemented by all engine driver adapters (`SqliteDriver`, `PostgresDriver`, `MySqlDriver`, `MssqlDriver`, `DuckDbDriver`).
+Implemented by all 16 engine driver adapters.
 
 | Method | Signature | Description |
 | :--- | :--- | :--- |
-| `test_connection` | `async fn test_connection(&self) -> Result<(), AppError>` | Pings the database to verify credentials and connectivity. |
-| `introspect_schema` | `async fn introspect_schema(&self) -> Result<DatabaseSchema, AppError>` | Extracts tables, columns, primary keys, and foreign keys. |
-| `execute_query` | `async fn execute_query(&self, sql: &str) -> Result<QueryResult, AppError>` | Runs arbitrary SQL queries and returns column names and row values. |
-| `execute_ddl` | `async fn execute_ddl(&self, statements: &[String]) -> Result<MigrationReport, AppError>` | Sequentially applies DDL statements inside an atomic transaction. |
-| `update_rows` | `async fn update_rows(&self, updates: Vec<RowUpdatePayload>) -> Result<u64, AppError>` | Transactionally applies targeted row mutations with rollback on error. |
-| `db_type` | `fn db_type(&self) -> DatabaseType` | Returns the database engine dialect identifier (`Sqlite`, `Postgres`, etc.). |
+| `test_connection` | `async fn test_connection(&self) -> Result<(), AppError>` | Verifies server credentials and socket responsiveness. |
+| `introspect_schema` | `async fn introspect_schema(&self) -> Result<DatabaseSchema, AppError>` | Extracts tables, views, keys, collections, and attributes. |
+| `execute_query` | `async fn execute_query(&self, sql: &str) -> Result<QueryResult, AppError>` | Runs arbitrary engine queries and returns tabular JSON values. |
+| `execute_ddl` | `async fn execute_ddl(&self, statements: &[String]) -> Result<MigrationReport, AppError>` | Sequentially applies DDL statements inside an atomic batch. |
+| `update_rows` | `async fn update_rows(&self, updates: Vec<RowUpdatePayload>) -> Result<u64, AppError>` | Transactionally applies targeted row mutations by primary key. |
+| `db_type` | `fn db_type(&self) -> DatabaseType` | Returns the database engine dialect identifier. |
 
 ---
 
-### Factory: `DriverFactory`
-Central entry point for instantiating database driver adapters.
+## 5. Engine Implementation Details
 
-```rust
-pub struct DriverFactory;
+### 1. ClickHouse (`ClickHouseDriver`)
+- **Transport**: Native HTTP 1.1 JSONCompact (`http://{host}:{port}/?database={db}&default_format=JSONCompact`).
+- **Authentication**: `X-ClickHouse-User` and `X-ClickHouse-Key` request headers.
+- **Introspection**: Queries `system.tables` and `system.columns` for columnar schema and sorting/partition keys.
+- **Type Mapper**: Normalizes ClickHouse types (e.g. `UInt64`, `Float64`, `DateTime64`, `LowCardinality(String)`, `Array(T)`) to canonical types.
 
-impl DriverFactory {
-    pub async fn create(config: &ConnectionConfig) -> Result<Box<dyn DatabaseDriver>, AppError>;
-}
-```
+### 2. MongoDB (`MongoDbDriver`)
+- **Transport**: Pure Rust TCP socket implementing the MongoDB wire protocol (`OP_MSG`, opcode 2013).
+- **Introspection**: Executes `listCollections` and runs document sampling to infer collections, fields, and types.
+- **Querying**: Supports raw JSON command payloads (`{ "find": "users" }`) and pseudo-SQL translation.
+- **Type Mapper**: Maps BSON types (`Double`, `String`, `Document`, `Array`, `Binary`, `ObjectId`, `Boolean`, `DateTime`, `Int32`, `Int64`) to `CanonicalType`.
 
-- **`DatabaseType::Sqlite`**: Calls `SqliteDriver::connect(config)` (`sqlx::SqlitePool`).
-- **`DatabaseType::DuckDb`**: Calls `DuckDbDriver::connect(config)` (`duckdb::Connection`).
-- **`DatabaseType::Postgres`**: Calls `PostgresDriver::connect(config)` (`sqlx::PgPool`).
-- **`DatabaseType::MySql`**: Calls `MySqlDriver::connect(config)` (`sqlx::MySqlPool`).
-- **`DatabaseType::Mssql`**: Calls `MssqlDriver::connect(config)` (`tiberius::Client`).
+### 3. Cassandra & ScyllaDB (`CassandraDriver`)
+- **Transport**: Native CQL v4 binary frame protocol over TCP port 9042 with `STARTUP` and `QUERY` frame headers.
+- **Introspection**: Queries `system_schema.tables` and `system_schema.columns` to extract column metadata, mapping partition and clustering keys to primary keys.
+- **Type Mapper**: Maps CQL native types (`int`, `bigint`, `text`, `varchar`, `uuid`, `timeuuid`, `timestamp`, `blob`, `frozen<set<T>>`) to canonical types.
 
----
+### 4. SurrealDB (`SurrealDbDriver`)
+- **Transport**: SurrealDB HTTP REST API (`/sql` endpoint) with basic authentication (`NS` and `DB` headers).
+- **Introspection**: Executes `INFO FOR DB;` and `INFO FOR NS;` to extract table schemas and field definitions.
+- **Querying**: Runs arbitrary SurrealQL statements and transforms JSON responses into tabular result grids.
 
-### Engine Adapters
-
-#### 1. SQLite (`SqliteDriver`)
-- **Connection**: `sqlite:<path>` or `sqlite::memory:`. For in-memory databases, pool max connections is pinned to 1 to guarantee shared state across calls.
-- **Introspection**:
-  - Tables: `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'`
-  - Columns: `PRAGMA table_info('{table}')`
-  - Foreign Keys: `PRAGMA foreign_key_list('{table}')`
-- **Type Mapper**: `parse_sqlite_type(t: &str) -> CanonicalType`
-
-#### 2. PostgreSQL (`PostgresDriver`)
-- **Connection**: `postgres://{user}:{password}@{host}:{port}/{database}?sslmode={ssl_mode}`.
-- **Introspection**:
-  - Tables: `information_schema.tables WHERE table_schema NOT IN ('pg_catalog', 'information_schema') AND table_type = 'BASE TABLE'`
-  - Columns: `information_schema.columns WHERE table_name = $1 AND table_schema = $2`
-  - Primary Keys: `information_schema.table_constraints` joined with `information_schema.key_column_usage` (`tc.constraint_type = 'PRIMARY KEY'`)
-  - Foreign Keys: `information_schema.table_constraints` joined with `information_schema.referential_constraints` and `constraint_column_usage`
-- **Type Mapper**: `parse_postgres_type(dtype: &str, max_len: Option<i32>) -> CanonicalType`
-
-#### 3. MySQL / MariaDB (`MySqlDriver`)
-- **Connection**: `mysql://{user}:{password}@{host}:{port}/{database}`.
-- **Introspection**:
-  - Tables: `information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE'`
-  - Columns: `information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?`
-  - Primary Keys: Column `COLUMN_KEY == 'PRI'`
-  - Auto-Increment: Column `EXTRA` contains `auto_increment`
-  - Foreign Keys: `information_schema.KEY_COLUMN_USAGE` joined with `information_schema.REFERENTIAL_CONSTRAINTS`
-- **Type Mapper**: `parse_mysql_type(dtype: &str, max_len: Option<i64>) -> CanonicalType`
-
-#### 4. Microsoft SQL Server (`MssqlDriver`)
-- **Connection**: Native TDS socket via `TcpStream` and `tiberius::Client::connect`. Validates that host is provided.
-- **Introspection**:
-  - Tables: `INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE'`
-  - Columns: `INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = ... AND TABLE_SCHEMA = ...`
-  - Primary Keys: `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` joined with `INFORMATION_SCHEMA.KEY_COLUMN_USAGE`
-  - Foreign Keys: `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` joined with `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS` and `INFORMATION_SCHEMA.CONSTRAINT_COLUMN_USAGE`
-- **Type Mapper**: `parse_mssql_type(dtype: &str, max_len: Option<i32>) -> CanonicalType`
-
-#### 5. DuckDB (`DuckDbDriver`)
-- **Connection**: `duckdb::Connection::open` for file-based database or `open_in_memory()` when `:memory:` or empty.
-- **Introspection**:
-  - Tables: `information_schema.tables WHERE table_schema NOT IN ('pg_catalog', 'information_schema') AND table_type = 'BASE TABLE'`
-  - Columns: `information_schema.columns WHERE table_name = ? AND table_schema = ?`
-  - Primary Keys & Nullability: `PRAGMA table_info('{table}')`
-- **Type Mapper**: `parse_duckdb_type(dtype: &str) -> CanonicalType`
+### 5. CockroachDB & TiDB
+- **CockroachDB**: Built on high-performance PostgreSQL v3 wire protocol with distributed consensus optimizations.
+- **TiDB**: Built on MySQL wire protocol with support for hybrid OLTP/OLAP execution (TiKV and TiFlash engines).
 
 ---
 
-## 4. Usage Examples
+## 6. Usage Examples
 
 ### Instantiating Drivers via Factory
 ```rust
@@ -149,45 +138,32 @@ use dyno_db_modeler_lib::model::connection::{ConnectionConfig, DatabaseType};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 1. PostgreSQL Connection
-    let pg_config = ConnectionConfig {
-        id: "pg-prod".to_string(),
-        name: "Production PG".to_string(),
-        db_type: DatabaseType::Postgres,
-        host: Some("localhost".to_string()),
-        port: Some(5432),
-        database: "store_db".to_string(),
-        username: Some("postgres".to_string()),
-        password: Some("secret".to_string()),
+    // 1. ClickHouse Analytical Connection
+    let ch_config = ConnectionConfig {
+        id: "ch-local".to_string(),
+        name: "Analytics ClickHouse".to_string(),
+        db_type: DatabaseType::ClickHouse,
+        host: Some("127.0.0.1".to_string()),
+        port: Some(8123),
+        database: "default".to_string(),
+        username: Some("default".to_string()),
+        password: Some("".to_string()),
         file_path: None,
         ssl: false,
+        ssh_tunnel: None,
+        connection_url: None,
     };
-    let pg_driver = DriverFactory::create(&pg_config).await?;
-    pg_driver.test_connection().await?;
+    let ch_driver = DriverFactory::create(&ch_config).await?;
+    ch_driver.test_connection().await?;
 
     // 2. Introspect Schema
-    let schema = pg_driver.introspect_schema().await?;
-    println!("Found {} tables in PostgreSQL database", schema.tables.len());
+    let schema = ch_driver.introspect_schema().await?;
+    println!("Discovered {} tables in ClickHouse", schema.tables.len());
 
-    // 3. Execute Transactional Migration Batch
-    let migration_report = pg_driver.execute_ddl(&[
-        "CREATE TABLE audit_logs (id BIGSERIAL PRIMARY KEY, message TEXT NOT NULL);".to_string(),
-    ]).await?;
-    println!("Applied migration in {} ms", migration_report.execution_time_ms);
-
-    // 4. Execute Transactional Row Mutation Batch
-    use std::collections::HashMap;
-    use dyno_db_modeler_lib::driver::RowUpdatePayload;
-
-    let mut pks = HashMap::new();
-    pks.insert("id".to_string(), serde_json::json!(1));
-    let mut values = HashMap::new();
-    values.insert("message".to_string(), serde_json::json!("Updated audit entry"));
-
-    let affected = pg_driver.update_rows(vec![
-        RowUpdatePayload::new("audit_logs", pks, values),
-    ]).await?;
-    println!("Mutated {} rows", affected);
+    // 3. Execute Tabular Query
+    let result = ch_driver.execute_query("SELECT 1 AS num, 'ok' AS status").await?;
+    println!("Columns: {:?}", result.columns);
+    println!("Rows: {:?}", result.rows);
 
     Ok(())
 }
@@ -195,11 +171,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ---
 
-## 5. Troubleshooting & Edge Cases
-
-- **PostgreSQL Schema Isolation**: Introspection automatically excludes internal Postgres system tables (`pg_catalog`, `information_schema`) to prevent cluttering application ERDs with internal metadata catalogs.
-- **MySQL Boolean Emulation**: In MySQL, `TINYINT(1)` columns are commonly used to represent booleans. `parse_mysql_type` automatically inspects `max_len == Some(1)` and assigns `CanonicalType::Boolean`, while preserving larger `TINYINT` fields as `CanonicalType::SmallInt`.
-- **MSSQL Host Requirement**: Microsoft SQL Server requires a network host address. If `config.host` is `None` or blank, `DriverFactory::create` immediately produces `AppError::Config` before initiating TCP handshakes.
-- **Connection Acquisition Timeouts**: All networked driver pools enforce a 5-second connection acquisition timeout to avoid indefinite hanging during network failures.
-- **DDL Rollback Guarantee**: `execute_ddl` encloses all statements in explicit transactions (`BEGIN ... COMMIT`). If any statement triggers a syntax error or constraint violation, the transaction is immediately rolled back and an `AppError::Migration` is returned.
-- **Atomic Row Mutation Rollback**: `update_rows` executes all row mutations within an isolated transaction. If any update fails due to invalid column names, syntax errors, or check/foreign-key constraint violations, the entire transaction is rolled back immediately, ensuring no partial row updates remain committed.
+## 7. Troubleshooting & Edge Cases
+- **NoSQL & Document Modeling**: MongoDB and SurrealDB schemas are inferred through document sampling and schema catalogs. Missing fields in sampled documents default to nullable JSON columns.
+- **Cassandra Keyspaces**: In Cassandra and ScyllaDB, the `database` config field represents the target `keyspace`. If left empty, `system_schema` is queried across all user keyspaces.
+- **SurrealDB Namespace vs Database**: For SurrealDB, use `database` in the format `namespace/database` or provide the database name with default namespace `test`.
+- **ClickHouse Compression & Formats**: ClickHouse queries executed via `execute_query` automatically append `FORMAT JSONCompact` to guarantee parseable tabular matrix responses.

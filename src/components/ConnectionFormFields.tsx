@@ -122,7 +122,7 @@ const ENGINE_GROUPS: {
   engines: { type: DatabaseType; label: string; badge?: string }[];
 }[] = [
   {
-    category: 'Popular',
+    category: 'Popular Relational',
     engines: [
       { type: 'Postgres', label: 'PostgreSQL' },
       { type: 'MySql', label: 'MySQL' },
@@ -132,19 +132,24 @@ const ENGINE_GROUPS: {
     ],
   },
   {
-    category: 'Cloud & Analytics',
+    category: 'Cloud, NewSQL & Analytics',
     engines: [
-      { type: 'CockroachDb', label: 'CockroachDB', badge: 'Cloud' },
       { type: 'ClickHouse', label: 'ClickHouse', badge: 'Analytics' },
+      { type: 'TiDb', label: 'TiDB', badge: 'HTAP' },
+      { type: 'CockroachDb', label: 'CockroachDB', badge: 'Cloud' },
       { type: 'Redshift', label: 'Redshift', badge: 'AWS' },
-      { type: 'LibSql', label: 'LibSQL', badge: 'Edge' },
       { type: 'DuckDb', label: 'DuckDB', badge: 'Analytics' },
+      { type: 'LibSql', label: 'LibSQL', badge: 'Edge' },
     ],
   },
   {
-    category: 'NoSQL & Cache',
+    category: 'NoSQL, Document & Multi-Model',
     engines: [
-      { type: 'Redis', label: 'Redis / KeyDB / Valkey', badge: 'Cache/KV' },
+      { type: 'MongoDb', label: 'MongoDB', badge: 'Document' },
+      { type: 'Redis', label: 'Redis / KeyDB', badge: 'Cache/KV' },
+      { type: 'Cassandra', label: 'Cassandra', badge: 'CQL' },
+      { type: 'ScyllaDb', label: 'ScyllaDB', badge: 'CQL' },
+      { type: 'SurrealDb', label: 'SurrealDB', badge: 'Multi-Model' },
     ],
   },
   {
@@ -452,9 +457,21 @@ export const ConnectionFormFields: React.FC<ConnectionFormFieldsProps> = ({
                 htmlFor="conn-database"
                 className="block text-[11px] font-semibold text-[#8c919a] uppercase tracking-wider"
               >
-                {dbType === 'Redis' ? 'Database Index' : 'Database'}{' '}
+                {dbType === 'Redis'
+                  ? 'Database Index'
+                  : dbType === 'Cassandra' || dbType === 'ScyllaDb'
+                  ? 'Keyspace Name'
+                  : dbType === 'SurrealDb'
+                  ? 'Namespace / Database'
+                  : 'Database'}{' '}
                 <span className="text-[10px] font-normal lowercase text-[#8c919a]/70">
-                  {dbType === 'Redis' ? '(e.g. 0-15 · defaults to 0)' : '(optional · defaults to maintenance db)'}
+                  {dbType === 'Redis'
+                    ? '(e.g. 0-15 · defaults to 0)'
+                    : dbType === 'Cassandra' || dbType === 'ScyllaDb'
+                    ? '(e.g. system_schema, my_keyspace)'
+                    : dbType === 'SurrealDb'
+                    ? '(e.g. test:test or database name)'
+                    : '(optional · defaults to maintenance db)'}
                 </span>
               </label>
               {onFetchDatabases && (
