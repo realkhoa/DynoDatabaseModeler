@@ -26,7 +26,8 @@ DynoDbModeler is designed for developers, database administrators, and architect
 - **Secure Credential Handling**: Database and SSH passwords are stored in the operating system credential store (Windows Credential Manager, macOS Keychain, Linux Secret Service) and are never written to browser storage.
 - **Real SSH Bastion Tunnelling**: Database connections can be routed through an SSH bastion using genuine `direct-tcpip` forwarding with known-hosts verification.
 - **Offline by Default**: Monaco Editor and all assets are bundled locally; the application loads no executable code from a CDN and runs under a restrictive Content Security Policy.
-- **Modern Minimalist Dark UI**: Compact typography, high-contrast dark palette (`#1e1f22`, `#24262b`), and non-intrusive modal drawers.
+- **Multi-Theme Visual Personalization**: Four built-in themes including **GitIngest** (warm cream paper `#faf8f5` with amber accents `#ea580c`), **Dark (Default Dyno)** (`#1e1f22`, `#18191c`), **GitHub Light** (`#ffffff`, `#f6f8fa`), and **Midnight OLED** (`#000000` pitch black with neon cyan `#00f0ff`), with one-click switcher on the HeaderBar, persistent preference storage, and synchronized Monaco Editor and ERD canvas styling.
+- **Modern Minimalist UI**: Compact typography, high-contrast dark and light palettes, and non-intrusive modal drawers.
 
 ---
 
