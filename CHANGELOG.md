@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.4.0] - 2026-10-21
+
+### 🚀 Next-Gen Tooling Suite
+
+#### 1. Multi-Language ORM & Entity Code Generator (`OrmExportModal`, `ormExporter`)
+- Multi-target model compilation supporting 7 major frameworks:
+  - **Prisma Schema** (`schema.prisma`): Maps models, primary keys, `@default(autoincrement())`, `@map()`, `@relation()`, and foreign key references.
+  - **Drizzle ORM** (`schema.ts`): Dual dialect support for `pgTable` (PostgreSQL) and `sqliteTable` (SQLite).
+  - **Golang GORM** (`models.go`): Idiomatic Go structs with `gorm:"primaryKey;column:..."` and JSON tags.
+  - **Rust SeaORM** (`entities.rs`): `DeriveEntityModel`, `DeriveRelation`, `ActiveModelBehavior`, and relation annotations.
+  - **C# Entity Framework Core** (`Entities.cs`): Data annotations `[Table]`, `[Key]`, `[Column]`, `[ForeignKey]`, and `[DatabaseGenerated]`.
+  - **Python SQLAlchemy 2.0** (`models.py`): Modern typed declarative models (`Mapped[T]`, `mapped_column`, `relationship`).
+  - **TypeScript TypeORM** (`entities.ts`): Decorator-driven entities (`@Entity`, `@PrimaryGeneratedColumn`, `@Column`, `@ManyToOne`, `@JoinColumn`).
+- Monaco Editor preview with real-time framework switching, table scope filtering (`All Tables` vs. single table), and 1-click Copy / Download.
+
+#### 2. Smart CSV & JSON Data Import Wizard (`DataImportModal`, `dataImporter`)
+- **RFC 4180 CSV & Multiline Parser**: Robust parser handling quote escaping, commas inside values, and multiline row data, with auto-detection of delimiters (`,`, `;`, `\t`, `|`).
+- **JSON Objects Array Parser**: Structured JSON validation and row extraction.
+- **Intelligent Heuristic Column Auto-Mapping**: Matches target columns across exact names, case-insensitive variants, and snake_case / camelCase formats.
+- **Dialect-Aware Chunked Batch SQL Generation**:
+  - Generates 500-row batch `INSERT` chunks with dialect conflict handling (`ignore`, `replace`, `abort`).
+  - Supports PostgreSQL (`ON CONFLICT DO NOTHING / UPDATE`), MySQL (`INSERT IGNORE` / `ON DUPLICATE KEY UPDATE`), SQLite (`INSERT OR IGNORE / REPLACE`), and MSSQL / Oracle.
+
+#### 3. Autonomous Database Schema Health Advisor & Database Linter (`SchemaHealthModal`, `schemaHealthAdvisor`)
+- **Deterministic Heuristic Rules Engine**: Evaluates 8 critical database design best practices:
+  - Missing Primary Keys (with 1-click `ADD PRIMARY KEY` remediation).
+  - Unindexed Foreign Keys (with automatic `CREATE INDEX` SQL generation).
+  - Redundant & Prefix-Covered Composite Indexes (with `DROP INDEX` generation).
+  - Reserved SQL Keyword Collisions (`order`, `user`, `group`, etc.).
+  - Unconstrained Foreign Key candidate columns (`*_id`).
+  - Approximate Float storage for financial/monetary fields (`price`, `amount`, `salary` to `DECIMAL(12, 2)`).
+  - Inconsistent naming conventions across tables.
+- **Dynamic Health Scoring (0–100%)**: Color-coded score badges (`Excellent`, `Good`, `Fair`, `Poor`) and severity breakdown counters.
+- **1-Click Auto-Remediation & Bundled Migration Script**: Single fix execution via active database connection, single fix clipboard copy, or bundled transaction script (`BEGIN ... COMMIT`) opened directly into SQL query worksheet.
+
+---
+
 ## [0.3.1] - 2026-10-21
 
 ### ⚡ Performance & Scalability
