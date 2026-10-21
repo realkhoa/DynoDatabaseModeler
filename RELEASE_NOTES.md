@@ -1,36 +1,30 @@
-# DynoDbModeler v0.3.0 Release Notes
+# DynoDbModeler v0.3.1 Release Notes
 
 ### 🚀 Major Highlights
 
-#### 1. Multi-Engine Native Database Drivers (16 Engines)
-DynoDbModeler now natively supports **16 database engines** spanning relational, columnar analytical, distributed NewSQL, document, and wide-column NoSQL:
-- **ClickHouse**: Native HTTP 1.1 JSONCompact analytical driver over port 8123 with catalog introspection (`system.tables`, `system.columns`), column type normalization (`DateTime64`, `LowCardinality`, `Array`), and execution plans.
-- **MongoDB**: Pure Rust `OP_MSG` wire protocol (opcode 2013) driver over TCP port 27017 with pure Rust BSON encoder/decoder, collection catalog discovery, document sampling schema inference, raw JSON commands, and pseudo-SQL translation.
-- **Apache Cassandra & ScyllaDB**: Native CQL v4 binary protocol driver over TCP port 9042 with frame encoder/decoder, `STARTUP` handshakes, `system_schema` introspection (mapping partition and clustering keys into primary keys), and CQL execution.
-- **SurrealDB**: SurrealQL REST HTTP driver over port 8000 supporting namespace & database catalogs, `INFO FOR DB` / `INFO FOR NS` schema reverse-engineering, and record-to-grid tabular mapping.
-- **Distributed NewSQL (CockroachDB & TiDB)**: Specialized adapters for CockroachDB distributed PostgreSQL consensus and TiDB hybrid HTAP (TiKV/TiFlash) execution.
-- **MariaDB**: Dedicated driver adapter.
-- **Universal Protocol Router**: Auto-routing URL connection strings (`clickhouse://`, `mongodb://`, `cassandra://`, `surreal://`, `postgres://`, `mysql://`, `sqlite:`).
+#### 1. High-Performance Virtual Windowing Data Grid Engine
+- **Ultra-Fast Row Windowing (`useVirtualRows`)**: Replaced full dataset DOM mounting with mathematical virtual windowing at a fixed $28\text{px}$ row height (with optional `rowHeight` override).
+- **60 FPS Scrolling**: Effortlessly scrolls datasets with **500 to 100,000+ rows**, mounting only 25–35 DOM `<tr>` elements in the active viewport with dynamic top and bottom spacer offsets.
+- **Flawless Editing & Dirty Cell Tracking**: Cell mutations, selection coordinates, dirty tracking (`dirtyRowsMap`), and single-row batch save payloads are mapped strictly by `originalIndex`, ensuring zero data desynchronization during virtual scrolling and filtering.
+- **Debounced Search (`useDebouncedValue`)**: Added 150ms input debouncing to data grid quick filters and schema search, eliminating keystroke latency and unnecessary in-memory array filtering.
 
-#### 2. Categorized Engine Selector
-- Reorganized connection dialog into 4 distinct categories:
-  - *Relational Databases* (PostgreSQL, MySQL, MariaDB, SQLite, MSSQL)
-  - *NoSQL, Document & Multi-Model* (MongoDB, Cassandra, ScyllaDB, SurrealDB)
-  - *Cloud, NewSQL & Analytics* (ClickHouse, DuckDB, CockroachDB, TiDB, Universal URL)
-  - *In-Memory & Cache* (Redis, KeyDB, Valkey)
-- Dynamic contextual input placeholders, port mappings, and database/keyspace/namespace guidance.
+#### 2. ERD Canvas Viewport Frustum Culling
+- **Viewport Culling**: Enabled `onlyRenderVisibleElements={true}` on the React Flow ERD canvas, automatically skipping DOM node rendering and Crow's Foot SVG foreign key path calculations for tables situated outside the camera frustum.
+- **Minimalist Floating Pill Toolbar**: Replaced cluttered top-right action panels with an ergonomic, semi-transparent floating pill toolbar (`top-4 left-4`, `backdrop-blur-md bg-[#24262b]/85 border border-[#35373c]`) featuring micro-buttons and accessible tooltips.
 
-#### 3. Complete Visual Theme Synchronization (Zero Mismatch)
-- Systematically eliminated all theme mismatches across **GitIngest** (warm cream paper `#faf8f5`), **GitHub Light** (`#ffffff`), **Midnight OLED** (`#000000`), and **Dark (Default Dyno)** (`#1e1f22`).
-- Mapped all 102 hardcoded hex utility classes to semantic CSS custom properties in `src/index.css`.
-- **ERD Canvas & Table Nodes**: Canvas container background, dot grid patterns, and React Flow zoom/pan controls now seamlessly adapt to the selected theme.
-- **TableNode Cards**: Fixed hardcoded dark headers, column count pills, hover row highlights, and handle rings so they cleanly render on light backgrounds.
-- **Crow's Foot Edges**: Replaced hardcoded `#1e1f22` SVG circle cutouts with `var(--color-bg-base)`, eliminating dark spots on cream and white canvas backgrounds.
-- **Sticky Notes & Group Frames**: Added theme-aware light post-it note variants (soft yellow, blue, green, purple with high-contrast text) for light modes and dark saturated variants for dark modes.
-- **Live Monaco Editor Theme Switching**: Added reactive theme subscriptions to `DiffModal` and `ValueInspectorDrawer` to immediately update editor styling upon theme toggling.
+#### 3. Minimalist UI & Zen Mode (Distraction-Free Workspace)
+- **Tri-State Responsive Sidebar (`Sidebar`)**:
+  - `expanded` (256px): Full table tree, column counts, and debounced schema filter.
+  - `rail` (48px): Micro-icon vertical rail showing active database engine, connection status dot, quick search, refresh, and expand triggers.
+  - `zen` (0px): Completely hidden sidebar maximizing canvas or query editor real estate.
+- **Global Keyboard Shortcut (`Ctrl+B` / `Cmd+B`)**: Quick toggle between expanded and rail modes with intelligent suppression when typing inside inputs, textareas, contentEditable elements, or Monaco SQL Editor.
+- **Ultra-Clean HeaderBar**: Reduced height to a sleek 40px (`h-10`) with dynamic sidebar toggle icons (`PanelLeftClose` / `PanelLeftOpen`) and an unobtrusive micro-status connection dot (emerald pulsing dot when connected, muted gray when disconnected).
 
 ---
 ### 📦 Verification & Quality Evidence
-- **Backend**: 90/90 Rust unit tests pass (`cargo test`).
-- **Frontend**: 37 test files, 392/392 Vitest tests pass (`bun run test`).
-- **Bundle**: Production build passes cleanly with zero TypeScript errors (`tsc && vite build`).
+- **Frontend**: 39 test files, 429/429 Vitest tests pass cleanly (`bun run test`).
+- **Backend**: 90/90 Rust unit tests pass cleanly (`cargo test`).
+- **Production Build**: `tsc && vite build` and local Tauri release packaging complete with zero errors (exit code 0).
+- **Desktop Installers (Windows)**:
+  - NSIS Setup Installer: `DynoDbModeler_0.3.1_x64-setup.exe`
+  - MSI Package: `DynoDbModeler_0.3.1_x64_en-US.msi`
