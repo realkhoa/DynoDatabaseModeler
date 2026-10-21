@@ -87,7 +87,7 @@ export const TableNode = memo(
       >
         <div className="flex items-center space-x-1.5 truncate">
           <TableIcon className="w-3.5 h-3.5 text-[#3a82f7] shrink-0" />
-          <span className="truncate text-xs font-bold text-[#e6e8ea] group-hover:text-white">
+          <span className="truncate text-xs font-bold text-[#e6e8ea] group-hover:text-[#3a82f7]">
             {label}
           </span>
         </div>

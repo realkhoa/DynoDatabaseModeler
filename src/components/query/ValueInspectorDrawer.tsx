@@ -366,12 +366,12 @@ export const ValueInspectorDrawer: React.FC<ValueInspectorDrawerProps> = ({
     XML: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
     IMAGE: 'bg-purple-500/15 text-purple-400 border-purple-500/30',
     TEXT: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
-    NULL: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/30',
+    NULL: 'bg-[#2b2d30] text-[#8c919a] border-[#35373c]',
   };
 
   const badgeClass =
     formatBadgeStyles[contentInfo.format] ||
-    'bg-zinc-500/15 text-zinc-400 border-zinc-500/30';
+    'bg-[#2b2d30] text-[#8c919a] border-[#35373c]';
 
   return (
     <div

@@ -479,7 +479,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
                 }}
                 className={`group flex items-center justify-between px-2 py-1.5 rounded cursor-pointer transition-colors ${
                   isSelected
-                    ? 'bg-[#2b2d30] text-white border-l-2 border-[#3a82f7]'
+                    ? 'bg-[#2b2d30] text-[#e6e8ea] border-l-2 border-[#3a82f7]'
                     : 'text-[#e6e8ea] hover:bg-[#26282d]'
                 }`}
               >

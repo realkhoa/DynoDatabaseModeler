@@ -290,7 +290,7 @@ export function ProcessListModal({
                           className={`px-2 py-0.5 rounded text-[10px] font-medium ${
                             proc.state === 'active' || proc.state === 'running'
                               ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                              : 'bg-zinc-700/30 text-[#8c919a]'
+                              : 'bg-[#2b2d30] text-[#8c919a]'
                           }`}
                         >
                           {proc.state ?? 'unknown'}

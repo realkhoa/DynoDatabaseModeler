@@ -100,7 +100,7 @@ export const GroupNode = memo(({ id, data, selected }: GroupNodeProps) => {
             <span
               data-testid="group-label"
               onDoubleClick={() => setIsEditing(true)}
-              className="text-xs font-bold tracking-wider uppercase text-neutral-200 cursor-text hover:opacity-80 transition-opacity"
+              className="text-xs font-bold tracking-wider uppercase text-[#e6e8ea] cursor-text hover:opacity-80 transition-opacity"
             >
               {label}
             </span>
@@ -115,7 +115,7 @@ export const GroupNode = memo(({ id, data, selected }: GroupNodeProps) => {
               e.stopPropagation();
               data.onDelete?.(id);
             }}
-            className="p-1 rounded text-neutral-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+            className="p-1 rounded text-[#8c919a] hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
             title="Delete group"
           >
             <Trash2 className="w-3.5 h-3.5" />
@@ -124,7 +124,7 @@ export const GroupNode = memo(({ id, data, selected }: GroupNodeProps) => {
       </div>
 
       {/* Interior Placeholder / Description */}
-      <div className="text-[10px] text-neutral-400 pointer-events-none select-none pl-1">
+      <div className="text-[10px] text-[#8c919a] pointer-events-none select-none pl-1">
         Drag related entity tables inside this domain frame
       </div>
     </div>

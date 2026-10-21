@@ -100,7 +100,7 @@ const PlanNodeItem: React.FC<{
             ? 'bg-rose-950/30 border-rose-600/50 text-rose-100 ring-1 ring-rose-500/30'
             : isScan
             ? 'bg-amber-950/30 border-amber-600/50 text-amber-100'
-            : 'bg-[#222428] border-[#30333a] text-neutral-200'
+            : 'bg-[#222428] border-[#30333a] text-[#e6e8ea]'
         }`}
       >
         <div className="flex flex-col gap-1.5">
@@ -116,7 +116,7 @@ const PlanNodeItem: React.FC<{
             </span>
 
             {node.relation_name && (
-              <span className="flex items-center gap-1 font-mono font-bold text-white bg-black/40 px-2 py-0.5 rounded border border-white/10">
+              <span className="flex items-center gap-1 font-mono font-bold text-[#e6e8ea] bg-[#141517] px-2 py-0.5 rounded border border-[#2c2e33]">
                 <Database className="w-3 h-3 text-cyan-400" />
                 {node.relation_name}
               </span>
@@ -134,7 +134,7 @@ const PlanNodeItem: React.FC<{
           </div>
 
           {node.detail && (
-            <p className="text-[11px] font-mono text-neutral-400 mt-0.5 leading-relaxed">
+            <p className="text-[11px] font-mono text-[#8c919a] mt-0.5 leading-relaxed">
               {node.detail}
             </p>
           )}
@@ -143,16 +143,16 @@ const PlanNodeItem: React.FC<{
         {/* Metrics Column */}
         <div className="flex flex-col items-end gap-1 text-right shrink-0 ml-4">
           <div className="flex items-center gap-2">
-            <span className="text-[10px] text-neutral-400">Cost:</span>
-            <span className="font-mono font-semibold text-white">
+            <span className="text-[10px] text-[#8c919a]">Cost:</span>
+            <span className="font-mono font-semibold text-[#e6e8ea]">
               {node.cost.toFixed(1)}
             </span>
           </div>
 
           {node.rows > 0 && (
             <div className="flex items-center gap-2">
-              <span className="text-[10px] text-neutral-400">Rows:</span>
-              <span className="font-mono text-neutral-300">{node.rows}</span>
+              <span className="text-[10px] text-[#8c919a]">Rows:</span>
+              <span className="font-mono text-[#c4c7cc]">{node.rows}</span>
             </div>
           )}
 
@@ -232,7 +232,7 @@ export const ExplainPlanModal: React.FC<ExplainPlanModalProps> = ({
       data-testid="explain-plan-modal"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-150"
     >
-      <div className="bg-[#18191c] border border-[#2c2e33] rounded-xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden text-neutral-100">
+      <div className="bg-[#18191c] border border-[#2c2e33] rounded-xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden text-[#e6e8ea]">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#2c2e33] bg-[#1f2024]">
           <div className="flex items-center gap-2.5">
@@ -240,10 +240,10 @@ export const ExplainPlanModal: React.FC<ExplainPlanModalProps> = ({
               <Zap className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-white tracking-wide">
+              <h2 className="text-sm font-bold text-[#e6e8ea] tracking-wide">
                 Execution Plan Analyzer (EXPLAIN)
               </h2>
-              <p className="text-[11px] font-mono text-neutral-400 truncate max-w-md">
+              <p className="text-[11px] font-mono text-[#8c919a] truncate max-w-md">
                 {query}
               </p>
             </div>
@@ -255,7 +255,7 @@ export const ExplainPlanModal: React.FC<ExplainPlanModalProps> = ({
                 type="button"
                 data-testid="explain-copy-btn"
                 onClick={handleCopyJson}
-                className="inline-flex items-center gap-1.5 bg-[#2a2c31] hover:bg-[#34373d] text-neutral-200 px-3 py-1.5 rounded text-xs border border-[#393c44] transition-colors"
+                className="inline-flex items-center gap-1.5 bg-[#2a2c31] hover:bg-[#34373d] text-[#e6e8ea] px-3 py-1.5 rounded text-xs border border-[#393c44] transition-colors"
                 title="Copy plan JSON"
               >
                 {copied ? (
@@ -276,7 +276,7 @@ export const ExplainPlanModal: React.FC<ExplainPlanModalProps> = ({
               type="button"
               data-testid="explain-close-btn"
               onClick={onClose}
-              className="p-1.5 rounded-md text-neutral-400 hover:text-white hover:bg-white/10 transition-colors"
+              className="p-1.5 rounded-md text-[#8c919a] hover:text-[#e6e8ea] hover:bg-[#2c2e33] transition-colors"
             >
               <X className="w-4 h-4" />
             </button>
@@ -285,16 +285,16 @@ export const ExplainPlanModal: React.FC<ExplainPlanModalProps> = ({
 
         {/* Telemetry Bar */}
         {plan && !isLoading && (
-          <div className="flex items-center gap-6 px-5 py-2.5 bg-[#141517] border-b border-[#232529] text-xs font-mono text-neutral-400">
+          <div className="flex items-center gap-6 px-5 py-2.5 bg-[#141517] border-b border-[#232529] text-xs font-mono text-[#8c919a]">
             <div className="flex items-center gap-1.5">
               <Layers className="w-3.5 h-3.5 text-cyan-400" />
               <span>Operations:</span>
-              <span className="font-bold text-white">{totalOperations}</span>
+              <span className="font-bold text-[#e6e8ea]">{totalOperations}</span>
             </div>
             <div className="flex items-center gap-1.5">
               <Activity className="w-3.5 h-3.5 text-amber-400" />
               <span>Root Cost:</span>
-              <span className="font-bold text-white">{plan.cost.toFixed(1)}</span>
+              <span className="font-bold text-[#e6e8ea]">{plan.cost.toFixed(1)}</span>
             </div>
             {plan.actual_time_ms !== undefined && plan.actual_time_ms !== null && (
               <div className="flex items-center gap-1.5">
@@ -311,7 +311,7 @@ export const ExplainPlanModal: React.FC<ExplainPlanModalProps> = ({
         {/* Body Content */}
         <div className="p-5 overflow-y-auto flex-1">
           {isLoading ? (
-            <div className="flex flex-col items-center justify-center py-16 text-neutral-400">
+            <div className="flex flex-col items-center justify-center py-16 text-[#8c919a]">
               <div className="w-8 h-8 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin mb-3" />
               <p className="text-xs font-medium">Analyzing query plan...</p>
             </div>
@@ -328,7 +328,7 @@ export const ExplainPlanModal: React.FC<ExplainPlanModalProps> = ({
               <PlanNodeItem node={plan} depth={0} maxCost={maxCost} />
             </div>
           ) : (
-            <div className="py-12 text-center text-xs text-neutral-500">
+            <div className="py-12 text-center text-xs text-[#8c919a]">
               No execution plan generated for this query.
             </div>
           )}
@@ -339,7 +339,7 @@ export const ExplainPlanModal: React.FC<ExplainPlanModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-1.5 rounded text-xs bg-[#2a2c31] hover:bg-[#34373d] text-neutral-200 border border-[#393c44] transition-colors"
+            className="px-4 py-1.5 rounded text-xs bg-[#2a2c31] hover:bg-[#34373d] text-[#e6e8ea] border border-[#393c44] transition-colors"
           >
             Close
           </button>

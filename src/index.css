@@ -120,6 +120,32 @@ body {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Custom Scrollbars adhering to active theme                                 */
+/* -------------------------------------------------------------------------- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-subtle) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--color-border-subtle);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--color-border-card-hover);
+}
+
+/* -------------------------------------------------------------------------- */
 /* React Flow & ERD Canvas Theming (All Themes)                               */
 /* -------------------------------------------------------------------------- */
 .react-flow {
@@ -177,8 +203,9 @@ body {
   .bg-\[\#1f2024\] {
     background-color: var(--color-bg-base) !important;
   }
+  .bg-\[\#1e1f22\]\/90,
   .bg-\[\#1e1f22\]\/80 {
-    background-color: color-mix(in srgb, var(--color-bg-base) 80%, transparent) !important;
+    background-color: color-mix(in srgb, var(--color-bg-base) 90%, transparent) !important;
   }
 
   /* 2. Sidebar & Dialog backgrounds */
@@ -219,8 +246,9 @@ body {
   .bg-\[\#2a2c31\] {
     background-color: var(--color-bg-card) !important;
   }
+  .bg-\[\#24262b\]\/85,
   .bg-\[\#24262b\]\/80 {
-    background-color: color-mix(in srgb, var(--color-bg-card) 80%, transparent) !important;
+    background-color: color-mix(in srgb, var(--color-bg-card) 85%, transparent) !important;
   }
 
   /* 6. Card Headers & Dialog subpanels */
@@ -232,12 +260,23 @@ body {
   .bg-\[\#26282d\] {
     background-color: var(--color-bg-toolbar) !important;
   }
+  .bg-\[\#26282d\]\/50 {
+    background-color: color-mix(in srgb, var(--color-bg-toolbar) 50%, transparent) !important;
+  }
 
   /* 8. Surfaces & Drawers */
   .bg-\[\#2b2d30\],
   .bg-\[\#2c2e33\],
-  .bg-\[\#2d3139\] {
+  .bg-\[\#2d3139\],
+  .bg-\[\#2e3035\],
+  .bg-\[\#2e3138\] {
     background-color: var(--color-bg-surface) !important;
+  }
+  .bg-\[\#35373c\] {
+    background-color: var(--color-bg-surface-alt) !important;
+  }
+  .bg-\[\#8c919a\] {
+    background-color: var(--color-text-muted) !important;
   }
 
   /* 9. Surface Alt */
@@ -247,11 +286,15 @@ body {
 
   /* 10. Hovers across all elements */
   .hover\:bg-\[\#1a1b1e\]:hover,
+  .hover\:bg-\[\#1bb285\]:hover,
+  .hover\:bg-\[\#1e1f22\]:hover,
   .hover\:bg-\[\#1e2024\]:hover,
   .hover\:bg-\[\#202226\]:hover,
   .hover\:bg-\[\#222428\]:hover,
   .hover\:bg-\[\#24262b\]:hover,
+  .hover\:bg-\[\#24262b\]\/80:hover,
   .hover\:bg-\[\#26282d\]:hover,
+  .hover\:bg-\[\#26282d\]\/50:hover,
   .hover\:bg-\[\#2b2d30\]:hover,
   .hover\:bg-\[\#2b2d33\]:hover,
   .hover\:bg-\[\#2c2e33\]:hover,
@@ -268,6 +311,9 @@ body {
   .hover\:bg-\[\#404349\]:hover {
     background-color: var(--color-bg-hover) !important;
   }
+  .hover\:bg-\[\#20c997\]\/25:hover {
+    background-color: color-mix(in srgb, var(--color-accent-cyan) 25%, transparent) !important;
+  }
 
   /* 11. Focus background */
   .focus\:bg-\[\#1e1f22\]:focus {
@@ -275,6 +321,7 @@ body {
   }
 
   /* 12. Subtle borders */
+  .border-\[\#18191c\],
   .border-\[\#232529\],
   .border-\[\#24262b\],
   .border-\[\#26282c\],
@@ -296,6 +343,12 @@ body {
   .border-\[\#2b2d30\]\/50 {
     border-color: color-mix(in srgb, var(--color-border-subtle) 50%, transparent) !important;
   }
+  .border-\[\#20c997\]\/40 {
+    border-color: color-mix(in srgb, var(--color-accent-cyan) 40%, transparent) !important;
+  }
+  .border-\[\#3a82f7\]\/40 {
+    border-color: color-mix(in srgb, var(--color-accent-blue) 40%, transparent) !important;
+  }
 
   /* 13. Card borders & hover borders */
   .border-\[\#3a3d45\] {
@@ -311,8 +364,11 @@ body {
   /* 14. Dividers */
   .divide-\[\#24262b\] > :not([hidden]) ~ :not([hidden]),
   .divide-\[\#2b2d30\] > :not([hidden]) ~ :not([hidden]),
+  .divide-\[\#2d3139\] > :not([hidden]) ~ :not([hidden]),
   .divide-\[\#2f323a\] > :not([hidden]) ~ :not([hidden]),
-  .divide-\[\#35373c\] > :not([hidden]) ~ :not([hidden]) {
+  .divide-\[\#35373c\] > :not([hidden]) ~ :not([hidden]),
+  .divide-\[\#35373c\]\/40 > :not([hidden]) ~ :not([hidden]),
+  .divide-\[\#35373c\]\/50 > :not([hidden]) ~ :not([hidden]) {
     border-color: var(--color-border-subtle) !important;
   }
 
@@ -327,6 +383,11 @@ body {
   .text-\[\#636770\] {
     color: var(--color-text-muted) !important;
   }
+  .text-\[\#8c919a\]\/50,
+  .text-\[\#8c919a\]\/60,
+  .text-\[\#8c919a\]\/70 {
+    color: color-mix(in srgb, var(--color-text-muted) 60%, transparent) !important;
+  }
   .text-\[\#c3c6cd\],
   .text-\[\#c4c7cc\],
   .text-\[\#a9b1d6\] {
@@ -335,6 +396,9 @@ body {
   .hover\:text-\[\#e6e8ea\]:hover,
   .hover\:text-\[\#f1f2f4\]:hover {
     color: var(--color-text-main) !important;
+  }
+  .text-\[\#e05252\] {
+    color: #dc2626 !important;
   }
 
   /* 16. Accent Colors */
@@ -382,15 +446,27 @@ body {
     color: var(--color-accent-gold) !important;
   }
 
-  /* Notice boxes */
+  /* Notice boxes & Accents */
   .text-\[\#9dc0fb\] {
     color: var(--color-accent-blue) !important;
   }
-  .bg-\[\#3a82f7\]\/10 {
-    background-color: color-mix(in srgb, var(--color-accent-blue) 12%, transparent) !important;
+  .bg-\[\#3a82f7\]\/10,
+  .bg-\[\#3a82f7\]\/15,
+  .bg-\[\#3a82f7\]\/20 {
+    background-color: color-mix(in srgb, var(--color-accent-blue) 15%, transparent) !important;
+  }
+  .bg-\[\#20c997\]\/10,
+  .bg-\[\#20c997\]\/15 {
+    background-color: color-mix(in srgb, var(--color-accent-cyan) 14%, transparent) !important;
   }
   .border-\[\#3a82f7\]\/30 {
     border-color: color-mix(in srgb, var(--color-accent-blue) 35%, transparent) !important;
+  }
+  .bg-\[\#e05252\]\/10 {
+    background-color: rgba(220, 38, 38, 0.12) !important;
+  }
+  .bg-black\/20 {
+    background-color: color-mix(in srgb, var(--color-bg-toolbar) 40%, transparent) !important;
   }
 
   /* TableNode Not-Null Badge */
@@ -504,6 +580,10 @@ body {
   .bg-\[\#1f2024\] {
     background-color: #000000 !important;
   }
+  .bg-\[\#1e1f22\]\/90,
+  .bg-\[\#1e1f22\]\/80 {
+    background-color: rgba(0, 0, 0, 0.9) !important;
+  }
 
   /* 2. Sidebars, Modals */
   .bg-\[\#18191c\],
@@ -512,6 +592,9 @@ body {
   .bg-\[\#1c1d21\],
   .bg-\[\#1c1d22\] {
     background-color: #08090d !important;
+  }
+  .bg-\[\#18191c\]\/90 {
+    background-color: rgba(8, 9, 13, 0.9) !important;
   }
 
   /* 3. Inputs */
@@ -537,6 +620,10 @@ body {
   .bg-\[\#2a2c31\] {
     background-color: #0a0b10 !important;
   }
+  .bg-\[\#24262b\]\/85,
+  .bg-\[\#24262b\]\/80 {
+    background-color: rgba(10, 11, 16, 0.85) !important;
+  }
 
   /* 6. Card Header */
   .bg-\[\#2b2e36\] {
@@ -547,12 +634,20 @@ body {
   .bg-\[\#26282d\] {
     background-color: #0e1017 !important;
   }
+  .bg-\[\#26282d\]\/50 {
+    background-color: rgba(14, 16, 23, 0.5) !important;
+  }
 
   /* 8. Surfaces */
   .bg-\[\#2b2d30\],
   .bg-\[\#2c2e33\],
-  .bg-\[\#2d3139\] {
+  .bg-\[\#2d3139\],
+  .bg-\[\#2e3035\],
+  .bg-\[\#2e3138\] {
     background-color: #141724 !important;
+  }
+  .bg-\[\#35373c\] {
+    background-color: #1c1f2e !important;
   }
 
   /* 9. Surface Alt */
@@ -562,11 +657,15 @@ body {
 
   /* 10. Hovers */
   .hover\:bg-\[\#1a1b1e\]:hover,
+  .hover\:bg-\[\#1bb285\]:hover,
+  .hover\:bg-\[\#1e1f22\]:hover,
   .hover\:bg-\[\#1e2024\]:hover,
   .hover\:bg-\[\#202226\]:hover,
   .hover\:bg-\[\#222428\]:hover,
   .hover\:bg-\[\#24262b\]:hover,
+  .hover\:bg-\[\#24262b\]\/80:hover,
   .hover\:bg-\[\#26282d\]:hover,
+  .hover\:bg-\[\#26282d\]\/50:hover,
   .hover\:bg-\[\#2b2d30\]:hover,
   .hover\:bg-\[\#2b2d33\]:hover,
   .hover\:bg-\[\#2c2e33\]:hover,
@@ -585,6 +684,7 @@ body {
   }
 
   /* 11. Subtle borders */
+  .border-\[\#18191c\],
   .border-\[\#232529\],
   .border-\[\#24262b\],
   .border-\[\#26282c\],
@@ -610,8 +710,11 @@ body {
   /* 12. Dividers */
   .divide-\[\#24262b\] > :not([hidden]) ~ :not([hidden]),
   .divide-\[\#2b2d30\] > :not([hidden]) ~ :not([hidden]),
+  .divide-\[\#2d3139\] > :not([hidden]) ~ :not([hidden]),
   .divide-\[\#2f323a\] > :not([hidden]) ~ :not([hidden]),
-  .divide-\[\#35373c\] > :not([hidden]) ~ :not([hidden]) {
+  .divide-\[\#35373c\] > :not([hidden]) ~ :not([hidden]),
+  .divide-\[\#35373c\]\/40 > :not([hidden]) ~ :not([hidden]),
+  .divide-\[\#35373c\]\/50 > :not([hidden]) ~ :not([hidden]) {
     border-color: #1c1f2e !important;
   }
 

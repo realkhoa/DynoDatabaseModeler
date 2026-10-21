@@ -172,7 +172,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
           onClick={() => onSelectTab('erd')}
           className={`flex items-center space-x-1.5 px-3 py-1 rounded transition-colors cursor-pointer ${
             activeTab === 'erd'
-              ? 'bg-[#2b2d30] text-[#ffffff] font-medium shadow-xs border-b-2 border-[#3a82f7]'
+              ? 'bg-[#2b2d30] text-[#e6e8ea] font-medium shadow-xs border-b-2 border-[#3a82f7]'
               : 'text-[#8c919a] hover:text-[#e6e8ea] hover:bg-[#222428]'
           }`}
         >
@@ -185,7 +185,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
           onClick={() => onSelectTab('sql')}
           className={`flex items-center space-x-1.5 px-3 py-1 rounded transition-colors cursor-pointer ${
             activeTab === 'sql' || activeTab === 'query'
-              ? 'bg-[#2b2d30] text-[#ffffff] font-medium shadow-xs border-b-2 border-[#3a82f7]'
+              ? 'bg-[#2b2d30] text-[#e6e8ea] font-medium shadow-xs border-b-2 border-[#3a82f7]'
               : 'text-[#8c919a] hover:text-[#e6e8ea] hover:bg-[#222428]'
           }`}
         >
@@ -198,7 +198,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
           onClick={() => onSelectTab('settings')}
           className={`flex items-center space-x-1.5 px-3 py-1 rounded transition-colors cursor-pointer ${
             activeTab === 'settings'
-              ? 'bg-[#2b2d30] text-[#ffffff] font-medium shadow-xs border-b-2 border-[#3a82f7]'
+              ? 'bg-[#2b2d30] text-[#e6e8ea] font-medium shadow-xs border-b-2 border-[#3a82f7]'
               : 'text-[#8c919a] hover:text-[#e6e8ea] hover:bg-[#222428]'
           }`}
         >
@@ -241,7 +241,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
                     onClick={() => handlePickTheme(tId)}
                     className={`flex items-center justify-between w-full px-2 py-1.5 rounded text-left transition-colors cursor-pointer text-xs ${
                       isSelected
-                        ? 'bg-[#2b2d30] text-white font-medium'
+                        ? 'bg-[#2b2d30] text-[#e6e8ea] font-medium'
                         : 'text-[#e6e8ea] hover:bg-[#26282d]'
                     }`}
                   >
