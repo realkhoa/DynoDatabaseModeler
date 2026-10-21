@@ -23,6 +23,7 @@ import { api } from './api/ipc';
 import { computePendingChangesCount } from './utils/diffCount';
 import { connectionScope } from './utils/connectionScope';
 import { tableKey } from './types/database';
+import { initTheme } from './utils/themeManager';
 import { buildPaginatedSelectQuery } from './utils/sqlPagination';
 import type {
   ConnectionConfig,
@@ -166,6 +167,11 @@ export default function App(): React.ReactElement {
           'Stored passwords were moved out of browser storage. Re-enter them once to save them to the system credential store.',
       });
     }
+  }, []);
+
+  // Initialize application visual theme from saved preferences
+  useEffect(() => {
+    initTheme();
   }, []);
 
   // Persist connections list (without secrets) to localStorage

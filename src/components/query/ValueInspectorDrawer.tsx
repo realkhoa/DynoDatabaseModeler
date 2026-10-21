@@ -8,6 +8,8 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Editor from '@monaco-editor/react';
+import { THEMES } from '../../types/theme';
+import { getSavedTheme } from '../../utils/themeManager';
 import {
   X,
   Copy,
@@ -464,7 +466,7 @@ export const ValueInspectorDrawer: React.FC<ValueInspectorDrawerProps> = ({
             <Editor
               height="100%"
               language={contentInfo.monacoLanguage}
-              theme="vs-dark"
+              theme={THEMES[getSavedTheme()]?.monacoTheme || 'vs-dark'}
               value={editorContent}
               onChange={(val) => setEditorContent(val ?? '')}
               options={{

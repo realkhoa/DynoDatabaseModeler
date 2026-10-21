@@ -38,6 +38,9 @@ import { buildSqlCompletions } from '../../utils/sqlCompletion';
 import { formatSql } from '../../utils/sqlFormatter';
 import { EditableDataGrid, EditableDataGridHandle } from './EditableDataGrid';
 import { ValueInspectorDrawer } from './ValueInspectorDrawer';
+import type { AppTheme } from '../../types/theme';
+import { THEMES } from '../../types/theme';
+import { getSavedTheme, onThemeChange } from '../../utils/themeManager';
 import { ExportModal } from './ExportModal';
 import { ExplainPlanModal } from './ExplainPlanModal';
 import { QueryHistoryModal } from './QueryHistoryModal';
@@ -227,6 +230,13 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = React.memo(({
   // In-place editing is gated on a verified primary key for a single-table projection.
   const [editAnalysis, setEditAnalysis] = useState<EditableQueryAnalysis | null>(null);
   const [primaryKeyColumns, setPrimaryKeyColumns] = useState<string[]>([]);
+  const [activeTheme, setActiveTheme] = useState<AppTheme>(getSavedTheme());
+
+  useEffect(() => {
+    return onThemeChange((t) => {
+      setActiveTheme(t);
+    });
+  }, []);
 
   const gridRef = useRef<EditableDataGridHandle | null>(null);
   const primaryKeyCache = useRef<Map<string, string[]>>(new Map());
@@ -1588,7 +1598,7 @@ export const QueryEditorTab: React.FC<QueryEditorTabProps> = React.memo(({
           height="100%"
           defaultLanguage="sql"
           language="sql"
-          theme="vs-dark"
+          theme={THEMES[activeTheme]?.monacoTheme || 'vs-dark'}
           value={query}
           onChange={(v) => {
             const nextVal = v || '';

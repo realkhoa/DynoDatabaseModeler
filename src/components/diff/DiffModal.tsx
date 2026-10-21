@@ -21,6 +21,8 @@ import {
 } from 'lucide-react';
 import type { SchemaDiff } from '../../types/database';
 import { splitSqlStatements } from '../../utils/sqlSafety';
+import { THEMES } from '../../types/theme';
+import { getSavedTheme } from '../../utils/themeManager';
 
 /**
  * @brief Component properties accepted by DiffModal.
@@ -378,7 +380,7 @@ export const DiffModal: React.FC<DiffModalProps> = React.memo(({
               <Editor
                 height="100%"
                 defaultLanguage="sql"
-                theme="vs-dark"
+                theme={THEMES[getSavedTheme()]?.monacoTheme || 'vs-dark'}
                 value={customSql}
                 onChange={(val) => setUserEditedSql(val ?? '')}
                 options={{

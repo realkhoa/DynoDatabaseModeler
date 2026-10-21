@@ -28,6 +28,9 @@ import { StickyNoteNode, StickyNoteColor } from './StickyNoteNode';
 import { GroupNode } from './GroupNode';
 import { DatabaseSchema, Point, ErdNotationStyle, VirtualRelationship } from '../../types/database';
 import { tableKey } from '../../types/database';
+import type { AppTheme } from '../../types/theme';
+import { THEMES } from '../../types/theme';
+import { getSavedTheme, onThemeChange } from '../../utils/themeManager';
 import {
   loadVirtualRelationships,
   addVirtualRelationship,
@@ -145,6 +148,13 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
 
   // Schema table filtering string query
   const [tableFilter, setTableFilter] = useState('');
+  const [activeTheme, setActiveTheme] = useState<AppTheme>(getSavedTheme());
+
+  useEffect(() => {
+    return onThemeChange((t) => {
+      setActiveTheme(t);
+    });
+  }, []);
 
   // Auxiliary canvas nodes (sticky notes, domain group containers)
   const [extraNodes, setExtraNodes] = useState<Node[]>([]);
@@ -740,15 +750,15 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
           variant={BackgroundVariant.Dots}
           gap={18}
           size={1}
-          color="#35373c"
+          color={THEMES[activeTheme]?.canvasDots || '#35373c'}
         />
         <Controls
           className="bg-[#24262b]! border-[#35373c]! text-[#e6e8ea]! rounded-md! shadow-xl!"
           showInteractive={false}
         />
         <MiniMap
-          nodeColor="#3a82f7"
-          maskColor="rgba(30, 31, 34, 0.75)"
+          nodeColor={THEMES[activeTheme]?.accentColor || '#3a82f7'}
+          maskColor={THEMES[activeTheme]?.type === 'light' ? 'rgba(240, 238, 233, 0.75)' : 'rgba(30, 31, 34, 0.75)'}
           className="bg-[#18191c]! border-[#35373c]! rounded-md! shadow-xl!"
           zoomable
           pannable
