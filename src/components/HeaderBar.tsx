@@ -17,6 +17,7 @@ import {
   Sun,
   Moon,
   Check,
+  PanelLeft,
 } from 'lucide-react';
 import type { ConnectionConfig } from '../types/database';
 import type { AppTheme } from '../types/theme';
@@ -52,11 +53,17 @@ export interface HeaderBarProps {
   currentTheme?: AppTheme;
   /** @brief Callback triggered when a new visual theme is selected. */
   onSelectTheme?: (theme: AppTheme) => void;
+  /** @brief Current mode of the navigation sidebar ('expanded', 'rail', or 'zen'). */
+  sidebarMode?: 'expanded' | 'rail' | 'zen';
+  /** @brief Callback triggered when user clicks the sidebar toggle button. */
+  onToggleSidebar?: () => void;
 }
 
 /**
  * @brief Modern dark-themed header bar displaying application tabs, connection telemetry, and theme switcher.
- * @param props Component properties configuring active tabs, connection state, and theme controls.
+ * @details Features a minimalist 40px flat height, micro-status connection dot, quick theme popover,
+ * and collapsible sidebar toggle button.
+ * @param props Component properties configuring active tabs, connection state, sidebar toggle, and theme controls.
  * @return Rendered HeaderBar element.
  */
 export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
@@ -70,6 +77,8 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
   onOpenProcesses,
   currentTheme,
   onSelectTheme,
+  sidebarMode: _sidebarMode,
+  onToggleSidebar,
 }) => {
   const [isThemeOpen, setIsThemeOpen] = useState(false);
   const [activeTheme, setActiveTheme] = useState<AppTheme>(currentTheme || getSavedTheme());
@@ -126,13 +135,24 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
   };
 
   return (
-    <header className="h-11 bg-[#18191c] border-b border-[#35373c] flex items-center justify-between px-3 select-none shrink-0 text-xs">
-      {/* Brand & Logo */}
+    <header className="h-10 bg-[#18191c] border-b border-[#35373c] flex items-center justify-between px-3 select-none shrink-0 text-xs">
+      {/* Brand & Logo with Sidebar Toggle */}
       <div className="flex items-center space-x-2 mr-4">
+        {onToggleSidebar && (
+          <button
+            type="button"
+            data-testid="header-sidebar-toggle-btn"
+            onClick={onToggleSidebar}
+            title="Toggle Sidebar (Ctrl+B)"
+            className="p-1 rounded text-[#8c919a] hover:text-[#e6e8ea] hover:bg-[#24262b] cursor-pointer"
+          >
+            <PanelLeft className="w-4 h-4" />
+          </button>
+        )}
         <img
           src="/icon.png"
           alt="DynoDbModeler Logo"
-          className="w-6 h-6 rounded-md shadow-xs object-contain"
+          className="w-5 h-5 rounded-md shadow-xs object-contain"
         />
         <span className="font-semibold text-sm text-[#e6e8ea] tracking-tight">
           DynoDbModeler
@@ -144,7 +164,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
         <button
           type="button"
           onClick={() => onSelectTab('erd')}
-          className={`flex items-center space-x-1.5 px-3 py-1.5 rounded transition-colors cursor-pointer ${
+          className={`flex items-center space-x-1.5 px-3 py-1 rounded transition-colors cursor-pointer ${
             activeTab === 'erd'
               ? 'bg-[#2b2d30] text-[#ffffff] font-medium shadow-xs border-b-2 border-[#3a82f7]'
               : 'text-[#8c919a] hover:text-[#e6e8ea] hover:bg-[#222428]'
@@ -157,7 +177,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
         <button
           type="button"
           onClick={() => onSelectTab('sql')}
-          className={`flex items-center space-x-1.5 px-3 py-1.5 rounded transition-colors cursor-pointer ${
+          className={`flex items-center space-x-1.5 px-3 py-1 rounded transition-colors cursor-pointer ${
             activeTab === 'sql' || activeTab === 'query'
               ? 'bg-[#2b2d30] text-[#ffffff] font-medium shadow-xs border-b-2 border-[#3a82f7]'
               : 'text-[#8c919a] hover:text-[#e6e8ea] hover:bg-[#222428]'
@@ -170,7 +190,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
         <button
           type="button"
           onClick={() => onSelectTab('settings')}
-          className={`flex items-center space-x-1.5 px-3 py-1.5 rounded transition-colors cursor-pointer ${
+          className={`flex items-center space-x-1.5 px-3 py-1 rounded transition-colors cursor-pointer ${
             activeTab === 'settings'
               ? 'bg-[#2b2d30] text-[#ffffff] font-medium shadow-xs border-b-2 border-[#3a82f7]'
               : 'text-[#8c919a] hover:text-[#e6e8ea] hover:bg-[#222428]'
@@ -189,7 +209,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
             type="button"
             data-testid="header-theme-switcher-btn"
             onClick={() => setIsThemeOpen((prev) => !prev)}
-            className="flex items-center space-x-1.5 px-2 py-1 bg-[#24262b] hover:bg-[#2f3238] border border-[#35373c] text-[#e6e8ea] rounded font-medium shadow-xs transition-colors cursor-pointer"
+            className="flex items-center space-x-1.5 px-2 py-0.5 bg-[#24262b] hover:bg-[#2f3238] border border-[#35373c] text-[#e6e8ea] rounded font-medium shadow-xs transition-colors cursor-pointer"
             title={`Theme: ${THEMES[activeTheme]?.label || 'Theme'}`}
           >
             {renderThemeIcon()}
@@ -243,7 +263,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
               <button
                 type="button"
                 onClick={onOpenDiff}
-                className="flex items-center space-x-1.5 px-2.5 py-1 bg-[#24262b] hover:bg-[#2f3238] border border-[#35373c] text-[#e6e8ea] rounded font-medium shadow-xs transition-colors cursor-pointer"
+                className="flex items-center space-x-1.5 px-2.5 py-0.5 bg-[#24262b] hover:bg-[#2f3238] border border-[#35373c] text-[#e6e8ea] rounded font-medium shadow-xs transition-colors cursor-pointer"
                 title="Review schema differences and synchronize migrations"
               >
                 <GitCompare className="w-3.5 h-3.5 text-[#3a82f7]" />
@@ -264,7 +284,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
                 type="button"
                 data-testid="header-processes-btn"
                 onClick={onOpenProcesses}
-                className="flex items-center space-x-1.5 px-2.5 py-1 bg-[#24262b] hover:bg-[#2f3238] border border-[#35373c] text-[#e6e8ea] rounded font-medium shadow-xs transition-colors cursor-pointer"
+                className="flex items-center space-x-1.5 px-2.5 py-0.5 bg-[#24262b] hover:bg-[#2f3238] border border-[#35373c] text-[#e6e8ea] rounded font-medium shadow-xs transition-colors cursor-pointer"
                 title="Active database processes & query monitor"
               >
                 <Activity className="w-3.5 h-3.5 text-amber-400" />
@@ -272,17 +292,20 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
               </button>
             )}
 
-            <div className="flex items-center space-x-2 bg-[#1e1f22] border border-[#35373c] px-2.5 py-1 rounded">
+            <div className="flex items-center space-x-1.5 px-2 py-0.5 rounded bg-[#24262b] border border-[#35373c] text-[11px] font-mono">
               <span
-                className="w-2 h-2 rounded-full bg-[#20c997] animate-pulse"
+                data-testid="header-connection-status-dot"
+                className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"
                 title="Connected"
               />
               <span className="font-medium text-[#e6e8ea] truncate max-w-[140px]">
-                {activeConnection.name}
+                {activeConnection.name || activeConnection.database}
               </span>
-              <span className="text-[10px] uppercase font-mono px-1 rounded bg-[#2b2d30] text-[#8c919a]">
-                {activeConnection.db_type}
-              </span>
+              {activeConnection.db_type && (
+                <span className="text-[10px] uppercase font-mono px-1 rounded bg-[#2b2d30] text-[#8c919a]">
+                  {activeConnection.db_type}
+                </span>
+              )}
               {onDisconnect && (
                 <button
                   type="button"
@@ -298,14 +321,18 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
           </div>
         ) : (
           <div className="flex items-center space-x-2">
-            <div className="flex items-center space-x-1.5 text-[#8c919a] px-2 py-1">
-              <span className="w-2 h-2 rounded-full bg-[#8c919a]" />
+            <div className="flex items-center space-x-1.5 text-[#8c919a] px-2 py-0.5 text-[11px] font-mono">
+              <span
+                data-testid="header-connection-status-dot"
+                className="w-2 h-2 rounded-full bg-[#8c919a]"
+                title="Disconnected"
+              />
               <span>Disconnected</span>
             </div>
             <button
               type="button"
               onClick={onOpenNewConnection}
-              className="flex items-center space-x-1 px-2.5 py-1 bg-[#3a82f7] hover:bg-[#2f6fd6] text-white rounded font-medium shadow-xs transition-colors cursor-pointer"
+              className="flex items-center space-x-1 px-2.5 py-0.5 bg-[#3a82f7] hover:bg-[#2f6fd6] text-white rounded font-medium shadow-xs transition-colors cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Connect</span>

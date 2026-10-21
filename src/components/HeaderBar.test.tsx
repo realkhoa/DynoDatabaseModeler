@@ -182,4 +182,100 @@ describe('HeaderBar component', () => {
     // Dropdown closes after selection
     expect(screen.queryByTestId('header-theme-dropdown')).toBeNull();
   });
+
+  /**
+   * @brief Verifies minimalist h-10 header container styling.
+   */
+  it('renders minimalist h-10 header container styling', () => {
+    const { container } = render(
+      <HeaderBar
+        activeTab="erd"
+        onSelectTab={vi.fn()}
+        activeConnection={null}
+        onOpenNewConnection={vi.fn()}
+      />
+    );
+
+    const header = container.querySelector('header');
+    expect(header).not.toBeNull();
+    expect(header?.className).toContain('h-10');
+    expect(header?.className).not.toContain('h-11');
+  });
+
+  /**
+   * @brief Verifies sidebar toggle button rendering and interaction.
+   */
+  it('renders sidebar toggle button when onToggleSidebar is provided and triggers callback', () => {
+    const handleToggleSidebar = vi.fn();
+    render(
+      <HeaderBar
+        activeTab="erd"
+        onSelectTab={vi.fn()}
+        activeConnection={null}
+        onOpenNewConnection={vi.fn()}
+        onToggleSidebar={handleToggleSidebar}
+      />
+    );
+
+    const toggleBtn = screen.getByTestId('header-sidebar-toggle-btn');
+    expect(toggleBtn).toBeDefined();
+    expect(toggleBtn.getAttribute('title')).toContain('Toggle Sidebar');
+
+    fireEvent.click(toggleBtn);
+    expect(handleToggleSidebar).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * @brief Verifies sidebar toggle button is omitted when onToggleSidebar is not passed.
+   */
+  it('omits sidebar toggle button when onToggleSidebar is not provided', () => {
+    render(
+      <HeaderBar
+        activeTab="erd"
+        onSelectTab={vi.fn()}
+        activeConnection={null}
+        onOpenNewConnection={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByTestId('header-sidebar-toggle-btn')).toBeNull();
+  });
+
+  /**
+   * @brief Verifies emerald green micro-status dot rendering when database connection is active.
+   */
+  it('renders emerald green micro-status dot when database is connected', () => {
+    render(
+      <HeaderBar
+        activeTab="erd"
+        onSelectTab={vi.fn()}
+        activeConnection={mockConnection}
+        onOpenNewConnection={vi.fn()}
+      />
+    );
+
+    const dot = screen.getByTestId('header-connection-status-dot');
+    expect(dot).toBeDefined();
+    expect(dot.className).toContain('bg-emerald-500');
+    expect(dot.className).toContain('animate-pulse');
+  });
+
+  /**
+   * @brief Verifies muted gray micro-status dot rendering when disconnected.
+   */
+  it('renders muted gray micro-status dot when disconnected', () => {
+    render(
+      <HeaderBar
+        activeTab="erd"
+        onSelectTab={vi.fn()}
+        activeConnection={null}
+        onOpenNewConnection={vi.fn()}
+      />
+    );
+
+    const dot = screen.getByTestId('header-connection-status-dot');
+    expect(dot).toBeDefined();
+    expect(dot.className).toContain('bg-[#8c919a]');
+    expect(dot.className).not.toContain('bg-emerald-500');
+  });
 });
