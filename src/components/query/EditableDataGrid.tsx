@@ -103,6 +103,8 @@ export interface EditableDataGridProps {
   selectedCell?: { rowIndex: number; colIndex: number } | null;
   /** @brief Optional pagination configuration and callbacks to render the interactive pagination toolbar. */
   pagination?: DataPaginationState;
+  /** @brief Optional fixed row height in pixels for virtual windowing calculations. Defaults to 28. */
+  rowHeight?: number;
 }
 
 /**
@@ -219,6 +221,8 @@ interface GridRowProps {
   onInputKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
   /** @brief Callback triggered when edit input loses focus. */
   onInputBlur: () => void;
+  /** @brief Row height in pixels for virtual row rendering. */
+  rowHeight?: number;
 }
 
 /**
@@ -243,9 +247,10 @@ const GridRow: React.FC<GridRowProps> = React.memo(
     onEditChange,
     onInputKeyDown,
     onInputBlur,
+    rowHeight = ROW_HEIGHT,
   }) => {
     return (
-      <tr style={{ height: `${ROW_HEIGHT}px` }} className="border-b border-[#2b2d30] hover:bg-[#24262b]/80 transition-colors">
+      <tr style={{ height: `${rowHeight}px` }} className="border-b border-[#2b2d30] hover:bg-[#24262b]/80 transition-colors">
         {columns.map((_, cIdx) => {
           const isDirty = dirtyMap?.[cIdx] !== undefined;
           const isEditing = editingColIndex === cIdx;
@@ -314,9 +319,11 @@ export const EditableDataGrid = React.memo(
       onCellSelect,
       onCellPositionSelect,
       selectedCell: controlledSelectedCell,
+      rowHeight: customRowHeight,
     },
     ref
   ) => {
+    const effectiveRowHeight = customRowHeight ?? ROW_HEIGHT;
     // Editing requires a verified primary key; there is no safe fallback locator.
     const canEdit = Boolean(primaryKeyColumns && primaryKeyColumns.length > 0);
 
@@ -633,7 +640,7 @@ export const EditableDataGrid = React.memo(
       onScroll,
     } = useVirtualRows({
       totalCount: filteredRowsWithIndices.length,
-      rowHeight: ROW_HEIGHT,
+      rowHeight: effectiveRowHeight,
       containerRef: tableContainerRef,
       overscan: 5,
     });
@@ -759,6 +766,7 @@ export const EditableDataGrid = React.memo(
                       key={originalIndex}
                       rIdx={originalIndex}
                       row={row}
+                      rowHeight={effectiveRowHeight}
                       columns={columns}
                       selectedColIndex={
                         activeSelectedCell?.rowIndex === originalIndex ? activeSelectedCell.colIndex : null

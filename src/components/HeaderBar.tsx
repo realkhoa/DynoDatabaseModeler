@@ -17,7 +17,8 @@ import {
   Sun,
   Moon,
   Check,
-  PanelLeft,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 import type { ConnectionConfig } from '../types/database';
 import type { AppTheme } from '../types/theme';
@@ -77,7 +78,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
   onOpenProcesses,
   currentTheme,
   onSelectTheme,
-  sidebarMode: _sidebarMode,
+  sidebarMode = 'expanded',
   onToggleSidebar,
 }) => {
   const [isThemeOpen, setIsThemeOpen] = useState(false);
@@ -143,10 +144,15 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
             type="button"
             data-testid="header-sidebar-toggle-btn"
             onClick={onToggleSidebar}
-            title="Toggle Sidebar (Ctrl+B)"
+            title={sidebarMode === 'expanded' ? 'Collapse Sidebar (Ctrl+B)' : 'Expand Sidebar (Ctrl+B)'}
+            aria-label={sidebarMode === 'expanded' ? 'Collapse Sidebar' : 'Expand Sidebar'}
             className="p-1 rounded text-[#8c919a] hover:text-[#e6e8ea] hover:bg-[#24262b] cursor-pointer"
           >
-            <PanelLeft className="w-4 h-4" />
+            {sidebarMode === 'expanded' ? (
+              <PanelLeftClose className="w-4 h-4" />
+            ) : (
+              <PanelLeftOpen className="w-4 h-4" />
+            )}
           </button>
         )}
         <img

@@ -207,22 +207,35 @@ describe('HeaderBar component', () => {
    */
   it('renders sidebar toggle button when onToggleSidebar is provided and triggers callback', () => {
     const handleToggleSidebar = vi.fn();
-    render(
+    const { rerender } = render(
       <HeaderBar
         activeTab="erd"
         onSelectTab={vi.fn()}
         activeConnection={null}
         onOpenNewConnection={vi.fn()}
         onToggleSidebar={handleToggleSidebar}
+        sidebarMode="expanded"
       />
     );
 
     const toggleBtn = screen.getByTestId('header-sidebar-toggle-btn');
     expect(toggleBtn).toBeDefined();
-    expect(toggleBtn.getAttribute('title')).toContain('Toggle Sidebar');
+    expect(toggleBtn.getAttribute('title')).toContain('Collapse Sidebar');
 
     fireEvent.click(toggleBtn);
     expect(handleToggleSidebar).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <HeaderBar
+        activeTab="erd"
+        onSelectTab={vi.fn()}
+        activeConnection={null}
+        onOpenNewConnection={vi.fn()}
+        onToggleSidebar={handleToggleSidebar}
+        sidebarMode="rail"
+      />
+    );
+    expect(toggleBtn.getAttribute('title')).toContain('Expand Sidebar');
   });
 
   /**
