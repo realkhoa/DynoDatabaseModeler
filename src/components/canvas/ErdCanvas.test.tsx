@@ -4,6 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { ErdCanvas } from './ErdCanvas';
 import type { DatabaseSchema } from '../../types/database';
@@ -18,6 +19,22 @@ vi.mock('../../utils/export', () => ({
   exportErdAsSvg: vi.fn(),
   exportErdAsPng: vi.fn().mockResolvedValue(undefined),
 }));
+
+/**
+ * @brief Records props passed to ReactFlow during component renders for assertion inspection.
+ */
+let capturedReactFlowProps: Record<string, unknown> | null = null;
+
+vi.mock('@xyflow/react', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@xyflow/react')>();
+  return {
+    ...actual,
+    ReactFlow: (props: Record<string, unknown> & { children?: React.ReactNode }) => {
+      capturedReactFlowProps = props;
+      return React.createElement(actual.ReactFlow, props);
+    },
+  };
+});
 
 // Mock ResizeObserver for happy-dom testing environment
 if (typeof window !== 'undefined' && !window.ResizeObserver) {
@@ -88,6 +105,58 @@ describe('ErdCanvas component', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    capturedReactFlowProps = null;
+  });
+
+  /**
+   * @brief Verifies that ReactFlow is mounted with onlyRenderVisibleElements={true} for viewport culling.
+   */
+  it('mounts ReactFlow with viewport culling enabled (onlyRenderVisibleElements={true})', () => {
+    render(<ErdCanvas schema={mockSchema} onEditTable={vi.fn()} />);
+
+    expect(capturedReactFlowProps).toBeDefined();
+    expect(capturedReactFlowProps?.onlyRenderVisibleElements).toBe(true);
+  });
+
+  /**
+   * @brief Verifies that the floating pill toolbar is rendered with frosted glass styling and accessible tooltips.
+   */
+  it('renders floating pill toolbar with backdrop-blur styling and accessible tooltips', () => {
+    const onAddNewTable = vi.fn();
+    const onOpenDiff = vi.fn();
+    render(
+      <ErdCanvas
+        schema={mockSchema}
+        onEditTable={vi.fn()}
+        onAddNewTable={onAddNewTable}
+        onOpenDiff={onOpenDiff}
+        pendingChangesCount={2}
+      />
+    );
+
+    const toolbar = screen.getByTestId('canvas-pill-toolbar');
+    expect(toolbar).toBeDefined();
+    expect(toolbar.className).toContain('backdrop-blur-md');
+    expect(toolbar.className).toContain('bg-[#24262b]/85');
+    expect(toolbar.className).toContain('rounded-lg');
+
+    // Verify accessible tooltips (title attributes) on all action buttons
+    expect(screen.getByTestId('erd-table-filter-input').getAttribute('title')).toBe('Filter tables by name');
+    expect(screen.getByTestId('add-note-btn').getAttribute('title')).toBe('Add sticky note annotation');
+    expect(screen.getByTestId('add-group-btn').getAttribute('title')).toBe('Add domain group container');
+    expect(screen.getByRole('button', { name: /Add Table/i }).getAttribute('title')).toBe('Add new table');
+    expect(screen.getByRole('button', { name: /Review & Sync/i }).getAttribute('title')).toBe(
+      'Review schema differences and synchronize migrations'
+    );
+    expect(screen.getByRole('button', { name: /Auto Layout/i }).getAttribute('title')).toBe(
+      'Auto arrange diagram nodes'
+    );
+    expect(screen.getByTestId('notation-toggle-btn').getAttribute('title')).toBe(
+      "Toggle ERD notation between Crow's Foot and Simple"
+    );
+    expect(screen.getByTestId('export-dropdown-button').getAttribute('title')).toBe(
+      'Export ERD diagram'
+    );
   });
 
   /**

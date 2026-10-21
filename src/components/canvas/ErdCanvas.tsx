@@ -581,29 +581,36 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
       className="w-full h-full relative select-none"
       style={{ backgroundColor: THEMES[activeTheme]?.canvasBg || 'var(--color-bg-base)' }}
     >
-      {/* Top Floating Control Bar */}
-      <div className="absolute top-3 right-4 z-10 flex items-center space-x-2">
+      {/* Sleek Floating Pill Toolbar */}
+      <div
+        data-testid="canvas-pill-toolbar"
+        className="absolute top-4 left-4 z-10 flex items-center gap-1.5 p-1 bg-[#24262b]/85 backdrop-blur-md border border-[#35373c] rounded-lg shadow-xl"
+      >
         {/* Table Filter Input */}
         <div className="relative flex items-center">
-          <Search className="w-3.5 h-3.5 text-[#8c919a] absolute left-2.5 pointer-events-none" />
+          <Search className="w-3.5 h-3.5 text-[#8c919a] absolute left-2 pointer-events-none" />
           <input
             type="text"
             data-testid="erd-table-filter-input"
             value={tableFilter}
             onChange={(e) => setTableFilter(e.target.value)}
             placeholder="Filter tables..."
-            className="bg-[#24262b] hover:bg-[#2e3138] focus:bg-[#1e1f22] text-[#e6e8ea] placeholder-[#8c919a] pl-8 pr-2.5 py-1.5 rounded text-xs border border-[#35373c] focus:border-[#3a82f7] focus:outline-none transition-colors w-32 focus:w-44 shadow-lg font-medium"
+            title="Filter tables by name"
+            aria-label="Filter tables by name"
+            className="bg-[#1e1f22]/90 hover:bg-[#1e1f22] focus:bg-[#18191c] text-[#e6e8ea] placeholder-[#8c919a] pl-7 pr-2.5 py-1 rounded text-xs border border-[#35373c] focus:border-[#3a82f7] focus:outline-none transition-all w-28 focus:w-40 font-medium"
           />
         </div>
+
+        <div className="h-4 w-px bg-[#35373c]" aria-hidden="true" />
 
         {/* Add Sticky Note Button */}
         <button
           type="button"
           data-testid="add-note-btn"
           onClick={handleAddStickyNote}
-          className="inline-flex items-center gap-1.5 bg-[#24262b] hover:bg-[#2e3138] text-[#e6e8ea] px-3 py-1.5 rounded text-xs border border-[#35373c] shadow-lg transition-colors font-medium cursor-pointer"
+          className="inline-flex items-center gap-1.5 hover:bg-[#2e3138] text-[#e6e8ea] px-2.5 py-1 rounded-md text-xs transition-colors font-medium cursor-pointer"
           title="Add sticky note annotation"
-        >
+          >
           <StickyNoteIcon className="w-3.5 h-3.5 text-amber-400" />
           <span>Add Note</span>
         </button>
@@ -613,9 +620,9 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
           type="button"
           data-testid="add-group-btn"
           onClick={handleAddGroup}
-          className="inline-flex items-center gap-1.5 bg-[#24262b] hover:bg-[#2e3138] text-[#e6e8ea] px-3 py-1.5 rounded text-xs border border-[#35373c] shadow-lg transition-colors font-medium cursor-pointer"
+          className="inline-flex items-center gap-1.5 hover:bg-[#2e3138] text-[#e6e8ea] px-2.5 py-1 rounded-md text-xs transition-colors font-medium cursor-pointer"
           title="Add domain group container"
-        >
+          >
           <LayersIcon className="w-3.5 h-3.5 text-[#3a82f7]" />
           <span>Add Group</span>
         </button>
@@ -624,8 +631,9 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
           <button
             type="button"
             onClick={onAddNewTable}
-            className="inline-flex items-center gap-1.5 bg-[#24262b] hover:bg-[#2e3138] text-[#e6e8ea] px-3 py-1.5 rounded text-xs border border-[#35373c] shadow-lg transition-colors font-medium cursor-pointer"
-          >
+            className="inline-flex items-center gap-1.5 hover:bg-[#2e3138] text-[#e6e8ea] px-2.5 py-1 rounded-md text-xs transition-colors font-medium cursor-pointer"
+            title="Add new table"
+            >
             <Plus className="w-3.5 h-3.5 text-[#20c997]" />
             <span>Add Table</span>
           </button>
@@ -635,9 +643,9 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
           <button
             type="button"
             onClick={onOpenDiff}
-            className="inline-flex items-center gap-1.5 bg-[#24262b] hover:bg-[#2e3138] text-[#e6e8ea] px-3 py-1.5 rounded text-xs border border-[#35373c] shadow-lg transition-colors font-medium cursor-pointer"
+            className="inline-flex items-center gap-1.5 hover:bg-[#2e3138] text-[#e6e8ea] px-2.5 py-1 rounded-md text-xs transition-colors font-medium cursor-pointer"
             title="Review schema differences and synchronize migrations"
-          >
+            >
             <GitCompare className="w-3.5 h-3.5 text-[#3a82f7]" />
             <span>Review &amp; Sync</span>
             {pendingChangesCount > 0 && (
@@ -651,12 +659,15 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
           </button>
         )}
 
+        <div className="h-4 w-px bg-[#35373c]" aria-hidden="true" />
+
+        {/* Auto Layout Button */}
         <button
           type="button"
           onClick={handleAutoLayout}
-          className="inline-flex items-center gap-1.5 bg-[#24262b] hover:bg-[#2e3138] text-[#e6e8ea] px-3 py-1.5 rounded text-xs border border-[#35373c] shadow-lg transition-colors font-medium cursor-pointer"
+          className="inline-flex items-center gap-1.5 hover:bg-[#2e3138] text-[#e6e8ea] px-2.5 py-1 rounded-md text-xs transition-colors font-medium cursor-pointer"
           title="Auto arrange diagram nodes"
-        >
+          >
           <LayoutGrid className="w-3.5 h-3.5 text-[#3a82f7]" />
           <span>Auto Layout</span>
         </button>
@@ -666,13 +677,13 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
           type="button"
           data-testid="notation-toggle-btn"
           onClick={handleToggleNotation}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs border border-[#35373c] shadow-lg transition-colors font-medium cursor-pointer ${
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors font-medium cursor-pointer ${
             activeNotation === 'crows-foot'
-              ? 'bg-[#20c997]/15 text-[#20c997] border-[#20c997]/40'
-              : 'bg-[#24262b] hover:bg-[#2e3138] text-[#e6e8ea]'
+              ? 'bg-[#20c997]/15 text-[#20c997] hover:bg-[#20c997]/25'
+              : 'hover:bg-[#2e3138] text-[#e6e8ea]'
           }`}
           title="Toggle ERD notation between Crow's Foot and Simple"
-        >
+          >
           <Network className="w-3.5 h-3.5" />
           <span>
             {activeNotation === 'crows-foot'
@@ -681,15 +692,17 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
           </span>
         </button>
 
+        <div className="h-4 w-px bg-[#35373c]" aria-hidden="true" />
+
         {/* Export Dropdown */}
         <div className="relative" ref={exportMenuRef}>
           <button
             type="button"
             data-testid="export-dropdown-button"
             onClick={() => setIsExportOpen((prev) => !prev)}
-            className="inline-flex items-center gap-1.5 bg-[#24262b] hover:bg-[#2e3138] text-[#e6e8ea] px-3 py-1.5 rounded text-xs border border-[#35373c] shadow-lg transition-colors font-medium cursor-pointer"
+            className="inline-flex items-center gap-1.5 hover:bg-[#2e3138] text-[#e6e8ea] px-2.5 py-1 rounded-md text-xs transition-colors font-medium cursor-pointer"
             title="Export ERD diagram"
-          >
+            >
             <Download className="w-3.5 h-3.5 text-[#3a82f7]" />
             <span>Export</span>
             <ChevronDown className="w-3 h-3 text-[#8c919a]" />
@@ -698,7 +711,7 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
           {isExportOpen && (
             <div
               data-testid="export-menu"
-              className="absolute right-0 mt-1 w-44 bg-[#24262b] border border-[#35373c] rounded-md shadow-xl py-1 z-30"
+              className="absolute left-0 mt-1.5 w-44 bg-[#24262b] border border-[#35373c] rounded-md shadow-xl py-1 z-30"
             >
               <button
                 type="button"
@@ -745,6 +758,7 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
         onNodeClick={handleNodeClick}
         onNodeDoubleClick={handleNodeDoubleClick}
         onNodeDragStop={handleNodeDragStop}
+        onlyRenderVisibleElements={true}
         fitView
       >
         <Background

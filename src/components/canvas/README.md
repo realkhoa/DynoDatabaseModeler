@@ -48,16 +48,27 @@ The `canvas` module provides an interactive, dark-themed Entity-Relationship Dia
 - **SVG**: Serializes the `.react-flow__viewport` into a vector graphic.
 - **PNG**: Converts canvas elements into high-resolution PNG raster image.
 
+### 7. Minimalist Floating Pill Toolbar
+- Consolidated floating pill container positioned at `top-4 left-4` with frosted glass backdrop blur (`backdrop-blur-md`), dark charcoal glass fill (`bg-[#24262b]/85`), and subtle border.
+- Grouped micro-action buttons with accessible tooltips and dividers:
+  - Table name filter search input.
+  - Sticky note & domain group creation triggers.
+  - Table creation drawer & schema difference synchronization buttons.
+  - Dagre hierarchical auto-arrange layout button.
+  - Edge notation switcher (Crow's Foot vs Simple smoothstep).
+  - Multi-format diagram export dropdown menu.
+
 ---
 
-### 7. High-Performance Canvas Rendering
+### 8. High-Performance Canvas Rendering
+- **View-Frustum Culling**: Configured with `onlyRenderVisibleElements={true}` on `<ReactFlow>` to cull off-screen table nodes and foreign key edges outside the viewport camera, dramatically reducing DOM nodes and GPU compositing overhead in enterprise schemas with hundreds of tables.
 - **TableNode Custom Comparator**: `TableNode` is memoized with a custom comparison function checking table label, schema namespace, column count/definitions, foreign keys, and selection state. Dragging or selecting one table prevents all other unaffected tables from re-rendering.
 - **O(1) Foreign Key Column Resolution**: Precomputes a `Set<string>` of foreign key column names using `useMemo`, eliminating the $O(Columns \times FKs)$ nested iteration bottleneck during column rendering.
 - **Memoized Edge Notations**: Both `CardinalityMarker` and `CrowsFootEdge` are wrapped in `React.memo` to avoid re-evaluating SVG geometry and smoothstep bezier paths during unrelated canvas updates.
 
 ---
 
-### 8. Full-Fidelity Visual Theme Synchronization
+### 9. Full-Fidelity Visual Theme Synchronization
 - **Zero Mismatch Across 4 Themes**: The ERD canvas and all node elements seamlessly adapt across:
   - **GitIngest Theme**: Warm cream paper background (`#faf8f5`), amber edge accents (`#ea580c`), light card surfaces, and subtle warm borders.
   - **Dark (Default Dyno)**: Minimalist dark charcoal (`#1e1f22`), deep card backgrounds (`#24262b`), and electric blue accents (`#3a82f7`).
