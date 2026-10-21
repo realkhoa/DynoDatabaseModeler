@@ -94,13 +94,13 @@ export const GroupNode = memo(({ id, data, selected }: GroupNodeProps) => {
                   setLabel(data.label || 'Domain Group');
                 }
               }}
-              className="bg-black/40 border border-white/20 rounded px-2 py-0.5 text-xs font-semibold text-white focus:outline-none focus:ring-1 focus:ring-cyan-400"
+              className="bg-black/40 border border-white/20 rounded px-2 py-0.5 text-xs font-semibold text-current focus:outline-none focus:ring-1 focus:ring-cyan-400"
             />
           ) : (
             <span
               data-testid="group-label"
               onDoubleClick={() => setIsEditing(true)}
-              className="text-xs font-bold tracking-wider uppercase text-neutral-200 cursor-text hover:text-white transition-colors"
+              className="text-xs font-bold tracking-wider uppercase text-neutral-200 cursor-text hover:opacity-80 transition-opacity"
             >
               {label}
             </span>

@@ -57,6 +57,20 @@ The `canvas` module provides an interactive, dark-themed Entity-Relationship Dia
 
 ---
 
+### 8. Full-Fidelity Visual Theme Synchronization
+- **Zero Mismatch Across 4 Themes**: The ERD canvas and all node elements seamlessly adapt across:
+  - **GitIngest Theme**: Warm cream paper background (`#faf8f5`), amber edge accents (`#ea580c`), light card surfaces, and subtle warm borders.
+  - **Dark (Default Dyno)**: Minimalist dark charcoal (`#1e1f22`), deep card backgrounds (`#24262b`), and electric blue accents (`#3a82f7`).
+  - **GitHub Light**: Clean white background (`#ffffff`), light gray cards, and crisp blue accents (`#0969da`).
+  - **Midnight OLED**: Pitch black background (`#000000`), deep dark frames, and neon cyan accents (`#00f0ff`).
+- **Dynamic Element Adaptations**:
+  - `TableNode`: Headers, borders, column hover rows, and handle rings dynamically synchronize with active theme CSS variables (`--color-bg-card-header`, `--color-border-card`, `--color-bg-hover`).
+  - `CrowsFootEdge`: Cardinality circle cutouts use `fill="var(--color-bg-base)"` eliminating dark circles on cream/white backgrounds; edge labels use theme surface colors and subtle borders.
+  - `GroupNode` & `StickyNoteNode`: Domain containers and sticky notes feature light-paper variants in light mode (soft yellow, blue, green, purple post-it notes with dark text) and rich translucent variants in dark mode.
+  - `Controls` & `MiniMap`: Zoom buttons, fit-view icons, and minimap masks automatically adjust backgrounds, icons, and contrast.
+
+---
+
 ## Testing & Quality Verification
 
 Run unit and component tests with Vitest:

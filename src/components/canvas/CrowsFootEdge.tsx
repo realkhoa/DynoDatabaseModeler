@@ -163,7 +163,7 @@ export const CardinalityMarker: React.FC<CardinalityMarkerProps> = React.memo(({
             r={4}
             stroke={color}
             strokeWidth={1.5}
-            fill="#1e1f22"
+            fill="var(--color-bg-base, #1e1f22)"
           />
         </g>
       )}
@@ -199,7 +199,7 @@ export const CardinalityMarker: React.FC<CardinalityMarkerProps> = React.memo(({
             r={4}
             stroke={color}
             strokeWidth={1.5}
-            fill="#1e1f22"
+            fill="var(--color-bg-base, #1e1f22)"
           />
         </g>
       )}
@@ -294,15 +294,15 @@ export const CrowsFootEdge: React.FC<CrowsFootEdgeProps> = React.memo(({
             width={60}
             height={20}
             rx={4}
-            fill="#1e1f22"
-            stroke="#35373c"
+            fill="var(--color-bg-base, #1e1f22)"
+            stroke="var(--color-border-subtle, #35373c)"
             strokeWidth={1}
           />
           <text
             x={0}
             y={3}
             textAnchor="middle"
-            fill="#8c919a"
+            fill="var(--color-text-muted, #8c919a)"
             fontSize={10}
             fontFamily="monospace"
           >

@@ -114,4 +114,33 @@ describe('themeManager utility', () => {
     expect(initialized).toBe('gitingest');
     expect(document.documentElement.getAttribute('data-theme')).toBe('gitingest');
   });
+
+  /**
+   * @brief Verifies all four theme configurations contain complete metadata and canvas tokens.
+   */
+  it('registers complete canvas and visual styling tokens for all themes', async () => {
+    const { THEMES } = await import('../types/theme');
+    const expectedThemes: AppTheme[] = ['dark', 'gitingest', 'github-light', 'midnight'];
+
+    expectedThemes.forEach((themeId) => {
+      const meta = THEMES[themeId];
+      expect(meta).toBeDefined();
+      expect(meta.id).toBe(themeId);
+      expect(meta.label).toBeTruthy();
+      expect(meta.canvasBg).toBeTruthy();
+      expect(meta.canvasDots).toBeTruthy();
+      expect(meta.accentColor).toBeTruthy();
+      expect(['light', 'dark']).toContain(meta.type);
+    });
+
+    // Verify GitIngest specifically uses warm cream paper styling
+    expect(THEMES.gitingest.canvasBg).toBe('#faf8f5');
+    expect(THEMES.gitingest.accentColor).toBe('#ea580c');
+    expect(THEMES.gitingest.type).toBe('light');
+
+    // Verify Midnight OLED specifically uses true black styling
+    expect(THEMES.midnight.canvasBg).toBe('#000000');
+    expect(THEMES.midnight.accentColor).toBe('#00f0ff');
+    expect(THEMES.midnight.type).toBe('dark');
+  });
 });

@@ -8,8 +8,9 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Editor from '@monaco-editor/react';
+import type { AppTheme } from '../../types/theme';
 import { THEMES } from '../../types/theme';
-import { getSavedTheme } from '../../utils/themeManager';
+import { getSavedTheme, onThemeChange } from '../../utils/themeManager';
 import {
   X,
   Copy,
@@ -244,6 +245,11 @@ export const ValueInspectorDrawer: React.FC<ValueInspectorDrawerProps> = ({
   const contentInfo = useMemo(() => detectContentType(value), [value]);
   const [editorContent, setEditorContent] = useState(contentInfo.formattedText);
   const [copiedType, setCopiedType] = useState<'formatted' | 'raw' | null>(null);
+  const [activeTheme, setActiveTheme] = useState<AppTheme>(getSavedTheme());
+
+  useEffect(() => {
+    return onThemeChange((t) => setActiveTheme(t));
+  }, []);
   const [imageDimensions, setImageDimensions] = useState<{
     width: number;
     height: number;
@@ -466,7 +472,7 @@ export const ValueInspectorDrawer: React.FC<ValueInspectorDrawerProps> = ({
             <Editor
               height="100%"
               language={contentInfo.monacoLanguage}
-              theme={THEMES[getSavedTheme()]?.monacoTheme || 'vs-dark'}
+              theme={THEMES[activeTheme]?.monacoTheme || 'vs-dark'}
               value={editorContent}
               onChange={(val) => setEditorContent(val ?? '')}
               options={{

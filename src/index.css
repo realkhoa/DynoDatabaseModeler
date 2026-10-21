@@ -1,8 +1,9 @@
 @import "tailwindcss";
 
 /* -------------------------------------------------------------------------- */
-/* Base Dark Theme (Default Dyno)                                             */
+/* Theme System: Semantic Tokens                                              */
 /* -------------------------------------------------------------------------- */
+
 :root,
 [data-theme="dark"] {
   --color-bg-base: #1e1f22;
@@ -12,19 +13,23 @@
   --color-bg-surface-alt: #222429;
   --color-bg-input: #141517;
   --color-bg-card: #24262b;
+  --color-bg-card-header: #2b2e36;
+  --color-bg-pill: #1e2024;
   --color-bg-hover: #2c2e34;
   --color-border-subtle: #35373c;
+  --color-border-card: #3a3d45;
+  --color-border-card-hover: #4f535d;
   --color-text-main: #e6e8ea;
   --color-text-muted: #8c919a;
+  --color-text-subtle: #c4c7cc;
   --color-accent-blue: #3a82f7;
   --color-accent-gold: #f5a623;
   --color-accent-cyan: #20c997;
+  --color-canvas-bg: #1e1f22;
+  --color-canvas-dots: #35373c;
   color-scheme: dark;
 }
 
-/* -------------------------------------------------------------------------- */
-/* GitIngest Warm Cream Theme                                                 */
-/* -------------------------------------------------------------------------- */
 [data-theme="gitingest"] {
   --color-bg-base: #faf8f5;
   --color-bg-sidebar: #f4f0ea;
@@ -33,19 +38,23 @@
   --color-bg-surface-alt: #f3eee7;
   --color-bg-input: #ffffff;
   --color-bg-card: #ffffff;
+  --color-bg-card-header: #f4f0ea;
+  --color-bg-pill: #ede7de;
   --color-bg-hover: #e5ded3;
   --color-border-subtle: #dfd7ca;
+  --color-border-card: #d5cec2;
+  --color-border-card-hover: #b8afa1;
   --color-text-main: #1f2937;
   --color-text-muted: #78716c;
+  --color-text-subtle: #4b5563;
   --color-accent-blue: #ea580c;
   --color-accent-gold: #d97706;
   --color-accent-cyan: #0d9488;
+  --color-canvas-bg: #faf8f5;
+  --color-canvas-dots: #dfd7ca;
   color-scheme: light;
 }
 
-/* -------------------------------------------------------------------------- */
-/* GitHub Light Theme                                                         */
-/* -------------------------------------------------------------------------- */
 [data-theme="github-light"] {
   --color-bg-base: #ffffff;
   --color-bg-sidebar: #f6f8fa;
@@ -54,19 +63,23 @@
   --color-bg-surface-alt: #f6f8fa;
   --color-bg-input: #ffffff;
   --color-bg-card: #ffffff;
+  --color-bg-card-header: #f6f8fa;
+  --color-bg-pill: #eaeef2;
   --color-bg-hover: #eaeef2;
   --color-border-subtle: #d0d7de;
+  --color-border-card: #d0d7de;
+  --color-border-card-hover: #8c959f;
   --color-text-main: #1f2328;
   --color-text-muted: #656d76;
+  --color-text-subtle: #424a53;
   --color-accent-blue: #0969da;
   --color-accent-gold: #9a6700;
   --color-accent-cyan: #1a7f37;
+  --color-canvas-bg: #ffffff;
+  --color-canvas-dots: #d0d7de;
   color-scheme: light;
 }
 
-/* -------------------------------------------------------------------------- */
-/* Midnight OLED Theme                                                        */
-/* -------------------------------------------------------------------------- */
 [data-theme="midnight"] {
   --color-bg-base: #000000;
   --color-bg-sidebar: #08090d;
@@ -75,13 +88,20 @@
   --color-bg-surface-alt: #0d0f18;
   --color-bg-input: #000000;
   --color-bg-card: #0a0b10;
+  --color-bg-card-header: #12141c;
+  --color-bg-pill: #161922;
   --color-bg-hover: #1b1e30;
   --color-border-subtle: #1c1f2e;
+  --color-border-card: #232738;
+  --color-border-card-hover: #3a3f5a;
   --color-text-main: #f1f3f9;
   --color-text-muted: #7982a9;
+  --color-text-subtle: #cdd3e6;
   --color-accent-blue: #00f0ff;
   --color-accent-gold: #ffd600;
   --color-accent-cyan: #00ffaa;
+  --color-canvas-bg: #000000;
+  --color-canvas-dots: #1c1f2e;
   color-scheme: dark;
 }
 
@@ -100,47 +120,376 @@ body {
 }
 
 /* -------------------------------------------------------------------------- */
+/* React Flow & ERD Canvas Theming (All Themes)                               */
+/* -------------------------------------------------------------------------- */
+.react-flow {
+  background-color: var(--color-bg-base) !important;
+}
+
+.react-flow__pane {
+  background-color: transparent !important;
+}
+
+.react-flow__controls {
+  background-color: var(--color-bg-card) !important;
+  border: 1px solid var(--color-border-subtle) !important;
+  border-radius: 6px !important;
+  overflow: hidden !important;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.15), 0 4px 6px -4px rgba(0, 0, 0, 0.1) !important;
+}
+
+.react-flow__controls-button {
+  background-color: var(--color-bg-card) !important;
+  border-bottom: 1px solid var(--color-border-subtle) !important;
+  fill: var(--color-text-main) !important;
+  color: var(--color-text-main) !important;
+  transition: background-color 0.15s ease !important;
+}
+
+.react-flow__controls-button:last-child {
+  border-bottom: none !important;
+}
+
+.react-flow__controls-button:hover {
+  background-color: var(--color-bg-hover) !important;
+}
+
+.react-flow__controls-button svg {
+  fill: currentColor !important;
+  stroke: none !important;
+}
+
+.react-flow__minimap {
+  background-color: var(--color-bg-sidebar) !important;
+  border: 1px solid var(--color-border-subtle) !important;
+  border-radius: 6px !important;
+  overflow: hidden !important;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.15) !important;
+}
+
+/* -------------------------------------------------------------------------- */
 /* Light Themes Dynamic Overrides (GitIngest & GitHub Light)                  */
 /* -------------------------------------------------------------------------- */
 [data-theme="gitingest"],
 [data-theme="github-light"] {
-  /* Background overrides */
-  .bg-\[\#1e1f22\] { background-color: var(--color-bg-base) !important; }
-  .bg-\[\#18191c\] { background-color: var(--color-bg-sidebar) !important; }
-  .bg-\[\#26282d\] { background-color: var(--color-bg-toolbar) !important; }
-  .bg-\[\#2b2d30\] { background-color: var(--color-bg-surface) !important; }
-  .bg-\[\#222429\] { background-color: var(--color-bg-surface-alt) !important; }
-  .bg-\[\#24262b\] { background-color: var(--color-bg-card) !important; }
-  .bg-\[\#141517\] { background-color: var(--color-bg-input) !important; }
-  .bg-\[\#1e1f22\]\/80 { background-color: color-mix(in srgb, var(--color-bg-base) 80%, transparent) !important; }
-  .bg-\[\#18191c\]\/90 { background-color: color-mix(in srgb, var(--color-bg-sidebar) 90%, transparent) !important; }
-  .bg-\[\#18191c\]\/50 { background-color: color-mix(in srgb, var(--color-bg-sidebar) 50%, transparent) !important; }
-  
-  /* Hover overrides */
-  .hover\:bg-\[\#2c2e34\]:hover { background-color: var(--color-bg-hover) !important; }
-  .hover\:bg-\[\#35373c\]:hover { background-color: var(--color-bg-hover) !important; }
-  .hover\:bg-\[\#222429\]:hover { background-color: var(--color-bg-surface-alt) !important; }
+  /* 1. Base / Canvas backgrounds */
+  .bg-\[\#1e1f22\],
+  .bg-\[\#1f2024\] {
+    background-color: var(--color-bg-base) !important;
+  }
+  .bg-\[\#1e1f22\]\/80 {
+    background-color: color-mix(in srgb, var(--color-bg-base) 80%, transparent) !important;
+  }
 
-  /* Border overrides */
-  .border-\[\#35373c\] { border-color: var(--color-border-subtle) !important; }
-  .border-\[\#2c2e34\] { border-color: var(--color-border-subtle) !important; }
-  .border-\[\#26282d\] { border-color: var(--color-border-subtle) !important; }
-  .divide-\[\#35373c\] > :not([hidden]) ~ :not([hidden]) { border-color: var(--color-border-subtle) !important; }
+  /* 2. Sidebar & Dialog backgrounds */
+  .bg-\[\#18191c\],
+  .bg-\[\#1a1b1e\],
+  .bg-\[\#1b1c20\],
+  .bg-\[\#1c1d21\],
+  .bg-\[\#1c1d22\] {
+    background-color: var(--color-bg-sidebar) !important;
+  }
+  .bg-\[\#18191c\]\/90 {
+    background-color: color-mix(in srgb, var(--color-bg-sidebar) 90%, transparent) !important;
+  }
+  .bg-\[\#18191c\]\/50 {
+    background-color: color-mix(in srgb, var(--color-bg-sidebar) 50%, transparent) !important;
+  }
 
-  /* Text color overrides */
-  .text-\[\#e6e8ea\] { color: var(--color-text-main) !important; }
-  .text-\[\#8c919a\] { color: var(--color-text-muted) !important; }
-  .hover\:text-\[\#e6e8ea\]:hover { color: var(--color-text-main) !important; }
+  /* 3. Inputs & Editor wells */
+  .bg-\[\#121315\],
+  .bg-\[\#121316\],
+  .bg-\[\#131416\],
+  .bg-\[\#141517\],
+  .bg-\[\#141518\] {
+    background-color: var(--color-bg-input) !important;
+  }
 
-  /* Accent overrides */
-  .text-\[\#3a82f7\] { color: var(--color-accent-blue) !important; }
-  .bg-\[\#3a82f7\] { background-color: var(--color-accent-blue) !important; color: #ffffff !important; }
-  .hover\:bg-\[\#5a9cff\]:hover { filter: brightness(1.08) !important; }
-  .border-\[\#3a82f7\] { border-color: var(--color-accent-blue) !important; }
-  .focus\:border-\[\#3a82f7\]:focus { border-color: var(--color-accent-blue) !important; }
-  .ring-\[\#5a9cff\] { --tw-ring-color: var(--color-accent-blue) !important; }
+  /* 4. Pills, Counters, Badges */
+  .bg-\[\#1e2024\],
+  .bg-\[\#202226\],
+  .bg-\[\#212328\],
+  .bg-\[\#222428\],
+  .bg-\[\#232428\] {
+    background-color: var(--color-bg-pill) !important;
+  }
 
-  /* Interactive inputs */
+  /* 5. Cards & Tables */
+  .bg-\[\#24262b\],
+  .bg-\[\#2a2c31\] {
+    background-color: var(--color-bg-card) !important;
+  }
+  .bg-\[\#24262b\]\/80 {
+    background-color: color-mix(in srgb, var(--color-bg-card) 80%, transparent) !important;
+  }
+
+  /* 6. Card Headers & Dialog subpanels */
+  .bg-\[\#2b2e36\] {
+    background-color: var(--color-bg-card-header) !important;
+  }
+
+  /* 7. Toolbars & Header Bars */
+  .bg-\[\#26282d\] {
+    background-color: var(--color-bg-toolbar) !important;
+  }
+
+  /* 8. Surfaces & Drawers */
+  .bg-\[\#2b2d30\],
+  .bg-\[\#2c2e33\],
+  .bg-\[\#2d3139\] {
+    background-color: var(--color-bg-surface) !important;
+  }
+
+  /* 9. Surface Alt */
+  .bg-\[\#222429\] {
+    background-color: var(--color-bg-surface-alt) !important;
+  }
+
+  /* 10. Hovers across all elements */
+  .hover\:bg-\[\#1a1b1e\]:hover,
+  .hover\:bg-\[\#1e2024\]:hover,
+  .hover\:bg-\[\#202226\]:hover,
+  .hover\:bg-\[\#222428\]:hover,
+  .hover\:bg-\[\#24262b\]:hover,
+  .hover\:bg-\[\#26282d\]:hover,
+  .hover\:bg-\[\#2b2d30\]:hover,
+  .hover\:bg-\[\#2b2d33\]:hover,
+  .hover\:bg-\[\#2c2e33\]:hover,
+  .hover\:bg-\[\#2c2e34\]:hover,
+  .hover\:bg-\[\#2d3139\]:hover,
+  .hover\:bg-\[\#2e3035\]:hover,
+  .hover\:bg-\[\#2e3138\]:hover,
+  .hover\:bg-\[\#2f3137\]:hover,
+  .hover\:bg-\[\#2f3238\]:hover,
+  .hover\:bg-\[\#34373d\]:hover,
+  .hover\:bg-\[\#35373c\]:hover,
+  .hover\:bg-\[\#35383f\]:hover,
+  .hover\:bg-\[\#383a40\]:hover,
+  .hover\:bg-\[\#404349\]:hover {
+    background-color: var(--color-bg-hover) !important;
+  }
+
+  /* 11. Focus background */
+  .focus\:bg-\[\#1e1f22\]:focus {
+    background-color: var(--color-bg-input) !important;
+  }
+
+  /* 12. Subtle borders */
+  .border-\[\#232529\],
+  .border-\[\#24262b\],
+  .border-\[\#26282c\],
+  .border-\[\#2b2d30\],
+  .border-\[\#2b2d31\],
+  .border-\[\#2c2e33\],
+  .border-\[\#2d3139\],
+  .border-\[\#2e3035\],
+  .border-\[\#30333a\],
+  .border-\[\#35373c\],
+  .border-\[\#35383f\],
+  .border-\[\#393c44\],
+  .border-\[\#3d424d\] {
+    border-color: var(--color-border-subtle) !important;
+  }
+  .border-\[\#35373c\]\/50 {
+    border-color: color-mix(in srgb, var(--color-border-subtle) 50%, transparent) !important;
+  }
+  .border-\[\#2b2d30\]\/50 {
+    border-color: color-mix(in srgb, var(--color-border-subtle) 50%, transparent) !important;
+  }
+
+  /* 13. Card borders & hover borders */
+  .border-\[\#3a3d45\] {
+    border-color: var(--color-border-card) !important;
+  }
+  .hover\:border-\[\#35373c\]:hover,
+  .hover\:border-\[\#383a42\]:hover,
+  .hover\:border-\[\#3d424d\]:hover,
+  .hover\:border-\[\#4f535d\]:hover {
+    border-color: var(--color-border-card-hover) !important;
+  }
+
+  /* 14. Dividers */
+  .divide-\[\#24262b\] > :not([hidden]) ~ :not([hidden]),
+  .divide-\[\#2b2d30\] > :not([hidden]) ~ :not([hidden]),
+  .divide-\[\#2f323a\] > :not([hidden]) ~ :not([hidden]),
+  .divide-\[\#35373c\] > :not([hidden]) ~ :not([hidden]) {
+    border-color: var(--color-border-subtle) !important;
+  }
+
+  /* 15. Text colors */
+  .text-\[\#e6e8ea\],
+  .text-\[\#f1f2f4\],
+  .text-\[\#dcdfe4\] {
+    color: var(--color-text-main) !important;
+  }
+  .text-\[\#8c919a\],
+  .text-\[\#565f89\],
+  .text-\[\#636770\] {
+    color: var(--color-text-muted) !important;
+  }
+  .text-\[\#c3c6cd\],
+  .text-\[\#c4c7cc\],
+  .text-\[\#a9b1d6\] {
+    color: var(--color-text-subtle) !important;
+  }
+  .hover\:text-\[\#e6e8ea\]:hover,
+  .hover\:text-\[\#f1f2f4\]:hover {
+    color: var(--color-text-main) !important;
+  }
+
+  /* 16. Accent Colors */
+  .text-\[\#3a82f7\] {
+    color: var(--color-accent-blue) !important;
+  }
+  .bg-\[\#3a82f7\] {
+    background-color: var(--color-accent-blue) !important;
+    color: #ffffff !important;
+  }
+  .border-\[\#3a82f7\],
+  .focus\:border-\[\#3a82f7\]:focus {
+    border-color: var(--color-accent-blue) !important;
+  }
+  .ring-\[\#3a82f7\],
+  .ring-\[\#5a9cff\] {
+    --tw-ring-color: var(--color-accent-blue) !important;
+  }
+  .hover\:bg-\[\#2b6fd6\]:hover,
+  .hover\:bg-\[\#2f6fd6\]:hover,
+  .hover\:bg-\[\#5a9cff\]:hover {
+    filter: brightness(1.08) !important;
+  }
+  .hover\:text-\[\#2f6fd6\]:hover,
+  .hover\:text-\[\#3a82f7\]:hover,
+  .hover\:text-\[\#5a9cff\]:hover {
+    color: var(--color-accent-blue) !important;
+    filter: brightness(0.9) !important;
+  }
+
+  .text-\[\#20c997\] {
+    color: var(--color-accent-cyan) !important;
+  }
+  .bg-\[\#20c997\] {
+    background-color: var(--color-accent-cyan) !important;
+    color: #ffffff !important;
+  }
+  .border-\[\#20c997\] {
+    border-color: var(--color-accent-cyan) !important;
+  }
+
+  .text-\[\#f5a623\],
+  .text-\[\#f59e0b\],
+  .text-\[\#e0a82e\] {
+    color: var(--color-accent-gold) !important;
+  }
+
+  /* Notice boxes */
+  .text-\[\#9dc0fb\] {
+    color: var(--color-accent-blue) !important;
+  }
+  .bg-\[\#3a82f7\]\/10 {
+    background-color: color-mix(in srgb, var(--color-accent-blue) 12%, transparent) !important;
+  }
+  .border-\[\#3a82f7\]\/30 {
+    border-color: color-mix(in srgb, var(--color-accent-blue) 35%, transparent) !important;
+  }
+
+  /* TableNode Not-Null Badge */
+  .bg-red-950\/40 {
+    background-color: #fee2e2 !important;
+    color: #b91c1c !important;
+    border-color: #fca5a5 !important;
+  }
+
+  /* GroupNode Light Adaptations */
+  .bg-black\/30 {
+    background-color: color-mix(in srgb, var(--color-bg-toolbar) 50%, transparent) !important;
+  }
+  .border-white\/10 {
+    border-color: var(--color-border-subtle) !important;
+  }
+  .bg-black\/40 {
+    background-color: var(--color-bg-input) !important;
+  }
+  .border-white\/20 {
+    border-color: var(--color-border-subtle) !important;
+  }
+  .text-neutral-200 {
+    color: var(--color-text-main) !important;
+  }
+  .text-neutral-400 {
+    color: var(--color-text-muted) !important;
+  }
+
+  /* StickyNote Light Adaptations */
+  .bg-amber-950\/80 {
+    background-color: #fef3c7 !important;
+    color: #78350f !important;
+    border-color: #fcd34d !important;
+  }
+  .bg-amber-900\/60 {
+    background-color: #fde68a !important;
+    color: #92400e !important;
+    border-color: #f59e0b !important;
+  }
+  .text-amber-100 {
+    color: #78350f !important;
+  }
+  .text-amber-200 {
+    color: #92400e !important;
+  }
+
+  .bg-sky-950\/80 {
+    background-color: #e0f2fe !important;
+    color: #0369a1 !important;
+    border-color: #7dd3fc !important;
+  }
+  .bg-sky-900\/60 {
+    background-color: #bae6fd !important;
+    color: #075985 !important;
+    border-color: #38bdf8 !important;
+  }
+  .text-sky-100 {
+    color: #0369a1 !important;
+  }
+  .text-sky-200 {
+    color: #075985 !important;
+  }
+
+  .bg-emerald-950\/80 {
+    background-color: #dcfce7 !important;
+    color: #166534 !important;
+    border-color: #86efac !important;
+  }
+  .bg-emerald-900\/60 {
+    background-color: #bbf7d0 !important;
+    color: #14532d !important;
+    border-color: #4ade80 !important;
+  }
+  .text-emerald-100 {
+    color: #166534 !important;
+  }
+  .text-emerald-200 {
+    color: #14532d !important;
+  }
+
+  .bg-purple-950\/80 {
+    background-color: #f3e8ff !important;
+    color: #6b21a8 !important;
+    border-color: #d8b4fe !important;
+  }
+  .bg-purple-900\/60 {
+    background-color: #e9d5ff !important;
+    color: #581c87 !important;
+    border-color: #c084fc !important;
+  }
+  .text-purple-100 {
+    color: #6b21a8 !important;
+  }
+  .text-purple-200 {
+    color: #581c87 !important;
+  }
+
+  /* Form Inputs */
   input, select, textarea {
     color: var(--color-text-main) !important;
   }
@@ -150,19 +499,153 @@ body {
 /* Midnight OLED Dynamic Overrides                                            */
 /* -------------------------------------------------------------------------- */
 [data-theme="midnight"] {
-  .bg-\[\#1e1f22\] { background-color: var(--color-bg-base) !important; }
-  .bg-\[\#18191c\] { background-color: var(--color-bg-sidebar) !important; }
-  .bg-\[\#26282d\] { background-color: var(--color-bg-toolbar) !important; }
-  .bg-\[\#2b2d30\] { background-color: var(--color-bg-surface) !important; }
-  .bg-\[\#222429\] { background-color: var(--color-bg-surface-alt) !important; }
-  .bg-\[\#24262b\] { background-color: var(--color-bg-card) !important; }
-  .bg-\[\#141517\] { background-color: var(--color-bg-input) !important; }
-  .border-\[\#35373c\] { border-color: var(--color-border-subtle) !important; }
-  .border-\[\#2c2e34\] { border-color: var(--color-border-subtle) !important; }
-  .text-\[\#e6e8ea\] { color: var(--color-text-main) !important; }
-  .text-\[\#8c919a\] { color: var(--color-text-muted) !important; }
-  .text-\[\#3a82f7\] { color: var(--color-accent-blue) !important; }
-  .bg-\[\#3a82f7\] { background-color: var(--color-accent-blue) !important; color: #000000 !important; }
-  .border-\[\#3a82f7\] { border-color: var(--color-accent-blue) !important; }
-  .focus\:border-\[\#3a82f7\]:focus { border-color: var(--color-accent-blue) !important; }
+  /* 1. Base / Canvas */
+  .bg-\[\#1e1f22\],
+  .bg-\[\#1f2024\] {
+    background-color: #000000 !important;
+  }
+
+  /* 2. Sidebars, Modals */
+  .bg-\[\#18191c\],
+  .bg-\[\#1a1b1e\],
+  .bg-\[\#1b1c20\],
+  .bg-\[\#1c1d21\],
+  .bg-\[\#1c1d22\] {
+    background-color: #08090d !important;
+  }
+
+  /* 3. Inputs */
+  .bg-\[\#121315\],
+  .bg-\[\#121316\],
+  .bg-\[\#131416\],
+  .bg-\[\#141517\],
+  .bg-\[\#141518\] {
+    background-color: #000000 !important;
+  }
+
+  /* 4. Pills */
+  .bg-\[\#1e2024\],
+  .bg-\[\#202226\],
+  .bg-\[\#212328\],
+  .bg-\[\#222428\],
+  .bg-\[\#232428\] {
+    background-color: #12151f !important;
+  }
+
+  /* 5. Cards & Tables */
+  .bg-\[\#24262b\],
+  .bg-\[\#2a2c31\] {
+    background-color: #0a0b10 !important;
+  }
+
+  /* 6. Card Header */
+  .bg-\[\#2b2e36\] {
+    background-color: #12141c !important;
+  }
+
+  /* 7. Toolbars */
+  .bg-\[\#26282d\] {
+    background-color: #0e1017 !important;
+  }
+
+  /* 8. Surfaces */
+  .bg-\[\#2b2d30\],
+  .bg-\[\#2c2e33\],
+  .bg-\[\#2d3139\] {
+    background-color: #141724 !important;
+  }
+
+  /* 9. Surface Alt */
+  .bg-\[\#222429\] {
+    background-color: #0d0f18 !important;
+  }
+
+  /* 10. Hovers */
+  .hover\:bg-\[\#1a1b1e\]:hover,
+  .hover\:bg-\[\#1e2024\]:hover,
+  .hover\:bg-\[\#202226\]:hover,
+  .hover\:bg-\[\#222428\]:hover,
+  .hover\:bg-\[\#24262b\]:hover,
+  .hover\:bg-\[\#26282d\]:hover,
+  .hover\:bg-\[\#2b2d30\]:hover,
+  .hover\:bg-\[\#2b2d33\]:hover,
+  .hover\:bg-\[\#2c2e33\]:hover,
+  .hover\:bg-\[\#2c2e34\]:hover,
+  .hover\:bg-\[\#2d3139\]:hover,
+  .hover\:bg-\[\#2e3035\]:hover,
+  .hover\:bg-\[\#2e3138\]:hover,
+  .hover\:bg-\[\#2f3137\]:hover,
+  .hover\:bg-\[\#2f3238\]:hover,
+  .hover\:bg-\[\#34373d\]:hover,
+  .hover\:bg-\[\#35373c\]:hover,
+  .hover\:bg-\[\#35383f\]:hover,
+  .hover\:bg-\[\#383a40\]:hover,
+  .hover\:bg-\[\#404349\]:hover {
+    background-color: #1b1e30 !important;
+  }
+
+  /* 11. Subtle borders */
+  .border-\[\#232529\],
+  .border-\[\#24262b\],
+  .border-\[\#26282c\],
+  .border-\[\#2b2d30\],
+  .border-\[\#2b2d31\],
+  .border-\[\#2c2e33\],
+  .border-\[\#2d3139\],
+  .border-\[\#2e3035\],
+  .border-\[\#30333a\],
+  .border-\[\#35373c\],
+  .border-\[\#35383f\],
+  .border-\[\#393c44\],
+  .border-\[\#3d424d\] {
+    border-color: #1c1f2e !important;
+  }
+  .border-\[\#3a3d45\] {
+    border-color: #232738 !important;
+  }
+  .hover\:border-\[\#4f535d\]:hover {
+    border-color: #3a3f5a !important;
+  }
+
+  /* 12. Dividers */
+  .divide-\[\#24262b\] > :not([hidden]) ~ :not([hidden]),
+  .divide-\[\#2b2d30\] > :not([hidden]) ~ :not([hidden]),
+  .divide-\[\#2f323a\] > :not([hidden]) ~ :not([hidden]),
+  .divide-\[\#35373c\] > :not([hidden]) ~ :not([hidden]) {
+    border-color: #1c1f2e !important;
+  }
+
+  /* 13. Text */
+  .text-\[\#e6e8ea\],
+  .text-\[\#f1f2f4\],
+  .text-\[\#dcdfe4\] {
+    color: #f1f3f9 !important;
+  }
+  .text-\[\#8c919a\],
+  .text-\[\#565f89\],
+  .text-\[\#636770\] {
+    color: #7982a9 !important;
+  }
+  .text-\[\#c3c6cd\],
+  .text-\[\#c4c7cc\],
+  .text-\[\#a9b1d6\] {
+    color: #cdd3e6 !important;
+  }
+
+  /* 14. Accents */
+  .text-\[\#3a82f7\] {
+    color: #00f0ff !important;
+  }
+  .bg-\[\#3a82f7\] {
+    background-color: #00f0ff !important;
+    color: #000000 !important;
+  }
+  .border-\[\#3a82f7\],
+  .focus\:border-\[\#3a82f7\]:focus {
+    border-color: #00f0ff !important;
+  }
+  .ring-\[\#3a82f7\],
+  .ring-\[\#5a9cff\] {
+    --tw-ring-color: #00f0ff !important;
+  }
 }

@@ -21,8 +21,9 @@ import {
 } from 'lucide-react';
 import type { SchemaDiff } from '../../types/database';
 import { splitSqlStatements } from '../../utils/sqlSafety';
+import type { AppTheme } from '../../types/theme';
 import { THEMES } from '../../types/theme';
-import { getSavedTheme } from '../../utils/themeManager';
+import { getSavedTheme, onThemeChange } from '../../utils/themeManager';
 
 /**
  * @brief Component properties accepted by DiffModal.
@@ -61,6 +62,11 @@ export const DiffModal: React.FC<DiffModalProps> = React.memo(({
   const [copied, setCopied] = useState(false);
   const [destructiveAcknowledged, setDestructiveAcknowledged] = useState(false);
   const [executionError, setExecutionError] = useState<string | null>(null);
+  const [activeTheme, setActiveTheme] = useState<AppTheme>(getSavedTheme());
+
+  useEffect(() => {
+    return onThemeChange((t) => setActiveTheme(t));
+  }, []);
 
   // Synchronously compute SQL buffer, favoring user manual edits over generated DDL
   const customSql = userEditedSql ?? generatedDdl.join('\n\n');
@@ -380,7 +386,7 @@ export const DiffModal: React.FC<DiffModalProps> = React.memo(({
               <Editor
                 height="100%"
                 defaultLanguage="sql"
-                theme={THEMES[getSavedTheme()]?.monacoTheme || 'vs-dark'}
+                theme={THEMES[activeTheme]?.monacoTheme || 'vs-dark'}
                 value={customSql}
                 onChange={(val) => setUserEditedSql(val ?? '')}
                 options={{

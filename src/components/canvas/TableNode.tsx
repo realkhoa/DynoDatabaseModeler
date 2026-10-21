@@ -134,7 +134,7 @@ export const TableNode = memo(
                   background: '#3a82f7',
                   width: 8,
                   height: 8,
-                  border: '2px solid #1e2024',
+                  border: '2px solid var(--color-bg-card, #24262b)',
                 }}
               />
 
@@ -190,7 +190,7 @@ export const TableNode = memo(
                   background: '#20c997',
                   width: 8,
                   height: 8,
-                  border: '2px solid #1e2024',
+                  border: '2px solid var(--color-bg-card, #24262b)',
                 }}
               />
             </div>

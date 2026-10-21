@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { ErdCanvas } from './ErdCanvas';
 import type { DatabaseSchema } from '../../types/database';
 import {
@@ -293,5 +293,30 @@ describe('ErdCanvas component', () => {
     fireEvent.click(viewDataBtns[0]);
 
     expect(onViewTableData).toHaveBeenCalledWith('users');
+  });
+
+  /**
+   * @brief Verifies canvas container background color updates when active theme changes.
+   */
+  it('dynamically adapts canvas container background color when theme changes', async () => {
+    const { applyTheme } = await import('../../utils/themeManager');
+    const { container } = render(
+      <ErdCanvas schema={mockSchema} onEditTable={vi.fn()} />
+    );
+
+    const canvasContainer = container.firstChild as HTMLElement;
+    expect(canvasContainer).toBeDefined();
+
+    // Switch to GitIngest theme
+    act(() => {
+      applyTheme('gitingest');
+    });
+    expect(['#faf8f5', 'rgb(250, 248, 245)']).toContain(canvasContainer.style.backgroundColor);
+
+    // Switch to Midnight OLED theme
+    act(() => {
+      applyTheme('midnight');
+    });
+    expect(['#000000', 'rgb(0, 0, 0)']).toContain(canvasContainer.style.backgroundColor);
   });
 });

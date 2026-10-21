@@ -578,7 +578,8 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
   return (
     <div
       ref={containerRef}
-      className="w-full h-full relative bg-[#1e1f22] select-none"
+      className="w-full h-full relative select-none"
+      style={{ backgroundColor: THEMES[activeTheme]?.canvasBg || 'var(--color-bg-base)' }}
     >
       {/* Top Floating Control Bar */}
       <div className="absolute top-3 right-4 z-10 flex items-center space-x-2">
@@ -753,13 +754,13 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
           color={THEMES[activeTheme]?.canvasDots || '#35373c'}
         />
         <Controls
-          className="bg-[#24262b]! border-[#35373c]! text-[#e6e8ea]! rounded-md! shadow-xl!"
+          className="rounded-md! shadow-xl!"
           showInteractive={false}
         />
         <MiniMap
           nodeColor={THEMES[activeTheme]?.accentColor || '#3a82f7'}
           maskColor={THEMES[activeTheme]?.type === 'light' ? 'rgba(240, 238, 233, 0.75)' : 'rgba(30, 31, 34, 0.75)'}
-          className="bg-[#18191c]! border-[#35373c]! rounded-md! shadow-xl!"
+          className="rounded-md! shadow-xl!"
           zoomable
           pannable
         />
