@@ -1,13 +1,13 @@
 //! @file factory.rs
 //! @brief Database driver factory for creating engine-specific driver instances.
-//! @details Dispatches creation to SqliteDriver, PostgresDriver, MySqlDriver, MssqlDriver or
-//! DuckDbDriver based on the connection configuration database type, and owns any SSH bastion
-//! tunnel that the connection depends on.
+//! @details Dispatches creation to SqliteDriver, PostgresDriver, MySqlDriver, MssqlDriver,
+//! DuckDbDriver, or RedisDriver based on the connection configuration database type, and owns
+//! any SSH bastion tunnel that the connection depends on.
 
 use super::tunnel::SshTunnel;
 use super::{
     duckdb::DuckDbDriver, mssql::MssqlDriver, mysql::MySqlDriver, postgres::PostgresDriver,
-    sqlite::SqliteDriver, DatabaseDriver,
+    redis::RedisDriver, sqlite::SqliteDriver, DatabaseDriver,
 };
 use crate::error::AppError;
 use crate::model::connection::{ConnectionConfig, DatabaseType};
@@ -29,7 +29,7 @@ pub struct DriverFactory;
 impl DriverFactory {
     /// @brief Creates and connects a driver handle for the specified connection configuration.
     /// @details Dynamically dispatches between SQLite, PostgreSQL, MySQL, Microsoft SQL Server, DuckDB,
-    /// MariaDB, CockroachDB, LibSQL, Redshift, ClickHouse, and Universal SQL adapters. When an SSH
+    /// MariaDB, CockroachDB, LibSQL, Redshift, ClickHouse, Redis, and Universal SQL adapters. When an SSH
     /// tunnel is configured and enabled, a real tunnel is established first and the driver then
     /// targets the tunnel's loopback port.
     /// @param config Connection parameters specifying database type, endpoint, credentials, or file paths.
@@ -53,6 +53,7 @@ impl DriverFactory {
                     DatabaseType::CockroachDb => 26257,
                     DatabaseType::Redshift => 5439,
                     DatabaseType::ClickHouse => 9004,
+                    DatabaseType::Redis => 6379,
                     DatabaseType::Universal => 5432,
                     DatabaseType::Sqlite | DatabaseType::DuckDb | DatabaseType::LibSql => 0,
                 });
@@ -79,6 +80,7 @@ impl DriverFactory {
             }
             DatabaseType::Mssql => Box::new(MssqlDriver::connect(&final_config).await?),
             DatabaseType::DuckDb => Box::new(DuckDbDriver::connect(&final_config).await?),
+            DatabaseType::Redis => Box::new(RedisDriver::connect(&final_config).await?),
             DatabaseType::Universal => Self::create_universal(&final_config).await?,
         };
 
@@ -87,7 +89,7 @@ impl DriverFactory {
 
     /// @brief Resolves and connects the appropriate driver for a Universal database connection.
     /// @details Inspects connection URL scheme and explicit dialect_family to dispatch
-    /// to PostgresDriver, MySqlDriver, SqliteDriver, MssqlDriver, or DuckDbDriver.
+    /// to PostgresDriver, MySqlDriver, SqliteDriver, MssqlDriver, DuckDbDriver, or RedisDriver.
     /// @param config Universal connection configuration.
     /// @return Boxed DatabaseDriver handle or AppError.
     async fn create_universal(
@@ -99,6 +101,8 @@ impl DriverFactory {
                 "postgres"
             } else if lower.starts_with("mysql://") || lower.starts_with("mariadb://") {
                 "mysql"
+            } else if lower.starts_with("redis://") || lower.starts_with("rediss://") {
+                "redis"
             } else if lower.starts_with("sqlite://")
                 || lower.starts_with("sqlite:")
                 || lower.ends_with(".db")
@@ -125,6 +129,7 @@ impl DriverFactory {
             "sqlite" | "libsql" => Ok(Box::new(SqliteDriver::connect(config).await?)),
             "mssql" | "sqlserver" => Ok(Box::new(MssqlDriver::connect(config).await?)),
             "duckdb" => Ok(Box::new(DuckDbDriver::connect(config).await?)),
+            "redis" => Ok(Box::new(RedisDriver::connect(config).await?)),
             _ => Ok(Box::new(PostgresDriver::connect(config).await?)),
         }
     }

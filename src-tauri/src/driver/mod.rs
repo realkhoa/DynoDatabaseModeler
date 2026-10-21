@@ -1,7 +1,7 @@
 //! @file mod.rs
 //! @brief Database driver abstraction layer and driver adapter implementations.
 //! @details Defines the core DatabaseDriver trait, execution report types, query result representations,
-//! and modules for specific database engine adapters (SQLite, PostgreSQL, MySQL, MSSQL).
+//! and modules for specific database engine adapters (SQLite, PostgreSQL, MySQL, MSSQL, Redis).
 
 pub mod duckdb;
 pub mod explain_model;
@@ -10,12 +10,14 @@ pub mod mssql;
 pub mod mutation_model;
 pub mod mysql;
 pub mod postgres;
+pub mod redis;
 pub mod sqlite;
 pub mod tunnel;
 
 pub use duckdb::DuckDbDriver;
 pub use explain_model::ExecutionPlanNode;
 pub use mutation_model::RowUpdatePayload;
+pub use redis::RedisDriver;
 pub use tunnel::{SshAuthType, SshTunnel, SshTunnelConfig};
 
 #[cfg(test)]
@@ -26,6 +28,8 @@ mod explain_test;
 mod factory_test;
 #[cfg(test)]
 mod mutation_test;
+#[cfg(test)]
+mod redis_test;
 #[cfg(test)]
 mod sqlite_test;
 #[cfg(test)]

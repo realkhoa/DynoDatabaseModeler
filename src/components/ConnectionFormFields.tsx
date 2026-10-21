@@ -142,6 +142,12 @@ const ENGINE_GROUPS: {
     ],
   },
   {
+    category: 'NoSQL & Cache',
+    engines: [
+      { type: 'Redis', label: 'Redis / KeyDB / Valkey', badge: 'Cache/KV' },
+    ],
+  },
+  {
     category: 'Universal / Any Database',
     engines: [
       { type: 'Universal', label: '⚡ Universal / Any SQL', badge: 'URL & Dialect' },
@@ -311,6 +317,7 @@ export const ConnectionFormFields: React.FC<ConnectionFormFieldsProps> = ({
               {[
                 { label: 'Postgres', url: 'postgresql://postgres:secret@localhost:5432/postgres', dialect: 'postgres' },
                 { label: 'MySQL', url: 'mysql://root:secret@localhost:3306/mysql', dialect: 'mysql' },
+                { label: 'Redis', url: 'redis://:secret@localhost:6379/0', dialect: 'redis' },
                 { label: 'SQLite', url: 'sqlite:app.db', dialect: 'sqlite' },
                 { label: 'DuckDB', url: 'duckdb:analytics.duckdb', dialect: 'duckdb' },
                 { label: 'SQL Server', url: 'sqlserver://sa:secret@localhost:1433/master', dialect: 'mssql' },
@@ -347,6 +354,7 @@ export const ConnectionFormFields: React.FC<ConnectionFormFieldsProps> = ({
             >
               <option value="postgres">PostgreSQL-compatible (CockroachDB, Redshift, Timescale, Supabase, Neon)</option>
               <option value="mysql">MySQL-compatible (MariaDB, ClickHouse, TiDB, SingleStore)</option>
+              <option value="redis">Redis-compatible (Redis, KeyDB, Dragonfly, Valkey)</option>
               <option value="sqlite">SQLite-compatible (LibSQL, Turso, Cloudflare D1)</option>
               <option value="mssql">MSSQL-compatible (SQL Server, Azure SQL)</option>
               <option value="duckdb">DuckDB-compatible (MotherDuck, local files)</option>
@@ -444,9 +452,9 @@ export const ConnectionFormFields: React.FC<ConnectionFormFieldsProps> = ({
                 htmlFor="conn-database"
                 className="block text-[11px] font-semibold text-[#8c919a] uppercase tracking-wider"
               >
-                Database{' '}
+                {dbType === 'Redis' ? 'Database Index' : 'Database'}{' '}
                 <span className="text-[10px] font-normal lowercase text-[#8c919a]/70">
-                  (optional · defaults to maintenance db)
+                  {dbType === 'Redis' ? '(e.g. 0-15 · defaults to 0)' : '(optional · defaults to maintenance db)'}
                 </span>
               </label>
               {onFetchDatabases && (
@@ -473,7 +481,9 @@ export const ConnectionFormFields: React.FC<ConnectionFormFieldsProps> = ({
               value={database}
               onChange={(e) => setDatabase(e.target.value)}
               placeholder={
-                dbType === 'Postgres' || dbType === 'CockroachDb' || dbType === 'Redshift'
+                dbType === 'Redis'
+                  ? '0 (Database index 0-15)'
+                  : dbType === 'Postgres' || dbType === 'CockroachDb' || dbType === 'Redshift'
                   ? 'postgres (default if blank)'
                   : dbType === 'Mssql'
                   ? 'master (default if blank)'

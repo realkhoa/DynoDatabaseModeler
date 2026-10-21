@@ -236,6 +236,10 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = React.memo(({
     } else if (newType === 'Mssql') {
       if (!name || name.startsWith('Local ')) setName('Local SQL Server');
       if (!username) setUsername('sa');
+    } else if (newType === 'Redis') {
+      if (!name || name.startsWith('Local ')) setName('Local Redis');
+      if (!database) setDatabase('0');
+      setUsername('');
     } else if (newType === 'Universal') {
       if (!name || name.startsWith('Local ')) setName('Universal Connection');
     }
@@ -252,7 +256,9 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = React.memo(({
     let targetDb = database.trim();
     if (!isEmbedded && !isUniversal && !targetDb) {
       targetDb =
-        dbType === 'Postgres' || dbType === 'CockroachDb' || dbType === 'Redshift'
+        dbType === 'Redis'
+          ? '0'
+          : dbType === 'Postgres' || dbType === 'CockroachDb' || dbType === 'Redshift'
           ? 'postgres'
           : dbType === 'Mssql'
           ? 'master'

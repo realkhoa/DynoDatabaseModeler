@@ -33,6 +33,11 @@ describe('processQueries', () => {
       expect(getProcessListQuery('DuckDb')).toContain('duckdb_queries');
       expect(getProcessListQuery('Sqlite')).toContain('sqlite');
     });
+
+    it('returns CLIENT LIST for Redis', () => {
+      const sql = getProcessListQuery('Redis');
+      expect(sql).toBe('CLIENT LIST');
+    });
   });
 
   describe('getKillQuery', () => {
@@ -44,6 +49,10 @@ describe('processQueries', () => {
     it('generates KILL command for MySQL and MSSQL', () => {
       expect(getKillQuery(99, 'MySql')).toBe('KILL 99;');
       expect(getKillQuery(88, 'Mssql')).toBe('KILL 88;');
+    });
+
+    it('generates CLIENT KILL ID command for Redis', () => {
+      expect(getKillQuery(102, 'Redis')).toBe('CLIENT KILL ID 102;');
     });
 
     it('throws error for invalid pid or unsupported engines', () => {

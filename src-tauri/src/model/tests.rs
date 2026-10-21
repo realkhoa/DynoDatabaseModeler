@@ -175,6 +175,7 @@ fn test_connection_config_serialization() {
         DatabaseType::LibSql,
         DatabaseType::Redshift,
         DatabaseType::ClickHouse,
+        DatabaseType::Redis,
         DatabaseType::Universal,
     ];
     for engine in extended_engines {

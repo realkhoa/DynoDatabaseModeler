@@ -19,6 +19,7 @@ export type DatabaseType =
   | 'LibSql'
   | 'Redshift'
   | 'ClickHouse'
+  | 'Redis'
   | 'Universal';
 
 /**
@@ -474,6 +475,8 @@ export function getDefaultPort(dbType: DatabaseType): number {
       return 9004;
     case 'Mssql':
       return 1433;
+    case 'Redis':
+      return 6379;
     case 'Sqlite':
     case 'LibSql':
     case 'DuckDb':
@@ -507,7 +510,7 @@ export function isUniversalEngine(dbType: DatabaseType): boolean {
  */
 export function getEngineDialectFamily(
   dbType: DatabaseType
-): 'postgres' | 'mysql' | 'sqlite' | 'mssql' | 'duckdb' {
+): 'postgres' | 'mysql' | 'sqlite' | 'mssql' | 'duckdb' | 'redis' {
   switch (dbType) {
     case 'Postgres':
     case 'CockroachDb':
@@ -525,6 +528,8 @@ export function getEngineDialectFamily(
       return 'mssql';
     case 'DuckDb':
       return 'duckdb';
+    case 'Redis':
+      return 'redis';
     default:
       return 'postgres';
   }
@@ -537,7 +542,7 @@ export interface DatabaseEngineMeta {
   type: DatabaseType;
   label: string;
   description: string;
-  category: 'popular' | 'cloud_analytical' | 'universal';
+  category: 'popular' | 'cloud_analytical' | 'universal' | 'nosql_cache';
   badge?: string;
 }
 
@@ -547,6 +552,7 @@ export const DATABASE_ENGINES: DatabaseEngineMeta[] = [
   { type: 'MariaDb', label: 'MariaDB', description: 'High performance community fork of MySQL', category: 'popular' },
   { type: 'Mssql', label: 'Microsoft SQL Server', description: 'Enterprise relational database & Azure SQL', category: 'popular' },
   { type: 'Sqlite', label: 'SQLite', description: 'Lightweight serverless embedded SQL engine', category: 'popular' },
+  { type: 'Redis', label: 'Redis / KeyDB / Valkey', description: 'High-speed in-memory data store, cache & broker', category: 'nosql_cache', badge: 'Cache/KV' },
   { type: 'CockroachDb', label: 'CockroachDB', description: 'Distributed, cloud-native SQL database', category: 'cloud_analytical', badge: 'Cloud' },
   { type: 'ClickHouse', label: 'ClickHouse', description: 'Ultra-fast column-oriented analytical DBMS', category: 'cloud_analytical', badge: 'Analytics' },
   { type: 'Redshift', label: 'Amazon Redshift', description: 'AWS petabyte-scale cloud data warehouse', category: 'cloud_analytical', badge: 'Warehouse' },

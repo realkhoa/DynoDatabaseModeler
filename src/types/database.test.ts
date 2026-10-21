@@ -82,6 +82,7 @@ describe('database type helpers', () => {
     expect(getDefaultPort('MariaDb')).toBe(3306);
     expect(getDefaultPort('ClickHouse')).toBe(9004);
     expect(getDefaultPort('Mssql')).toBe(1433);
+    expect(getDefaultPort('Redis')).toBe(6379);
     expect(getDefaultPort('Sqlite')).toBe(0);
     expect(getDefaultPort('LibSql')).toBe(0);
     expect(getDefaultPort('DuckDb')).toBe(0);
@@ -123,15 +124,17 @@ describe('database type helpers', () => {
     expect(getEngineDialectFamily('LibSql')).toBe('sqlite');
     expect(getEngineDialectFamily('Mssql')).toBe('mssql');
     expect(getEngineDialectFamily('DuckDb')).toBe('duckdb');
+    expect(getEngineDialectFamily('Redis')).toBe('redis');
   });
 
   /**
-   * @brief Verifies DATABASE_ENGINES contains all 11 options with metadata.
+   * @brief Verifies DATABASE_ENGINES contains all 12 options with metadata.
    */
   it('provides complete DATABASE_ENGINES directory', () => {
-    expect(DATABASE_ENGINES).toHaveLength(11);
+    expect(DATABASE_ENGINES).toHaveLength(12);
     const types = DATABASE_ENGINES.map((e) => e.type);
     expect(types).toContain('Universal');
+    expect(types).toContain('Redis');
     expect(types).toContain('MariaDb');
     expect(types).toContain('CockroachDb');
     expect(types).toContain('LibSql');

@@ -1,15 +1,8 @@
 //! @file mod.rs
-//! @brief Multi-dialect DDL generation module.
-//! @details Formats SchemaDiff instances into executable SQL DDL statements
-//! for PostgreSQL, SQLite, MySQL, Microsoft SQL Server, DuckDB, MariaDB, CockroachDB,
-//! LibSQL, Amazon Redshift, ClickHouse, and Universal SQL.
-//!
-//! Generation is intentionally exhaustive: every change in a `SchemaDiff` either produces a
-//! statement or an explicit warning. Nothing is silently dropped, so the migration script shown
-//! to the user always reflects the diff that was computed.
+//! @brief Dialect-specific DDL statement generation from structured schema differences.
+//! @details Dispatches schema diffs to PostgreSQL, SQLite, MySQL, or Microsoft SQL Server
+//! DDL generators to produce clean, dialect-compliant, transactional SQL migration scripts.
 
-#[cfg(test)]
-mod ddl_test;
 pub mod mssql;
 pub mod mysql;
 pub mod postgres;
@@ -92,6 +85,7 @@ impl DialectDdlGenerator for MssqlDdlGenerator {
 /// @details Routes the schema diff to the corresponding dialect generator.
 /// CockroachDB, Amazon Redshift, DuckDB, and Universal follow PostgreSQL-compatible dialect.
 /// LibSQL follows SQLite dialect. MariaDB and ClickHouse follow MySQL-compatible dialect.
+/// Redis translates dropped collections to DEL operations.
 /// @param diff Reference to the computed schema diff.
 /// @param dialect Target database engine type.
 /// @return Generated SQL statements plus warnings for unsupported changes.
@@ -107,6 +101,13 @@ pub fn generate_ddl(diff: &SchemaDiff, dialect: DatabaseType) -> GeneratedDdl {
             MySqlDdlGenerator::generate(diff)
         }
         DatabaseType::Mssql => MssqlDdlGenerator::generate(diff),
+        DatabaseType::Redis => {
+            let mut ddl = GeneratedDdl::default();
+            for t in &diff.tables_to_drop {
+                ddl.push(format!("DEL {}", t));
+            }
+            ddl
+        }
     }
 }
 

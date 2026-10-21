@@ -369,4 +369,37 @@ describe('ConnectionModal component', () => {
       );
     });
   });
+
+  /**
+   * @brief Verifies switching to Redis engine sets default port 6379, db 0, and profile name.
+   */
+  it('switches to Redis engine and sets port 6379 and database index 0', async () => {
+    const handleConnect = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ConnectionModal
+        isOpen={true}
+        onClose={vi.fn()}
+        onConnect={handleConnect}
+      />
+    );
+
+    // Switch to Redis
+    fireEvent.click(screen.getByRole('button', { name: /Redis/i }));
+    expect(screen.getByDisplayValue('6379')).toBeDefined();
+    expect(screen.getByDisplayValue('0')).toBeDefined();
+    expect(screen.getByDisplayValue('Local Redis')).toBeDefined();
+
+    const connectBtn = screen.getByRole('button', { name: 'Connect' });
+    fireEvent.click(connectBtn);
+
+    await waitFor(() => {
+      expect(handleConnect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          db_type: 'Redis',
+          port: 6379,
+          database: '0',
+        })
+      );
+    });
+  });
 });

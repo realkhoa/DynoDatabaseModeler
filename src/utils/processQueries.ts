@@ -47,6 +47,8 @@ export function getProcessListQuery(dbType: DatabaseType = 'Postgres'): string {
       return `SELECT query_id AS pid, 'duckdb' AS "user", 'memory' AS "database", 'localhost' AS "client", 'running' AS state, '00:00:01' AS duration, query FROM duckdb_queries() WHERE query NOT LIKE '%duckdb_queries%' LIMIT 50;`;
     case 'sqlite':
       return `SELECT 1 AS pid, 'sqlite' AS "user", 'main' AS "database", 'local' AS "client", 'active' AS state, '00:00:00' AS duration, 'SQLite in-process active connection' AS query;`;
+    case 'redis':
+      return `CLIENT LIST`;
     default:
       return `SELECT 1 AS pid, 'user' AS "user", 'db' AS "database", 'localhost' AS "client", 'active' AS state, '00:00:00' AS duration, 'Active session' AS query;`;
   }
@@ -75,6 +77,8 @@ export function getKillQuery(pid: string | number, dbType: DatabaseType = 'Postg
       return `KILL ${numericPid};`;
     case 'mssql':
       return `KILL ${numericPid};`;
+    case 'redis':
+      return `CLIENT KILL ID ${numericPid};`;
     default:
       throw new Error(`Unsupported database dialect for process kill: ${dbType}`);
   }

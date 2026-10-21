@@ -11,7 +11,7 @@ DynoDbModeler bridges visual database architecture and live SQL administration. 
 DynoDbModeler is designed for developers, database administrators, and architects who need a fast, native, and visually elegant database companion without the bloat of traditional heavyweight IDEs.
 
 ### Key Capabilities
-- **Native Multi-Database Connectivity**: Direct asynchronous drivers for **SQLite**, **PostgreSQL**, **MySQL / MariaDB**, **Microsoft SQL Server (MSSQL)**, and **DuckDB** (analytical embedded).
+- **Native Multi-Database Connectivity**: Direct asynchronous drivers for **SQLite**, **PostgreSQL**, **MySQL / MariaDB**, **Microsoft SQL Server (MSSQL)**, **DuckDB** (analytical embedded), and **Redis / KeyDB / Valkey** (in-memory key-value cache and store).
 - **Reverse Engineering**: Instant live catalog introspection converting foreign keys, primary keys, indexes, and data types into an interactive ERD graph.
 - **Visual Schema Modeler**: Drag-and-drop table cards powered by `@xyflow/react` with animated foreign key relation handles, inline column search, and one-click Dagre hierarchical auto-layout.
 - **Rename-Safe Migrations**: Renaming a table in the modeler is recorded and applied as `ALTER TABLE ... RENAME TO`; every foreign key that referenced the old name follows it, so a rename never becomes a drop plus create.
@@ -100,7 +100,8 @@ DynoDbModeler provides first-class support for ten specialized database engines 
 | **ClickHouse** | Analytics | `sqlx` (mysql/http) | `information_schema.tables`, `columns` | Columnar OLAP engine, high-speed analytical queries, standard port 8123/9000, backtick quoting. |
 | **Amazon Redshift** | Cloud | `sqlx` (pgwire) | `information_schema.tables`, `pg_class`, `pg_constraint` | AWS cloud data warehouse, PostgreSQL dialect family, standard port 5439, SSL encryption. |
 | **LibSQL (Turso)** | Edge | `sqlx` (sqlite wire) | SQLite catalog & `PRAGMA` routines | Edge embedded replica and Turso cloud database compatibility, SQLite syntax and rebuild DDL. |
-| **Universal / Any SQL** | Universal | Dynamic Dispatcher | Auto-routed by protocol & dialect family | Connect to **ANY** SQL database via raw connection URL or host/port credentials. Choose from 6 dialect families (`postgres`, `mysql`, `sqlite`, `mssql`, `duckdb`, `ansi`) for precise quoting and pagination. |
+| **Redis / KeyDB / Valkey** | NoSQL & Cache | Native RESP2 (`tokio`) | Virtual tables (`redis_keys`, `redis_server_info`, `redis_client_list`) | Pure async RESP2 protocol over TCP, supports direct Redis CLI commands (`PING`, `GET`, `SET`, `HGETALL`, `KEYS *`, `SCAN 0`, `INFO`, `DBSIZE`, `CLIENT LIST`) and SQL projection (`SELECT * FROM redis_keys LIMIT 100`), SSH tunneling compatible, default port 6379. |
+| **Universal / Any SQL** | Universal | Dynamic Dispatcher | Auto-routed by protocol & dialect family | Connect to **ANY** SQL database via raw connection URL or host/port credentials. Choose from 7 dialect families (`postgres`, `mysql`, `redis`, `sqlite`, `mssql`, `duckdb`, `ansi`) for precise quoting and pagination. |
 
 ### Universal Connection Setup
 

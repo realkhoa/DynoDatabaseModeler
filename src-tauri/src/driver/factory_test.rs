@@ -179,6 +179,21 @@ async fn test_factory_clickhouse_unreachable() {
 }
 
 #[tokio::test]
+async fn test_factory_redis_unreachable() {
+    let config = create_test_config(
+        "redis-fail",
+        DatabaseType::Redis,
+        Some("127.0.0.1"),
+        Some(59998),
+    );
+    let result = DriverFactory::create(&config).await;
+    assert!(
+        result.is_err(),
+        "Expected connection failure for unreachable Redis"
+    );
+}
+
+#[tokio::test]
 async fn test_factory_mssql_without_host() {
     let config = create_test_config("mssql-nohost", DatabaseType::Mssql, None, None);
     let result = DriverFactory::create(&config).await;

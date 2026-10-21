@@ -31,6 +31,8 @@ pub enum DatabaseType {
     Redshift,
     /// @brief ClickHouse columnar analytical database engine.
     ClickHouse,
+    /// @brief Redis in-memory key-value data store, cache and message broker.
+    Redis,
     /// @brief Universal / Generic SQL adapter supporting any SQL database via connection URL or standard dialect.
     Universal,
 }
