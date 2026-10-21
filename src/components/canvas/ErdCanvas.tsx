@@ -385,11 +385,15 @@ export const ErdCanvas: React.FC<ErdCanvasProps> = ({
     buildEdgesFromSchema()
   );
 
-  // Re-synchronize nodes and edges when schema or virtual relationships change
+  // Re-synchronize nodes when schema changes
   useEffect(() => {
     setNodes((prev) => buildNodesFromSchema(prev));
+  }, [schema, buildNodesFromSchema, setNodes]);
+
+  // Synchronize virtual relationships only when storage scope changes
+  useEffect(() => {
     setVirtualRels(loadVirtualRelationships(scope));
-  }, [schema, buildNodesFromSchema, setNodes, scope]);
+  }, [scope]);
 
   useEffect(() => {
     setEdges(buildEdgesFromSchema());

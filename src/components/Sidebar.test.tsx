@@ -284,4 +284,28 @@ describe('Sidebar component', () => {
 
     expect(screen.queryByRole('button', { name: /view rows for users/i })).toBeNull();
   });
+/**
+   * @brief Verifies inspect table structure & DDL button triggers callback with table schema.
+   */
+  it('triggers onInspectTableStructure with table schema when inspect button is clicked', () => {
+    const handleInspect = vi.fn();
+    render(
+      <Sidebar
+        connections={mockConnections}
+        activeConnection={mockConnections[0]}
+        tables={mockTables}
+        onOpenNewConnection={vi.fn()}
+        onSelectConnection={vi.fn()}
+        onSelectTable={vi.fn()}
+        onRefresh={vi.fn()}
+        onInspectTableStructure={handleInspect}
+      />
+    );
+
+    const inspectBtn = screen.getByTestId('inspect-table-users');
+    expect(inspectBtn).toBeDefined();
+
+    fireEvent.click(inspectBtn);
+    expect(handleInspect).toHaveBeenCalledWith(mockTables[0]);
+  });
 });

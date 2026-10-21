@@ -406,6 +406,39 @@ export function formatCanonicalType(dataType: CanonicalType): string {
 }
 
 /**
+ * @brief High-performance equality check comparing two canonical database column types.
+ * @details Avoids costly JSON stringification by directly inspecting primitive type tags and
+ * parameterized attributes (Decimal precision/scale, Char length, Varchar length, Custom string).
+ * @param a First CanonicalType operand to compare.
+ * @param b Second CanonicalType operand to compare.
+ * @return True if both canonical types represent semantically equivalent data types, false otherwise.
+ */
+export function isSameCanonicalType(a: CanonicalType, b: CanonicalType): boolean {
+  if (a === b) {
+    return true;
+  }
+  if (typeof a === 'string' || typeof b === 'string') {
+    return false;
+  }
+  if ('Decimal' in a && 'Decimal' in b) {
+    return (
+      (a.Decimal.precision ?? null) === (b.Decimal.precision ?? null) &&
+      (a.Decimal.scale ?? null) === (b.Decimal.scale ?? null)
+    );
+  }
+  if ('Char' in a && 'Char' in b) {
+    return (a.Char ?? null) === (b.Char ?? null);
+  }
+  if ('Varchar' in a && 'Varchar' in b) {
+    return (a.Varchar ?? null) === (b.Varchar ?? null);
+  }
+  if ('Custom' in a && 'Custom' in b) {
+    return a.Custom === b.Custom;
+  }
+  return false;
+}
+
+/**
  * @brief Returns standard default port number for a given database engine.
  * @param dbType Database engine dialect.
  * @return Default port number for the specified database engine.

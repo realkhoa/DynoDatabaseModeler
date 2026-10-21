@@ -19,6 +19,8 @@ import {
   ChevronsLeft,
   ChevronsRight,
   RotateCw,
+  Search,
+  X,
 } from 'lucide-react';
 import type { RowUpdatePayload } from '../../types/database';
 
@@ -180,7 +182,118 @@ export function parseEditedValue(input: string, original: unknown): unknown {
  * @param props Component properties.
  * @return Rendered EditableDataGrid element.
  */
-export const EditableDataGrid = React.forwardRef<EditableDataGridHandle, EditableDataGridProps>(
+/**
+ * @brief Properties accepted by the memoized GridRow component.
+ */
+interface GridRowProps {
+  /** @brief Zero-based row index. */
+  rIdx: number;
+  /** @brief Raw data cells for this row. */
+  row: any[];
+  /** @brief Header column names array. */
+  columns: string[];
+  /** @brief Selected column index in this row, or null if no cell in this row is selected. */
+  selectedColIndex: number | null;
+  /** @brief Editing column index in this row, or null if no cell in this row is being edited. */
+  editingColIndex: number | null;
+  /** @brief Map of dirty cell records in this row keyed by column index. */
+  dirtyMap?: Record<number, DirtyCellRecord>;
+  /** @brief Text value for the active input element if editing. */
+  editValue: string;
+  /** @brief Ref forwarded to the input element when editing. */
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  /** @brief Callback triggered on single cell click. */
+  onCellClick: (r: number, c: number) => void;
+  /** @brief Callback triggered on double cell click. */
+  onCellDoubleClick: (r: number, c: number) => void;
+  /** @brief Callback triggered when edit input changes. */
+  onEditChange: (val: string) => void;
+  /** @brief Callback triggered on keyboard events in edit input. */
+  onInputKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  /** @brief Callback triggered when edit input loses focus. */
+  onInputBlur: () => void;
+}
+
+/**
+ * @brief Memoized individual row component inside EditableDataGrid.
+ * @details Isolates rendering so that cell clicks and edits in one row do not force
+ * other unaffected rows to re-render, optimizing performance for large result sets.
+ * @param props GridRow properties.
+ * @return Rendered HTML table row.
+ */
+const GridRow: React.FC<GridRowProps> = React.memo(
+  ({
+    rIdx,
+    row,
+    columns,
+    selectedColIndex,
+    editingColIndex,
+    dirtyMap,
+    editValue,
+    inputRef,
+    onCellClick,
+    onCellDoubleClick,
+    onEditChange,
+    onInputKeyDown,
+    onInputBlur,
+  }) => {
+    return (
+      <tr className="border-b border-[#2b2d30] hover:bg-[#24262b]/80 transition-colors">
+        {columns.map((_, cIdx) => {
+          const isDirty = dirtyMap?.[cIdx] !== undefined;
+          const isEditing = editingColIndex === cIdx;
+          const isSelected = selectedColIndex === cIdx;
+          const effectiveValue = isDirty ? dirtyMap![cIdx].newValue : row?.[cIdx];
+
+          return (
+            <td
+              key={cIdx}
+              data-dirty={isDirty ? 'true' : undefined}
+              data-selected={isSelected ? 'true' : undefined}
+              onClick={() => onCellClick(rIdx, cIdx)}
+              onDoubleClick={() => onCellDoubleClick(rIdx, cIdx)}
+              className={`px-3 py-1.5 text-[11px] whitespace-nowrap max-w-[320px] truncate border-r border-[#2b2d30]/50 last:border-r-0 cursor-pointer relative transition-colors ${
+                isDirty
+                  ? 'border-amber-500/60 bg-amber-500/10 text-amber-200'
+                  : isSelected
+                  ? 'ring-1 ring-[#3a82f7] ring-inset bg-[#26282d]'
+                  : ''
+              }`}
+            >
+              {isEditing ? (
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={editValue}
+                  onChange={(e) => onEditChange(e.target.value)}
+                  onKeyDown={onInputKeyDown}
+                  onBlur={onInputBlur}
+                  className="w-full bg-[#121316] text-[#e6e8ea] border border-[#3a82f7] rounded-xs px-1 py-0.5 outline-hidden text-[11px] font-mono shadow-inner"
+                />
+              ) : (
+                <div className="flex items-center justify-between gap-1 overflow-hidden">
+                  <span className="truncate">
+                    {renderGridCellValue(effectiveValue)}
+                  </span>
+                  {isDirty && (
+                    <span
+                      className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0"
+                      title="Modified cell"
+                    />
+                  )}
+                </div>
+              )}
+            </td>
+          );
+        })}
+      </tr>
+    );
+  }
+);
+GridRow.displayName = 'GridRow';
+
+export const EditableDataGrid = React.memo(
+  React.forwardRef<EditableDataGridHandle, EditableDataGridProps>(
   (
     {
       tableName = 'unknown',
@@ -210,6 +323,7 @@ export const EditableDataGrid = React.forwardRef<EditableDataGridHandle, Editabl
     // Internal selected cell tracking when uncontrolled
     const [internalSelectedCell, setInternalSelectedCell] = useState<CellCoord | null>(null);
     const [saveError, setSaveError] = useState<string | null>(null);
+    const [filterText, setFilterText] = useState<string>('');
 
     const activeSelectedCell =
       controlledSelectedCell !== undefined ? controlledSelectedCell : internalSelectedCell;
@@ -472,6 +586,36 @@ export const EditableDataGrid = React.forwardRef<EditableDataGridHandle, Editabl
       [dirtyCount]
     );
 
+    const dirtyRowsMap = useMemo(() => {
+      const map: Record<number, Record<number, DirtyCellRecord>> = {};
+      for (const record of Object.values(dirtyCells)) {
+        if (!map[record.rowIndex]) {
+          map[record.rowIndex] = {};
+        }
+        map[record.rowIndex][record.colIndex] = record;
+      }
+      return map;
+    }, [dirtyCells]);
+
+    /**
+     * @brief Filtered row set preserving original row indices for dirty tracking and cell editing.
+     */
+    const filteredRowsWithIndices = useMemo(() => {
+      const q = filterText.trim().toLowerCase();
+      if (!q) {
+        return rows.map((row, idx) => ({ row, originalIndex: idx }));
+      }
+      return rows
+        .map((row, idx) => ({ row, originalIndex: idx }))
+        .filter(({ row }) => {
+          return row.some((cell) => {
+            if (cell === null || cell === undefined) return false;
+            const str = typeof cell === 'object' ? JSON.stringify(cell) : String(cell);
+            return str.toLowerCase().includes(q);
+          });
+        });
+    }, [rows, filterText]);
+
     return (
       <div className="relative flex flex-col h-full w-full bg-[#18191c] overflow-hidden select-text font-mono text-xs">
         {/* Read-only notice when no safe row locator is available */}
@@ -495,6 +639,41 @@ export const EditableDataGrid = React.forwardRef<EditableDataGridHandle, Editabl
             <span>{saveError}</span>
           </div>
         )}
+
+        {/* Quick Filter Bar */}
+        <div
+          data-testid="grid-filter-bar"
+          className="flex items-center justify-between px-3 py-1.5 bg-[#202226] border-b border-[#2e3035] text-xs shrink-0"
+        >
+          <div className="flex items-center gap-2 relative max-w-xs w-full">
+            <Search className="w-3.5 h-3.5 text-[#8c919a] absolute left-2 pointer-events-none" />
+            <input
+              type="text"
+              data-testid="grid-filter-input"
+              value={filterText}
+              onChange={(e) => setFilterText(e.target.value)}
+              placeholder="Filter results..."
+              aria-label="Filter results"
+              className="w-full bg-[#141517] border border-[#35373c] rounded pl-7 pr-6 py-1 text-[11px] text-[#e6e8ea] placeholder-[#6b7280] outline-none focus:border-[#3a82f7] transition-colors"
+            />
+            {filterText && (
+              <button
+                type="button"
+                data-testid="grid-filter-clear-btn"
+                onClick={() => setFilterText('')}
+                aria-label="Clear filter"
+                className="absolute right-1.5 text-[#8c919a] hover:text-[#e6e8ea] p-0.5 rounded cursor-pointer"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+          {filterText && (
+            <span data-testid="grid-filter-count" className="text-[11px] font-mono text-[#8c919a]">
+              Showing {filteredRowsWithIndices.length} of {rows.length} rows
+            </span>
+          )}
+        </div>
 
         {/* Scrollable Data Table Container */}
         <div className="flex-1 overflow-auto">
@@ -521,65 +700,37 @@ export const EditableDataGrid = React.forwardRef<EditableDataGridHandle, Editabl
                     (0 rows returned)
                   </td>
                 </tr>
-              ) : (
-                rows.map((_row, rIdx) => (
-                  <tr
-                    key={rIdx}
-                    className="border-b border-[#2b2d30] hover:bg-[#24262b]/80 transition-colors"
+              ) : filteredRowsWithIndices.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={columns.length || 1}
+                    className="px-3 py-6 text-center text-[#8c919a] italic"
                   >
-                    {columns.map((_, cIdx) => {
-                      const key = `${rIdx}_${cIdx}`;
-                      const isDirty = dirtyCells[key] !== undefined;
-                      const isEditing =
-                        editingCell?.rowIndex === rIdx && editingCell?.colIndex === cIdx;
-                      const isSelected =
-                        activeSelectedCell?.rowIndex === rIdx &&
-                        activeSelectedCell?.colIndex === cIdx;
-
-                      const effectiveValue = getCellValue(rIdx, cIdx);
-
-                      return (
-                        <td
-                          key={cIdx}
-                          data-dirty={isDirty ? 'true' : undefined}
-                          data-selected={isSelected ? 'true' : undefined}
-                          onClick={() => handleCellClick(rIdx, cIdx)}
-                          onDoubleClick={() => handleCellDoubleClick(rIdx, cIdx)}
-                          className={`px-3 py-1.5 text-[11px] whitespace-nowrap max-w-[320px] truncate border-r border-[#2b2d30]/50 last:border-r-0 cursor-pointer relative transition-colors ${
-                            isDirty
-                              ? 'border-amber-500/60 bg-amber-500/10 text-amber-200'
-                              : isSelected
-                              ? 'ring-1 ring-[#3a82f7] ring-inset bg-[#26282d]'
-                              : ''
-                          }`}
-                        >
-                          {isEditing ? (
-                            <input
-                              ref={inputRef}
-                              type="text"
-                              value={editValue}
-                              onChange={(e) => setEditValue(e.target.value)}
-                              onKeyDown={handleInputKeyDown}
-                              onBlur={commitEdit}
-                              className="w-full bg-[#121316] text-[#e6e8ea] border border-[#3a82f7] rounded-xs px-1 py-0.5 outline-hidden text-[11px] font-mono shadow-inner"
-                            />
-                          ) : (
-                            <div className="flex items-center justify-between gap-1 overflow-hidden">
-                              <span className="truncate">
-                                {renderGridCellValue(effectiveValue)}
-                              </span>
-                              {isDirty && (
-                                <span
-                                  className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0"
-                                  title="Modified cell"
-                                />
-                              )}
-                            </div>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
+                    (No rows match filter &quot;{filterText}&quot;)
+                  </td>
+                </tr>
+              ) : (
+                filteredRowsWithIndices.map(({ row, originalIndex }) => (
+                  <GridRow
+                    key={originalIndex}
+                    rIdx={originalIndex}
+                    row={row}
+                    columns={columns}
+                    selectedColIndex={
+                      activeSelectedCell?.rowIndex === originalIndex ? activeSelectedCell.colIndex : null
+                    }
+                    editingColIndex={
+                      editingCell?.rowIndex === originalIndex ? editingCell.colIndex : null
+                    }
+                    dirtyMap={dirtyRowsMap[originalIndex]}
+                    editValue={editValue}
+                    inputRef={inputRef}
+                    onCellClick={handleCellClick}
+                    onCellDoubleClick={handleCellDoubleClick}
+                    onEditChange={setEditValue}
+                    onInputKeyDown={handleInputKeyDown}
+                    onInputBlur={commitEdit}
+                  />
                 ))
               )}
             </tbody>
@@ -760,7 +911,7 @@ export const EditableDataGrid = React.forwardRef<EditableDataGridHandle, Editabl
         )}
       </div>
     );
-  }
+  })
 );
 
 EditableDataGrid.displayName = 'EditableDataGrid';

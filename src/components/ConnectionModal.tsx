@@ -62,7 +62,8 @@ export function formatErrorMessage(err: unknown): string {
  * @param props Component properties configuring modal lifecycle and submission callbacks.
  * @return Rendered modal dialog element or null if closed.
  */
-export const ConnectionModal: React.FC<ConnectionModalProps> = ({
+export const ConnectionModal: React.FC<ConnectionModalProps> = React.memo(({
+
   isOpen,
   onClose,
   onConnect,
@@ -508,4 +509,5 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
       </div>
     </div>
   );
-};
+});
+ConnectionModal.displayName = 'ConnectionModal';

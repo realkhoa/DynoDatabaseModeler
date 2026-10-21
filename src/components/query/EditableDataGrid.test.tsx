@@ -652,4 +652,85 @@ describe('EditableDataGrid component', () => {
       confirmSpy.mockRestore();
     });
   });
+describe('Quick client-side filter bar', () => {
+    /**
+     * @brief Verifies that typing into the filter input restricts visible rows.
+     */
+    it('filters rows matching text and shows row count indicator', () => {
+      render(<EditableDataGrid columns={columns} rows={rows} />);
+
+      const filterInput = screen.getByTestId('grid-filter-input');
+      expect(filterInput).toBeDefined();
+
+      // Filter by 'Bob'
+      fireEvent.change(filterInput, { target: { value: 'Bob' } });
+
+      expect(screen.getByText('Bob')).toBeDefined();
+      expect(screen.queryByText('Alice')).toBeNull();
+      expect(screen.queryByText('Charlie')).toBeNull();
+      expect(screen.getByTestId('grid-filter-count').textContent).toContain('Showing 1 of 3 rows');
+
+      // Clear filter via clear button
+      const clearBtn = screen.getByTestId('grid-filter-clear-btn');
+      fireEvent.click(clearBtn);
+
+      expect(screen.getByText('Alice')).toBeDefined();
+      expect(screen.getByText('Bob')).toBeDefined();
+      expect(screen.getByText('Charlie')).toBeDefined();
+      expect(screen.queryByTestId('grid-filter-count')).toBeNull();
+    });
+
+    /**
+     * @brief Verifies message when no rows match the active filter.
+     */
+    it('shows placeholder message when no rows match the filter', () => {
+      render(<EditableDataGrid columns={columns} rows={rows} />);
+
+      const filterInput = screen.getByTestId('grid-filter-input');
+      fireEvent.change(filterInput, { target: { value: 'nonexistent_query' } });
+
+      expect(screen.getByText(/No rows match filter/i)).toBeDefined();
+    });
+
+    /**
+     * @brief Verifies editing a row while filtered preserves the original row index in save payloads.
+     */
+    it('preserves correct row index when editing while filtered', async () => {
+      const onSave = vi.fn().mockResolvedValue(undefined);
+      render(
+        <EditableDataGrid
+          tableName="users"
+          columns={columns}
+          rows={rows}
+          primaryKeyColumns={['id']}
+          onSave={onSave}
+        />
+      );
+
+      const filterInput = screen.getByTestId('grid-filter-input');
+      // Filter for Charlie (original row index 2)
+      fireEvent.change(filterInput, { target: { value: 'Charlie' } });
+
+      const charlieCell = screen.getByText('Charlie').closest('td')!;
+      fireEvent.doubleClick(charlieCell);
+
+      const input = charlieCell.querySelector('input')!;
+      fireEvent.change(input, { target: { value: 'Charles' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+
+      const saveButton = screen.getByRole('button', { name: /save changes/i });
+      fireEvent.click(saveButton);
+
+      await waitFor(() => {
+        expect(onSave).toHaveBeenCalledWith([
+          {
+            table: 'users',
+            primary_keys: { id: 3 },
+            updated_values: { name: 'Charles' },
+            expect_single_row: true,
+          },
+        ]);
+      });
+    });
+  });
 });

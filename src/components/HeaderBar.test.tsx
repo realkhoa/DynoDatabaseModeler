@@ -123,5 +123,26 @@ describe('HeaderBar component', () => {
     fireEvent.click(diffBtn);
     expect(handleOpenDiff).toHaveBeenCalledTimes(1);
   });
+/**
+   * @brief Verifies Processes button renders and triggers onOpenProcesses callback.
+   */
+  it('renders Processes button when connected and triggers onOpenProcesses callback', () => {
+    const handleOpenProcesses = vi.fn();
+    render(
+      <HeaderBar
+        activeTab="erd"
+        onSelectTab={vi.fn()}
+        activeConnection={mockConnection}
+        onOpenNewConnection={vi.fn()}
+        onOpenProcesses={handleOpenProcesses}
+      />
+    );
+
+    const processesBtn = screen.getByTestId('header-processes-btn');
+    expect(processesBtn).toBeDefined();
+
+    fireEvent.click(processesBtn);
+    expect(handleOpenProcesses).toHaveBeenCalledTimes(1);
+  });
 });
 

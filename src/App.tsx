@@ -17,6 +17,8 @@ import { TableDrawer } from './components/canvas/TableDrawer';
 import { DiffModal } from './components/diff/DiffModal';
 import { QueryEditorTab } from './components/query/QueryEditorTab';
 import { SettingsView } from './components/SettingsView';
+import { ProcessListModal } from './components/query/ProcessListModal';
+import { TableStructureModal } from './components/query/TableStructureModal';
 import { api } from './api/ipc';
 import { computePendingChangesCount } from './utils/diffCount';
 import { connectionScope } from './utils/connectionScope';
@@ -128,6 +130,9 @@ export default function App(): React.ReactElement {
   const [isDiffModalOpen, setIsDiffModalOpen] = useState(false);
   const [, setIsComputingDiff] = useState(false);
 
+  // Process monitor & table structure inspection modal states
+  const [isProcessModalOpen, setIsProcessModalOpen] = useState(false);
+  const [inspectingTable, setInspectingTable] = useState<TableSchema | null>(null);
   // SQL Query Execution & Server-side Pagination State
   const [activeSqlQuery, setActiveSqlQuery] = useState<string | null>(null);
   const [autoRunQuery, setAutoRunQuery] = useState<boolean>(false);
@@ -590,6 +595,57 @@ export default function App(): React.ReactElement {
     [activeConnection, schema]
   );
 
+  /**
+   * @brief Handles editing a table by key from ERD canvas.
+   */
+  const handleEditTable = useCallback((key: string) => {
+    const targetTable = schema?.tables.find((t) => tableKey(t) === key) || null;
+    setDrawerTable(targetTable);
+    setIsDrawerOpen(true);
+  }, [schema]);
+
+  /**
+   * @brief Handles selecting a table node on the ERD canvas.
+   */
+  const handleSelectTable = useCallback((key: string) => {
+    setSelectedTableKey(key);
+  }, []);
+
+  /**
+   * @brief Opens the table drawer to create a new table.
+   */
+  const handleAddNewTable = useCallback(() => {
+    setDrawerTable(null);
+    setIsDrawerOpen(true);
+  }, []);
+
+  /**
+   * @brief Handles table node position updates after dragging on canvas.
+   */
+  const handleTablePositionChange = useCallback((key: string, pos: { x: number; y: number }) => {
+    setSchema((prev) =>
+      prev
+        ? {
+            ...prev,
+            tables: prev.tables.map((t) =>
+              tableKey(t) === key ? { ...t, ui_position: pos } : t
+            ),
+          }
+        : prev
+    );
+  }, []);
+
+  const existingTableKeys = useMemo(
+    () => (schema?.tables || []).map((t) => tableKey(t)),
+    [schema?.tables]
+  );
+
+  const activeCanvasSchema = useMemo(() => {
+    if (schema) return schema;
+    if (activeConnection) return { database_name: activeConnection.database, tables: [] };
+    return { database_name: '', tables: [] };
+  }, [schema, activeConnection]);
+
   return (
     <div className="flex h-screen w-screen flex-col bg-[#1e1f22] text-[#e6e8ea] overflow-hidden font-sans">
       {/* Top HeaderBar */}
@@ -609,6 +665,7 @@ export default function App(): React.ReactElement {
         }}
         onOpenDiff={handleOpenDiff}
         pendingChangesCount={pendingChangesCount}
+        onOpenProcesses={() => setIsProcessModalOpen(true)}
       />
 
       {/* Main Workspace (Sidebar + Canvas / Editor) */}
@@ -643,6 +700,7 @@ export default function App(): React.ReactElement {
           }}
           isLoadingDatabases={isLoadingDatabases}
           onViewTableData={handleViewTableData}
+          onInspectTableStructure={(table) => setInspectingTable(table)}
         />
 
         {/* Center / Right Content Panel */}
@@ -707,33 +765,12 @@ export default function App(): React.ReactElement {
             ) : (
               <div className="flex-1 relative h-full w-full overflow-hidden">
                 <ErdCanvas
-                  schema={schema || { database_name: activeConnection.database, tables: [] }}
+                  schema={activeCanvasSchema}
                   storageScope={connectionScope(activeConnection)}
-                  onEditTable={(key) => {
-                    const targetTable =
-                      schema?.tables.find((t) => tableKey(t) === key) || null;
-                    setDrawerTable(targetTable);
-                    setIsDrawerOpen(true);
-                  }}
-                  onSelectTable={(key) => {
-                    setSelectedTableKey(key);
-                  }}
-                  onAddNewTable={() => {
-                    setDrawerTable(null);
-                    setIsDrawerOpen(true);
-                  }}
-                  onTablePositionChange={(key, pos) => {
-                    setSchema((prev) =>
-                      prev
-                        ? {
-                            ...prev,
-                            tables: prev.tables.map((t) =>
-                              tableKey(t) === key ? { ...t, ui_position: pos } : t
-                            ),
-                          }
-                        : prev
-                    );
-                  }}
+                  onEditTable={handleEditTable}
+                  onSelectTable={handleSelectTable}
+                  onAddNewTable={handleAddNewTable}
+                  onTablePositionChange={handleTablePositionChange}
                   onOpenDiff={handleOpenDiff}
                   pendingChangesCount={pendingChangesCount}
                   onViewTableData={handleViewTableData}
@@ -741,7 +778,7 @@ export default function App(): React.ReactElement {
                 <TableDrawer
                   isOpen={isDrawerOpen}
                   table={drawerTable}
-                  existingTableKeys={(schema?.tables || []).map((t) => tableKey(t))}
+                  existingTableKeys={existingTableKeys}
                   onClose={() => setIsDrawerOpen(false)}
                   onSaveTable={handleSaveTable}
                   onDeleteTable={handleDeleteTable}
@@ -807,6 +844,25 @@ export default function App(): React.ReactElement {
         warnings={ddlWarnings}
         onClose={() => setIsDiffModalOpen(false)}
         onExecute={handleExecuteMigration}
+      />
+      {/* Active Database Process Activity Monitor Modal */}
+      <ProcessListModal
+        isOpen={isProcessModalOpen}
+        activeConnection={activeConnection}
+        onClose={() => setIsProcessModalOpen(false)}
+      />
+
+      {/* Table Structure, Metadata & DDL Inspector Modal */}
+      <TableStructureModal
+        isOpen={Boolean(inspectingTable)}
+        table={inspectingTable}
+        dbType={activeConnection?.db_type ?? 'Postgres'}
+        onClose={() => setInspectingTable(null)}
+        onOpenInWorksheet={(ddlQuery) => {
+          setActiveSqlQuery(ddlQuery);
+          setAutoRunQuery(false);
+          setActiveTab('sql');
+        }}
       />
     </div>
   );

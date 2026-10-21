@@ -13,6 +13,7 @@ import {
   Unplug,
   Plus,
   GitCompare,
+  Activity,
 } from 'lucide-react';
 import type { ConnectionConfig } from '../types/database';
 
@@ -39,6 +40,8 @@ export interface HeaderBarProps {
   onOpenDiff?: () => void;
   /** @brief Number of detected pending structural schema changes between live and desired schemas. */
   pendingChangesCount?: number;
+  /** @brief Optional callback triggered to open the active database processes and query monitor. */
+  onOpenProcesses?: () => void;
 }
 
 /**
@@ -46,7 +49,7 @@ export interface HeaderBarProps {
  * @param props Component properties configuring active tabs and connection state.
  * @return Rendered HeaderBar element.
  */
-export const HeaderBar: React.FC<HeaderBarProps> = ({
+export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
   activeTab,
   onSelectTab,
   activeConnection,
@@ -54,6 +57,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   onOpenNewConnection,
   onOpenDiff,
   pendingChangesCount = 0,
+  onOpenProcesses,
 }) => {
   return (
     <header className="h-11 bg-[#18191c] border-b border-[#35373c] flex items-center justify-between px-3 select-none shrink-0 text-xs">
@@ -135,6 +139,19 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
               </button>
             )}
 
+            {onOpenProcesses && (
+              <button
+                type="button"
+                data-testid="header-processes-btn"
+                onClick={onOpenProcesses}
+                className="flex items-center space-x-1.5 px-2.5 py-1 bg-[#24262b] hover:bg-[#2f3238] border border-[#35373c] text-[#e6e8ea] rounded font-medium shadow-xs transition-colors cursor-pointer"
+                title="Active database processes & query monitor"
+              >
+                <Activity className="w-3.5 h-3.5 text-amber-400" />
+                <span>Processes</span>
+              </button>
+            )}
+
             <div className="flex items-center space-x-2 bg-[#1e1f22] border border-[#35373c] px-2.5 py-1 rounded">
               <span
                 className="w-2 h-2 rounded-full bg-[#20c997] animate-pulse"
@@ -178,4 +195,5 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
       </div>
     </header>
   );
-};
+});
+HeaderBar.displayName = 'HeaderBar';

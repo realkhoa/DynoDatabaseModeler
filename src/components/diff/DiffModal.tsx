@@ -45,7 +45,8 @@ export interface DiffModalProps {
  * @param props Component configuration, diff data, DDL statements, and execution callbacks.
  * @return Rendered modal overlay or null when closed.
  */
-export const DiffModal: React.FC<DiffModalProps> = ({
+export const DiffModal: React.FC<DiffModalProps> = React.memo(({
+
   isOpen,
   diff,
   generatedDdl,
@@ -443,4 +444,5 @@ export const DiffModal: React.FC<DiffModalProps> = ({
       </div>
     </div>
   );
-};
+});
+DiffModal.displayName = 'DiffModal';

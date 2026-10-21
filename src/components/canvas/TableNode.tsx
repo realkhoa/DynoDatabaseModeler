@@ -5,7 +5,7 @@
  * associations, nullability indicators, and per-column connection handles for relationship curves.
  */
 
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Eye, Key, Link as LinkIcon, Table as TableIcon } from 'lucide-react';
 import {
@@ -51,8 +51,18 @@ export interface TableNodeProps {
  * @param props Node props including table metadata payload and selection state.
  * @return Rendered table card element.
  */
-export const TableNode = memo(({ data, selected }: TableNodeProps) => {
-  const { label, schema, columns = [], foreignKeys = [], onEdit, onViewData } = data;
+export const TableNode = memo(
+  ({ data, selected }: TableNodeProps) => {
+    const { label, schema, columns = [], foreignKeys = [], onEdit, onViewData } = data;
+
+    const fkColumnNames = useMemo(() => {
+      const set = new Set<string>();
+      for (const fk of foreignKeys) {
+        if (fk.source_column) set.add(fk.source_column);
+        if (fk.target_column) set.add(fk.target_column);
+      }
+      return set;
+    }, [foreignKeys]);
 
   /**
    * @brief Handles double click on the table header to trigger inspection/edit drawer.
@@ -107,9 +117,7 @@ export const TableNode = memo(({ data, selected }: TableNodeProps) => {
       <div className="divide-y divide-[#2f323a]">
         {columns.map((col) => {
           const typeStr = formatCanonicalType(col.data_type);
-          const isForeignKey = foreignKeys.some(
-            (fk) => fk.source_column === col.name || fk.target_column === col.name
-          );
+          const isForeignKey = fkColumnNames.has(col.name);
 
           return (
             <div
@@ -191,6 +199,30 @@ export const TableNode = memo(({ data, selected }: TableNodeProps) => {
       </div>
     </div>
   );
-});
+  },
+  areTableNodesEqual
+);
+
+/**
+ * @brief Custom memoization comparator for TableNode to eliminate unnecessary canvas re-renders.
+ * @param prev Previous node properties.
+ * @param next Next node properties.
+ * @return True if table node props are visually identical.
+ */
+function areTableNodesEqual(
+  prev: TableNodeProps,
+  next: TableNodeProps
+): boolean {
+  return (
+    prev.selected === next.selected &&
+    prev.id === next.id &&
+    prev.data.label === next.data.label &&
+    prev.data.schema === next.data.schema &&
+    prev.data.columns === next.data.columns &&
+    prev.data.foreignKeys === next.data.foreignKeys &&
+    prev.data.onEdit === next.data.onEdit &&
+    prev.data.onViewData === next.data.onViewData
+  );
+}
 
 TableNode.displayName = 'TableNode';

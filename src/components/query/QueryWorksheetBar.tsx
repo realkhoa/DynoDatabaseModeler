@@ -65,7 +65,8 @@ export interface QueryWorksheetBarProps {
  * @param props Component properties configuring tabs and lifecycle handlers.
  * @return Rendered QueryWorksheetBar React element.
  */
-export const QueryWorksheetBar: React.FC<QueryWorksheetBarProps> = ({
+export const QueryWorksheetBar: React.FC<QueryWorksheetBarProps> = React.memo(
+  ({
   worksheets,
   activeId,
   onSelect,
@@ -241,4 +242,23 @@ export const QueryWorksheetBar: React.FC<QueryWorksheetBarProps> = ({
       </button>
     </div>
   );
-};
+  },
+  (prev, next) => {
+    if (prev.activeId !== next.activeId) return false;
+    if (prev.onSelect !== next.onSelect) return false;
+    if (prev.onAdd !== next.onAdd) return false;
+    if (prev.onClose !== next.onClose) return false;
+    if (prev.onRename !== next.onRename) return false;
+    if (prev.worksheets.length !== next.worksheets.length) return false;
+    for (let i = 0; i < prev.worksheets.length; i++) {
+      if (
+        prev.worksheets[i].id !== next.worksheets[i].id ||
+        prev.worksheets[i].title !== next.worksheets[i].title
+      ) {
+        return false;
+      }
+    }
+    return true;
+  }
+);
+QueryWorksheetBar.displayName = 'QueryWorksheetBar';

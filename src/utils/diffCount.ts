@@ -7,7 +7,32 @@
  */
 
 import type { DatabaseSchema, TableSchema } from '../types/database';
-import { tableKey } from '../types/database';
+import { isSameCanonicalType, tableKey } from '../types/database';
+
+/**
+ * @brief Computes a composite string signature representing a foreign key definition.
+ * @details Concatenates constraint name, source column, target table/column,
+ * and referential actions for O(1) set lookup.
+ * @param fk Foreign key specification object.
+ * @return Unique composite string signature.
+ */
+function fkSignature(fk: {
+  constraint_name: string;
+  source_column: string;
+  target_table: string;
+  target_column: string;
+  on_delete: string;
+  on_update: string;
+}): string {
+  return [
+    fk.constraint_name,
+    fk.source_column,
+    fk.target_table,
+    fk.target_column,
+    fk.on_delete,
+    fk.on_update,
+  ].join('|');
+}
 
 /**
  * @brief Computes the count of structural differences between live and desired database schemas.
@@ -91,7 +116,7 @@ export function computePendingChangesCount(
         continue;
       }
       const changed =
-        JSON.stringify(liveCol.data_type) !== JSON.stringify(desiredCol.data_type) ||
+        !isSameCanonicalType(liveCol.data_type, desiredCol.data_type) ||
         liveCol.is_nullable !== desiredCol.is_nullable ||
         liveCol.is_primary_key !== desiredCol.is_primary_key ||
         liveCol.is_auto_increment !== desiredCol.is_auto_increment ||
@@ -101,37 +126,20 @@ export function computePendingChangesCount(
       }
     }
 
-    for (const desiredFk of desiredTable.foreign_keys) {
-      if (!liveTable.foreign_keys.some((fk) => fk === desiredFk || sameFk(fk, desiredFk))) {
+    const liveFkSet = new Set(liveTable.foreign_keys.map(fkSignature));
+    const desiredFkSet = new Set(desiredTable.foreign_keys.map(fkSignature));
+
+    for (const sig of desiredFkSet) {
+      if (!liveFkSet.has(sig)) {
         count += 1;
       }
     }
-    for (const liveFk of liveTable.foreign_keys) {
-      if (!desiredTable.foreign_keys.some((fk) => fk === liveFk || sameFk(fk, liveFk))) {
+    for (const sig of liveFkSet) {
+      if (!desiredFkSet.has(sig)) {
         count += 1;
       }
     }
   }
 
   return count;
-}
-
-/**
- * @brief Compares two foreign key definitions by identity and target.
- * @param a First foreign key definition.
- * @param b Second foreign key definition.
- * @return `true` when both describe the same constraint with identical rules.
- */
-function sameFk(
-  a: { constraint_name: string; source_column: string; target_table: string; target_column: string; on_delete: string; on_update: string },
-  b: { constraint_name: string; source_column: string; target_table: string; target_column: string; on_delete: string; on_update: string }
-): boolean {
-  return (
-    a.constraint_name === b.constraint_name &&
-    a.source_column === b.source_column &&
-    a.target_table === b.target_table &&
-    a.target_column === b.target_column &&
-    a.on_delete === b.on_delete &&
-    a.on_update === b.on_update
-  );
 }

@@ -5,7 +5,7 @@
  * connection creator trigger, table search filter, and list of database tables with column counts.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Database,
   Plus,
@@ -16,6 +16,7 @@ import {
   ChevronDown,
   Layers,
   Eye,
+  FileCode2,
 } from 'lucide-react';
 import type { ConnectionConfig, TableSchema } from '../types/database';
 import { tableKey } from '../types/database';
@@ -52,6 +53,8 @@ export interface SidebarProps {
   isLoadingDatabases?: boolean;
   /** @brief Callback triggered when user requests to view the rows of a specific table. */
   onViewTableData?: (tableKey: string) => void;
+  /** @brief Callback triggered when user requests to inspect table structure, columns, and DDL. */
+  onInspectTableStructure?: (table: TableSchema) => void;
 }
 
 /**
@@ -59,7 +62,7 @@ export interface SidebarProps {
  * @param props Component properties configuring connections, tables, and interaction handlers.
  * @return Rendered Sidebar element.
  */
-export const Sidebar: React.FC<SidebarProps> = ({
+export const Sidebar: React.FC<SidebarProps> = React.memo(({
   connections,
   activeConnection,
   tables,
@@ -74,14 +77,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onRefreshDatabases,
   isLoadingDatabases = false,
   onViewTableData,
+  onInspectTableStructure,
 }) => {
   const [filter, setFilter] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   // Filter on the qualified name so schema-qualified tables are both visible and searchable.
-  const filteredTables = tables.filter((t) =>
-    tableKey(t).toLowerCase().includes(filter.toLowerCase())
-  );
+  const filteredTables = useMemo(() => {
+    const q = filter.toLowerCase().trim();
+    if (!q) return tables;
+    return tables.filter((t) => tableKey(t).toLowerCase().includes(q));
+  }, [tables, filter]);
 
   return (
     <aside
@@ -355,6 +361,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       <Eye className="w-3.5 h-3.5" />
                     </button>
                   )}
+                  {onInspectTableStructure && (
+                    <button
+                      type="button"
+                      data-testid={`inspect-table-${key}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onInspectTableStructure(t);
+                      }}
+                      title={`Inspect structure & DDL for ${key}`}
+                      aria-label={`Inspect structure & DDL for ${key}`}
+                      className="p-1 text-[#8c919a] hover:text-amber-400 hover:bg-[#1e2024] rounded transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 shrink-0 ml-1 cursor-pointer"
+                    >
+                      <FileCode2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -363,4 +384,5 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
     </aside>
   );
-};
+});
+Sidebar.displayName = 'Sidebar';

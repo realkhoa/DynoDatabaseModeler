@@ -542,4 +542,73 @@ describe('App root component', () => {
     expect(tableSuggestion).toBeDefined();
     expect(tableSuggestion?.detail).toContain('2 columns');
   });
+/**
+   * @brief Verifies opening active database processes monitor from HeaderBar.
+   */
+  it('opens and closes ProcessListModal from HeaderBar button', async () => {
+    vi.mocked(api.connect).mockResolvedValue(true);
+    vi.mocked(api.introspectSchema).mockResolvedValue(mockSchema);
+
+    render(<App />);
+
+    // Connect via sample connection in sidebar dropdown
+    const switchBtn = screen.getByTitle('Switch database connection');
+    fireEvent.click(switchBtn);
+
+    const profileOption = screen.getByText('Sample In-Memory SQLite');
+    fireEvent.click(profileOption);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('header-processes-btn')).toBeDefined();
+    });
+
+    // Click Processes button
+    const processesBtn = screen.getByTestId('header-processes-btn');
+    fireEvent.click(processesBtn);
+
+    expect(screen.getByRole('dialog', { name: /active database processes & queries/i })).toBeDefined();
+
+    // Close modal
+    const closeBtn = screen.getByRole('button', { name: /close modal/i });
+    fireEvent.click(closeBtn);
+
+    expect(screen.queryByRole('dialog', { name: /active database processes & queries/i })).toBeNull();
+  });
+
+  /**
+   * @brief Verifies opening TableStructureModal from Sidebar inspect button.
+   */
+  it('opens TableStructureModal from Sidebar inspect button and navigates to query editor on DDL view', async () => {
+    vi.mocked(api.connect).mockResolvedValue(true);
+    vi.mocked(api.introspectSchema).mockResolvedValue(mockSchema);
+
+    render(<App />);
+
+    // Connect via sample connection
+    const switchBtn = screen.getByTitle('Switch database connection');
+    fireEvent.click(switchBtn);
+
+    const profileOption = screen.getByText('Sample In-Memory SQLite');
+    fireEvent.click(profileOption);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('inspect-table-customers')).toBeDefined();
+    });
+
+    const inspectBtn = screen.getByTestId('inspect-table-customers');
+    fireEvent.click(inspectBtn);
+
+    expect(screen.getByRole('dialog', { name: /customers/i })).toBeDefined();
+
+    // Click "Open DDL in Query Tab"
+    const ddlTab = screen.getByRole('button', { name: /ddl script/i });
+    fireEvent.click(ddlTab);
+
+    const openDdlBtn = screen.getByRole('button', { name: /open in worksheet/i });
+    fireEvent.click(openDdlBtn);
+
+    // Modal closes and user is redirected to SQL Query Console
+    expect(screen.queryByRole('dialog', { name: /customers/i })).toBeNull();
+    expect(screen.getByText('SQL Query Console')).toBeDefined();
+  });
 });

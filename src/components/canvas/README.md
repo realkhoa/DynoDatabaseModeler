@@ -50,6 +50,13 @@ The `canvas` module provides an interactive, dark-themed Entity-Relationship Dia
 
 ---
 
+### 7. High-Performance Canvas Rendering
+- **TableNode Custom Comparator**: `TableNode` is memoized with a custom comparison function checking table label, schema namespace, column count/definitions, foreign keys, and selection state. Dragging or selecting one table prevents all other unaffected tables from re-rendering.
+- **O(1) Foreign Key Column Resolution**: Precomputes a `Set<string>` of foreign key column names using `useMemo`, eliminating the $O(Columns \times FKs)$ nested iteration bottleneck during column rendering.
+- **Memoized Edge Notations**: Both `CardinalityMarker` and `CrowsFootEdge` are wrapped in `React.memo` to avoid re-evaluating SVG geometry and smoothstep bezier paths during unrelated canvas updates.
+
+---
+
 ## Testing & Quality Verification
 
 Run unit and component tests with Vitest:

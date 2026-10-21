@@ -29,7 +29,20 @@ The `src/components/query` module provides an interactive SQL query workspace an
 - **Interactive Multi-Format Data Transfer Wizard (`ExportModal`)**: Inspired by DBeaver's data export stream engine, allows exporting tabular query results to CSV, JSON, Markdown tables, and SQL INSERT statements, complete with live preview, formatting options, copy-to-clipboard, and direct file download.
 - **Deep Value Inspector Drawer (`ValueInspectorDrawer`)**: Slide-out drawer for inspecting cell contents with syntax highlighting (JSON/XML/Text/Image), edit application, and comprehensive telemetry metrics (characters, words, lines, byte size).
 - A clean, modern tabular results grid (`EditableDataGrid`) featuring inline cell editing, dirty-cell tracking, staging mutations bar, sticky headers, and smart data cell formatters for `NULL`, boolean flags, numbers, strings, and JSON objects/arrays.
+- **Quick Data Filter Bar (`EditableDataGrid`)**: Client-side instant regex/text filtering across all columns with match counter badge and dirty cell coordinate preservation.
+- **Mock Data Generator (`MockDataGeneratorModal`)**: Configures and generates synthetic batches with 12+ Faker generators, null ratio controls, and direct live SQL execution or worksheet DDL output.
+- **Process Activity Monitor & Kill Query (`ProcessListModal`)**: Live inspection of active queries and sessions across PostgreSQL, MySQL, and MSSQL with safe termination dialog.
+- **Table Structure & DDL Inspector (`TableStructureModal`)**: Detailed inspection of columns, types, indexes, foreign keys, and dialect DDL scripts.
+- **SQL Snippets & Scratchpad (`ScratchpadModal`)**: Persistent categorized snippets, templates for maintenance and diagnostics, and one-click editor cursor insertion.
 - Prominent error banners displaying actionable dialect error diagnostics whenever execution fails.
+
+---
+
+### 7. High-Performance Grid & Editor Rendering
+- **Fine-Grained Row Memoization (`GridRow`)**: Tabular data cells are rendered inside a memoized `GridRow` component. When selecting or editing a cell in a 500-row result set, only the previous active row and newly targeted row re-render; the other 498 rows skip virtual DOM reconciliation completely.
+- **Decoupled Monaco Editor Keystrokes**: Typing inside Monaco Editor updates the local query buffer immediately without continuously re-cloning the global worksheet array state.
+- **Memoized Worksheet Tab Bar (`QueryWorksheetBar`)**: `QueryWorksheetBar` uses a custom memo comparator that verifies tab IDs and display titles, ensuring that editor typing keystrokes never trigger tab bar DOM re-renders.
+- **Memoized Grid Properties**: Pagination configurations, edit disable reasons, and cell coordinate lookups are strictly memoized in `QueryEditorTab`, allowing `EditableDataGrid` to bail out during editor typing.
 
 ---
 

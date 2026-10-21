@@ -1,0 +1,35 @@
+name: 'CI - Tests & Quality Gate'
+
+on:
+  push:
+    branches:
+      - master
+      - main
+  pull_request:
+    branches:
+      - master
+      - main
+
+jobs:
+  test-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Bun runtime
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run TypeScript type check
+        run: bun x tsc --noEmit
+
+      - name: Run Vitest regression tests
+        run: bun run test
+
+      - name: Run Vite production bundle build
+        run: bun run build

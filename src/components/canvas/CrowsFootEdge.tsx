@@ -37,7 +37,7 @@ export type CrowsFootEdgeProps = EdgeProps<Edge<CrowsFootEdgeData, 'crowsFoot'>>
 
 /**
  * @brief Resolves default source and target cardinality symbols based on high-level relationship type.
- * @param data Optional CrowsFootEdgeData containing high-level cardinality or explicit endpoint overrides.
+ * @param data? Optional CrowsFootEdgeData containing high-level cardinality or explicit endpoint overrides.
  * @return Resolved source and target cardinality symbol names.
  */
 export function resolveCardinalities(data?: CrowsFootEdgeData): {
@@ -79,7 +79,7 @@ export function resolveCardinalities(data?: CrowsFootEdgeData): {
 
 /**
  * @brief Computes rotation angle in degrees for endpoint markers based on handle docking position.
- * @param position React Flow handle docking position ('left', 'right', 'top', 'bottom').
+ * @param position? React Flow handle docking position ('left', 'right', 'top', 'bottom').
  * @param _isSource Unused flag retained for backward compatibility.
  * @return Rotation angle in degrees orienting marker along the edge trajectory.
  */
@@ -121,7 +121,7 @@ export interface CardinalityMarkerProps {
  * @param props Marker variant, anchor coordinates, rotation angle, color, and endpoint position.
  * @return Renderable SVG group element containing cardinality symbols.
  */
-export const CardinalityMarker: React.FC<CardinalityMarkerProps> = ({
+export const CardinalityMarker: React.FC<CardinalityMarkerProps> = React.memo(({
   type,
   x,
   y,
@@ -205,7 +205,8 @@ export const CardinalityMarker: React.FC<CardinalityMarkerProps> = ({
       )}
     </g>
   );
-};
+});
+CardinalityMarker.displayName = 'CardinalityMarker';
 
 /**
  * @brief Custom React Flow edge component rendering formal Crow's Foot cardinality notations.
@@ -214,7 +215,7 @@ export const CardinalityMarker: React.FC<CardinalityMarkerProps> = ({
  * @param props React Flow EdgeProps containing coordinate data and edge metadata.
  * @return Renderable SVG path with Crow's Foot marker overlays.
  */
-export const CrowsFootEdge: React.FC<CrowsFootEdgeProps> = ({
+export const CrowsFootEdge: React.FC<CrowsFootEdgeProps> = React.memo(({
   id,
   sourceX,
   sourceY,
@@ -311,4 +312,5 @@ export const CrowsFootEdge: React.FC<CrowsFootEdgeProps> = ({
       )}
     </>
   );
-};
+});
+CrowsFootEdge.displayName = 'CrowsFootEdge';

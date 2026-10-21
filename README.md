@@ -17,6 +17,11 @@ DynoDbModeler is designed for developers, database administrators, and architect
 - **Rename-Safe Migrations**: Renaming a table in the modeler is recorded and applied as `ALTER TABLE ... RENAME TO`; every foreign key that referenced the old name follows it, so a rename never becomes a drop plus create.
 - **Safe Bidirectional Synchronization**: Deterministic schema diffing engine highlighting added tables, altered columns, and foreign key modifications, paired with a safe transactional DDL migration runner. Any change a dialect cannot express is reported explicitly instead of being silently skipped.
 - **Interactive SQL Query Workbench**: Multi-tab Monaco Editor with SQL syntax highlighting, keyboard execution shortcuts (`Ctrl+Enter` / `Cmd+Enter`), execution timing metrics, and responsive data grids with primary-key-verified inline editing.
+- **Synthetic Mock Data / Faker Generator (DBeaver / Antares inspired)**: Intelligent fake data generation engine with 12+ column heuristics (UUID, Email, Name, Address, Timestamps, Integers, Floats, Booleans, Custom Constant), configurable row counts, nullability ratio, auto-increment detection, and instant live SQL insertion or worksheet DDL script generation.
+- **Active Database Process Monitor & Session Manager (DBeaver / Antares inspired)**: Live process introspection for PostgreSQL (`pg_stat_activity`), MySQL (`SHOW FULL PROCESSLIST`), and MSSQL (`sys.dm_exec_requests`), displaying client IP, duration, status, and active query text with one-click query termination (`KILL` / `pg_terminate_backend`) backed by safety confirmation.
+- **Table Structure, Metadata & DDL Inspector (DBeaver / Antares inspired)**: In-depth table structure inspector providing full column specifications, canonical & dialect types, primary keys, nullability, defaults, secondary indexes, foreign key relationships, and a full dialect DDL script previewer with one-click copy and "Open in Worksheet".
+- **SQL Snippets & Scratchpad Manager (Antares / Beekeeper inspired)**: Categorized reusable SQL queries, built-in diagnostic and maintenance templates for PostgreSQL, MySQL, MSSQL, and SQLite, instant cursor insertion into active Monaco editors, and new worksheet tab creation.
+- **High-Performance Quick Filter Bar in Editable Data Grid (DBeaver / TablePlus inspired)**: Client-side regex & text filtering across all visible result columns with match counters and persistent dirty cell modification tracking.
 - **High-Fidelity ERD Export**: Schema definition export in JSON format, high-resolution SVG vector diagrams with inline computed styles, and raster PNG renderings.
 - **Secure Credential Handling**: Database and SSH passwords are stored in the operating system credential store (Windows Credential Manager, macOS Keychain, Linux Secret Service) and are never written to browser storage.
 - **Real SSH Bastion Tunnelling**: Database connections can be routed through an SSH bastion using genuine `direct-tcpip` forwarding with known-hosts verification.
@@ -150,6 +155,46 @@ DynoDbModeler implements a safe, deterministic bidirectional synchronization wor
 
 ---
 
+## 4c. Open-Source SQL Client Power Features (DBeaver, Antares, Sqlectron)
+
+DynoDbModeler synthesizes the best productivity workflows from leading open-source database tools:
+
+### 1. Synthetic Mock Data & Faker Generator (DBeaver / Antares)
+- **Heuristic Type Auto-Mapping**: Automatically detects column names and canonical types to assign generators (e.g., `email`, `uuid`, `first_name`, `last_name`, `company`, `city`, `country`, `street_address`, `phone`, `date_past`, `date_future`, `random_int`, `random_float`, `boolean`, `constant`).
+- **Batch Insertion**: Generates deterministic batches of 1 to 50,000 synthetic records.
+- **Null Percentage Control**: Fine-tune per-column null likelihood (0% to 100%) respecting database nullable constraints.
+- **Dual Insertion Mode**: Execute batch `INSERT` statements directly against the live database or export the formatted script into a new query worksheet tab for manual review.
+
+### 2. Active Database Process Monitor & Session Manager (Antares / DBeaver)
+- **Real-Time Introspection**:
+  - **PostgreSQL**: Queries `pg_stat_activity` for `pid`, `usename`, `datname`, `client_addr`, `state`, elapsed duration, and running SQL text.
+  - **MySQL**: Invokes `SHOW FULL PROCESSLIST` parsing connection IDs, database context, command state, and elapsed seconds.
+  - **MSSQL**: Interrogates `sys.dm_exec_requests` joined with `sys.dm_exec_sql_text`.
+- **Search & Filter**: Live client-side regex and keyword filtering across active queries and connected users.
+- **Safe Query Termination**: One-click kill button with a double-confirmation modal prompting before executing `KILL <id>` or `SELECT pg_terminate_backend(<pid>)`.
+
+### 3. Table Structure, Metadata & DDL Inspector (Antares / DBeaver)
+- **Columns View**: Inspect column ordinal positions, canonical types, dialect types, primary keys, nullability, defaults, and auto-increment properties.
+- **Indexes View**: Inspect primary and secondary index names, key column order, uniqueness, and algorithm types.
+- **Foreign Keys View**: Trace relationship constraints, source column mappings, referenced tables, referenced columns, and cascade actions (`ON DELETE`, `ON UPDATE`).
+- **Compiled DDL View**: Instantly generate clean, dialect-compliant `CREATE TABLE` and constraint statements with one-click clipboard copy or direct opening in a fresh worksheet editor.
+
+### 4. SQL Snippets & Scratchpad Manager (Antares / Beekeeper)
+- **Categorized Snippets**: Organize queries into categories (`Analysis`, `Diagnostics`, `Maintenance`, `Templates`, `Custom`).
+- **Pre-loaded Dialect Templates**: Includes standard diagnostic scripts:
+  - PostgreSQL: Active locks, cache hit ratio, table disk sizes, index usage.
+  - MySQL: InnoDB buffer pool hit rate, table sizes, slow query inspection.
+  - MSSQL: Missing index suggestions, top CPU queries, wait statistics.
+  - SQLite: Integrity checks, freelist counts, schema dumps.
+- **One-Click Insertion**: Insert snippet SQL directly into the active Monaco Editor at the cursor position or launch it into an isolated worksheet tab.
+
+### 5. High-Performance Quick Filter Bar in Editable Data Grid (DBeaver / TablePlus)
+- **Client-Side Real-Time Filter**: Filter thousands of tabular rows across any column with instant sub-millisecond feedback.
+- **Match Counter**: Visual feedback badge displaying filtered match counts (e.g., `42 / 1000 rows`).
+- **Dirty State Persistence**: Tracks modified cell coordinates against original row indices, ensuring pending inline updates remain intact during active filtering.
+
+---
+
 ## 5. Prerequisites & Dependencies
 
 ### Runtime & System Prerequisites
@@ -193,7 +238,7 @@ DynoDbModeler enforces a strict zero-regression quality gate across both backend
 ```text
 [Commit / PR Gate]
    │
-   ├──▶ bun run test ──────────────────────────────▶ 196/196 Vitest Unit Tests PASS
+   ├──▶ bun run test ──────────────────────────────▶ 373/373 Vitest Unit Tests PASS (36 test suites)
    ├──▶ cargo test ────────────────────────────────▶ 82/82 Rust Unit Tests PASS
    ├──▶ cargo clippy (-D warnings) ────────────────▶ 0 Warnings
    └──▶ bun run build (tsc + vite) ────────────────▶ Clean bundle (no runtime CDN)

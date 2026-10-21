@@ -6,6 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   formatCanonicalType,
+  isSameCanonicalType,
   getDefaultPort,
   type ConnectionConfig,
   type TableSchema,
@@ -38,6 +39,24 @@ describe('database type helpers', () => {
     expect(formatCanonicalType({ Decimal: { precision: 8 } })).toBe('DECIMAL(8)');
     expect(formatCanonicalType({ Decimal: {} })).toBe('DECIMAL');
     expect(formatCanonicalType({ Custom: 'citext' })).toBe('CITEXT');
+  });
+
+  /**
+   * @brief Verifies high-performance isSameCanonicalType equality checks.
+   */
+  it('accurately checks equality of primitive and parameterized canonical types', () => {
+    expect(isSameCanonicalType('Integer', 'Integer')).toBe(true);
+    expect(isSameCanonicalType('Integer', 'BigInt')).toBe(false);
+    expect(isSameCanonicalType('Text', { Varchar: 255 })).toBe(false);
+    expect(isSameCanonicalType({ Varchar: 255 }, { Varchar: 255 })).toBe(true);
+    expect(isSameCanonicalType({ Varchar: 255 }, { Varchar: 100 })).toBe(false);
+    expect(isSameCanonicalType({ Decimal: { precision: 10, scale: 2 } }, { Decimal: { precision: 10, scale: 2 } })).toBe(true);
+    expect(isSameCanonicalType({ Decimal: { precision: 10 } }, { Decimal: { precision: 10, scale: null } })).toBe(true);
+    expect(isSameCanonicalType({ Decimal: { precision: 10 } }, { Decimal: { precision: 8 } })).toBe(false);
+    expect(isSameCanonicalType({ Char: 10 }, { Char: 10 })).toBe(true);
+    expect(isSameCanonicalType({ Char: 10 }, { Char: 20 })).toBe(false);
+    expect(isSameCanonicalType({ Custom: 'citext' }, { Custom: 'citext' })).toBe(true);
+    expect(isSameCanonicalType({ Custom: 'citext' }, { Custom: 'jsonb' })).toBe(false);
   });
 
   /**

@@ -33,7 +33,8 @@ export interface SettingsViewProps {
  * @param props Connection list, active connection state, and management callbacks.
  * @return Rendered Settings view element.
  */
-export const SettingsView: React.FC<SettingsViewProps> = ({
+export const SettingsView: React.FC<SettingsViewProps> = React.memo(({
+
   connections,
   activeConnection,
   onConnect,
@@ -140,4 +141,5 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </div>
     </div>
   );
-};
+});
+SettingsView.displayName = 'SettingsView';

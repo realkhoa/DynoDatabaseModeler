@@ -1384,4 +1384,45 @@ describe('QueryEditorTab component', () => {
       );
     });
   });
+describe('Open-Source SQL Client Features: Mock Data & Scratchpad', () => {
+    /**
+     * @brief Verifies clicking Mock Data button opens MockDataGeneratorModal.
+     */
+    it('opens and closes MockDataGeneratorModal', () => {
+      render(<QueryEditorTab activeConnection={mockConnection} />);
+
+      const mockDataBtn = screen.getByTestId('mock-data-btn');
+      expect(mockDataBtn).toBeDefined();
+
+      fireEvent.click(mockDataBtn);
+      expect(screen.getByRole('dialog', { name: /mock data generator/i })).toBeDefined();
+
+      // Close modal
+      const closeBtn = screen.getByRole('button', { name: /close modal/i });
+      fireEvent.click(closeBtn);
+      expect(screen.queryByRole('dialog', { name: /mock data generator/i })).toBeNull();
+    });
+
+    /**
+     * @brief Verifies clicking Scratchpad button opens ScratchpadModal and handles open in worksheet.
+     */
+    it('opens ScratchpadModal and handles open in worksheet', () => {
+      render(<QueryEditorTab activeConnection={mockConnection} />);
+
+      const scratchpadBtn = screen.getByTestId('scratchpad-btn');
+      expect(scratchpadBtn).toBeDefined();
+
+      fireEvent.click(scratchpadBtn);
+      expect(screen.getByRole('dialog', { name: /sql snippets & scratchpad/i })).toBeDefined();
+
+      // Click "Open in Tab" for one of the built-in snippets
+      const openBtn = screen.getByRole('button', { name: /open in worksheet/i });
+      expect(openBtn).toBeDefined();
+      fireEvent.click(openBtn);
+
+      // Scratchpad modal closes and new worksheet is created
+      expect(screen.queryByRole('dialog', { name: /sql snippets & scratchpad/i })).toBeNull();
+      expect(screen.getByText('Find Duplicate Records in Table')).toBeDefined();
+    });
+  });
 });

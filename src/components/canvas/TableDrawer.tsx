@@ -135,7 +135,8 @@ export interface TableDrawerProps {
  * @param props Drawer control props and table mutation callbacks.
  * @return Rendered drawer element or null if closed.
  */
-export const TableDrawer: React.FC<TableDrawerProps> = ({
+export const TableDrawer: React.FC<TableDrawerProps> = React.memo(({
+
   isOpen,
   table,
   existingTableKeys = [],
@@ -527,4 +528,5 @@ export const TableDrawer: React.FC<TableDrawerProps> = ({
       </div>
     </div>
   );
-};
+});
+TableDrawer.displayName = 'TableDrawer';
