@@ -109,7 +109,6 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   onToggleMode,
   debounceMs = 150,
   onFilterChange,
-  onNewTable: _onNewTable,
 }) => {
   const [filter, setFilter] = useState('');
   const debouncedFilter = useDebouncedValue(filter, debounceMs);
@@ -144,15 +143,9 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
       >
         <div className="flex flex-col items-center space-y-2 w-full px-1">
           {/* Active Database Engine Icon with connection dot */}
-          <div
-            role="button"
-            tabIndex={0}
+          <button
+            type="button"
             onClick={() => onToggleMode?.('expanded')}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                onToggleMode?.('expanded');
-              }
-            }}
             title={
               activeConnection
                 ? `${activeConnection.name} (${activeConnection.db_type}) · ${activeConnection.database}`
@@ -171,7 +164,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
                 activeConnection ? 'bg-[#20c997]' : 'bg-[#8c919a]'
               }`}
             />
-          </div>
+          </button>
 
           {/* Search Trigger Icon (expands sidebar) */}
           <button
