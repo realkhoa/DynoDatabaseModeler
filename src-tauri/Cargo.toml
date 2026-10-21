@@ -3,6 +3,7 @@ name = "dyno-db-modeler"
 version = "0.1.0"
 description = "Modern Minimalist SQL Management and ERD Modeler"
 edition = "2021"
+license = "MIT OR Apache-2.0"
 
 [lib]
 name = "dyno_db_modeler_lib"

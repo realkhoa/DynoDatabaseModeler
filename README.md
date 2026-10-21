@@ -424,6 +424,31 @@ with the application bundle extension on macOS; rename `identifier` before shipp
 
 ---
 
-## 12. License
 
-DynoDbModeler is open source under the [MIT License](LICENSE).
+
+## 12. License & Acknowledgements
+
+DynoDbModeler is open source software dual-licensed under either:
+
+- **[MIT License](LICENSE-MIT)**
+- **[Apache License, Version 2.0](LICENSE-APACHE)**
+
+at your option. This dual-licensing scheme ensures maximum compatibility with both the Rust and JavaScript open-source ecosystems (including Apache-2.0 crates like `russh`, `uuid`, and `sqlx`).
+
+### Third-Party Open-Source Credits
+- **Tauri** (https://github.com/tauri-apps/tauri) - MIT or Apache-2.0
+- **React 19** (https://github.com/facebook/react) - MIT
+- **Monaco Editor** (https://github.com/microsoft/monaco-editor) - MIT
+- **@xyflow/react** (https://github.com/xyflow/xyflow) - MIT
+- **SQLx** (https://github.com/launchbadge/sqlx) - MIT or Apache-2.0
+- **DuckDB** (https://github.com/duckdb/duckdb) - MIT
+- **Tiberius** (https://github.com/prisma/tiberius) - MIT or Apache-2.0
+- **russh** (https://github.com/warp-tech/russh) - Apache-2.0
+- **Tokio** (https://github.com/tokio-rs/tokio) - MIT
+- **Lucide Icons** (https://github.com/lucide-icons/lucide) - ISC
+
+Inspired by the developer experience of open-source database tools:
+- **DBeaver** (https://github.com/dbeaver/dbeaver) - Apache-2.0
+- **Antares SQL** (https://github.com/antares-sql/antares) - MIT
+- **Sqlectron** (https://github.com/sqlectron/sqlectron-gui) - MIT
+- **Beekeeper Studio** (https://github.com/beekeeper-studio/beekeeper-studio) - GPLv3 / MIT

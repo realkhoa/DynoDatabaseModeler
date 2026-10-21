@@ -1,0 +1,29 @@
+DynoDbModeler is dual-licensed under both:
+
+1. The Apache License, Version 2.0 (LICENSE-APACHE or http://www.apache.org/licenses/LICENSE-2.0)
+2. The MIT License (LICENSE-MIT or http://opensource.org/licenses/MIT)
+
+You may select either license at your option.
+
+---
+
+### Third-Party Licenses & Acknowledgements
+
+DynoDbModeler depends on and incorporates ideas from the following open-source projects:
+
+- **Tauri** (https://github.com/tauri-apps/tauri) - MIT or Apache-2.0
+- **React** (https://github.com/facebook/react) - MIT
+- **Monaco Editor** (https://github.com/microsoft/monaco-editor) - MIT
+- **@xyflow/react** (https://github.com/xyflow/xyflow) - MIT
+- **sqlx** (https://github.com/launchbadge/sqlx) - MIT or Apache-2.0
+- **DuckDB** (https://github.com/duckdb/duckdb) - MIT
+- **tiberius** (https://github.com/prisma/tiberius) - MIT or Apache-2.0
+- **russh** (https://github.com/warp-tech/russh) - Apache-2.0
+- **tokio** (https://github.com/tokio-rs/tokio) - MIT
+- **Lucide Icons** (https://github.com/lucide-icons/lucide) - ISC
+
+Inspired by the developer experience of open-source database tools:
+- **DBeaver** (https://github.com/dbeaver/dbeaver) - Apache-2.0
+- **Antares SQL** (https://github.com/antares-sql/antares) - MIT
+- **Sqlectron** (https://github.com/sqlectron/sqlectron-gui) - MIT
+- **Beekeeper Studio** (https://github.com/beekeeper-studio/beekeeper-studio) - GPLv3 / MIT
