@@ -1,8 +1,9 @@
 /**
  * @file Sidebar.tsx
- * @brief Modern left navigation sidebar component for DynoDbModeler.
+ * @brief Modern left navigation sidebar component for DynoDbModeler with responsive tri-state modes.
  * @details Displays connection selector, active database status, schema refresh trigger,
  * connection creator trigger, table search filter, and list of database tables with column counts.
+ * Supports expanded, rail, and zen layout modes with debounced filtering.
  */
 
 import React, { useState, useMemo } from 'react';
@@ -17,9 +18,21 @@ import {
   Layers,
   Eye,
   FileCode2,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 import type { ConnectionConfig, TableSchema } from '../types/database';
 import { tableKey } from '../types/database';
+import { useDebouncedValue } from '../utils/useDebouncedValue';
+
+/**
+ * @brief Display mode for the sidebar navigation pane.
+ * @details
+ * - 'expanded': Standard 256px wide pane with full database switchers, search filter, and table tree.
+ * - 'rail': Ultra-compact 48px micro-icon rail preserving quick actions and visual database status.
+ * - 'zen': Hidden 0px width sidebar maximizing editor or canvas workspace.
+ */
+export type SidebarMode = 'expanded' | 'rail' | 'zen';
 
 /**
  * @brief Properties accepted by the Sidebar component.
@@ -55,10 +68,24 @@ export interface SidebarProps {
   onViewTableData?: (tableKey: string) => void;
   /** @brief Callback triggered when user requests to inspect table structure, columns, and DDL. */
   onInspectTableStructure?: (table: TableSchema) => void;
+  /** @brief Responsive sidebar display mode ('expanded', 'rail', or 'zen'). Defaults to 'expanded'. */
+  mode?: SidebarMode;
+  /** @brief Callback triggered when the sidebar mode is toggled or switched. */
+  onToggleMode?: (nextMode: SidebarMode) => void;
+  /** @brief Debounce duration in milliseconds for table search input. Defaults to 150ms. */
+  debounceMs?: number;
+  /** @brief Optional callback triggered when search filter changes. */
+  onFilterChange?: (filter: string) => void;
+  /** @brief Optional callback triggered to create a new table. */
+  onNewTable?: () => void;
 }
 
 /**
  * @brief Modern dark-themed sidebar component providing database and table navigation.
+ * @details Supports three distinct view modes:
+ * - expanded (256px wide, full table tree, active connection dropdown, search input).
+ * - rail (48px wide, vertical icon rail for high screen real estate).
+ * - zen (hidden 0px width container for focused canvas/editor work).
  * @param props Component properties configuring connections, tables, and interaction handlers.
  * @return Rendered Sidebar element.
  */
@@ -78,20 +105,132 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   isLoadingDatabases = false,
   onViewTableData,
   onInspectTableStructure,
+  mode = 'expanded',
+  onToggleMode,
+  debounceMs = 150,
+  onFilterChange,
+  onNewTable: _onNewTable,
 }) => {
   const [filter, setFilter] = useState('');
+  const debouncedFilter = useDebouncedValue(filter, debounceMs);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   // Filter on the qualified name so schema-qualified tables are both visible and searchable.
   const filteredTables = useMemo(() => {
-    const q = filter.toLowerCase().trim();
+    const q = debouncedFilter.toLowerCase().trim();
     if (!q) return tables;
     return tables.filter((t) => tableKey(t).toLowerCase().includes(q));
-  }, [tables, filter]);
+  }, [tables, debouncedFilter]);
 
+  // Zen mode: 0px width, hidden
+  if (mode === 'zen') {
+    return (
+      <aside
+        aria-label="Database Sidebar"
+        data-mode="zen"
+        className="hidden w-0 overflow-hidden"
+        style={{ display: 'none', width: 0 }}
+      />
+    );
+  }
+
+  // Rail mode: 48px sleek micro-icon rail
+  if (mode === 'rail') {
+    return (
+      <aside
+        aria-label="Database Sidebar"
+        data-mode="rail"
+        className="w-12 bg-[#18191c] border-r border-[#35373c] flex flex-col items-center justify-between py-2 h-full text-xs select-none shrink-0"
+      >
+        <div className="flex flex-col items-center space-y-2 w-full px-1">
+          {/* Active Database Engine Icon with connection dot */}
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => onToggleMode?.('expanded')}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                onToggleMode?.('expanded');
+              }
+            }}
+            title={
+              activeConnection
+                ? `${activeConnection.name} (${activeConnection.db_type}) · ${activeConnection.database}`
+                : 'No Connection'
+            }
+            aria-label={
+              activeConnection
+                ? `${activeConnection.name} (${activeConnection.db_type})`
+                : 'No Connection'
+            }
+            className="relative p-2 rounded hover:bg-[#26282d] transition-colors cursor-pointer group flex items-center justify-center text-[#8c919a] hover:text-[#e6e8ea]"
+          >
+            <Database className="w-4 h-4 text-[#3a82f7] shrink-0" />
+            <span
+              className={`absolute bottom-1 right-1 w-2 h-2 rounded-full border border-[#18191c] ${
+                activeConnection ? 'bg-[#20c997]' : 'bg-[#8c919a]'
+              }`}
+            />
+          </div>
+
+          {/* Search Trigger Icon (expands sidebar) */}
+          <button
+            type="button"
+            onClick={() => onToggleMode?.('expanded')}
+            title="Search tables"
+            aria-label="Search tables"
+            className="p-2 text-[#8c919a] hover:text-[#e6e8ea] hover:bg-[#26282d] rounded transition-colors"
+          >
+            <Search className="w-4 h-4" />
+          </button>
+
+          {/* Refresh Schema Button with Tooltip */}
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={!activeConnection || isLoading}
+            title="Refresh Schema"
+            aria-label="Refresh Schema"
+            className="p-2 text-[#8c919a] hover:text-[#e6e8ea] hover:bg-[#26282d] disabled:opacity-40 disabled:hover:bg-transparent rounded transition-colors"
+          >
+            <RefreshCw
+              className={`w-4 h-4 ${isLoading ? 'animate-spin text-[#3a82f7]' : ''}`}
+            />
+          </button>
+
+          {/* New Connection Button */}
+          <button
+            type="button"
+            onClick={onOpenNewConnection}
+            title="New Connection"
+            aria-label="New Connection"
+            className="p-2 text-[#8c919a] hover:text-[#e6e8ea] hover:bg-[#26282d] rounded transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Bottom Expand Button */}
+        <div className="pt-2 border-t border-[#35373c] w-full flex justify-center">
+          <button
+            type="button"
+            onClick={() => onToggleMode?.('expanded')}
+            title="Expand sidebar"
+            aria-label="Expand sidebar"
+            className="p-2 text-[#8c919a] hover:text-[#e6e8ea] hover:bg-[#26282d] rounded transition-colors"
+          >
+            <PanelLeftOpen className="w-4 h-4" />
+          </button>
+        </div>
+      </aside>
+    );
+  }
+
+  // Expanded mode: 256px wide (w-64)
   return (
     <aside
       aria-label="Database Sidebar"
+      data-mode="expanded"
       className="w-64 bg-[#18191c] border-r border-[#35373c] flex flex-col h-full text-xs select-none shrink-0"
     >
       {/* Workspace & Connection Header */}
@@ -207,6 +346,17 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
           >
             <Plus className="w-3.5 h-3.5" />
           </button>
+          {onToggleMode && (
+            <button
+              type="button"
+              onClick={() => onToggleMode('rail')}
+              title="Collapse sidebar"
+              aria-label="Collapse sidebar"
+              className="p-1 hover:bg-[#2b2d30] rounded text-[#8c919a] hover:text-[#e6e8ea] transition-colors"
+            >
+              <PanelLeftClose className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -263,7 +413,11 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
           <input
             type="text"
             value={filter}
-            onChange={(e) => setFilter(e.target.value)}
+            onChange={(e) => {
+              const val = e.target.value;
+              setFilter(val);
+              onFilterChange?.(val);
+            }}
             placeholder="Filter tables..."
             aria-label="Filter tables"
             className="w-full bg-[#1e1f22] border border-[#35373c] rounded pl-7 pr-6 py-1 text-xs text-[#e6e8ea] placeholder-[#8c919a] focus:outline-none focus:border-[#3a82f7] transition-colors"
@@ -271,7 +425,10 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
           {filter && (
             <button
               type="button"
-              onClick={() => setFilter('')}
+              onClick={() => {
+                setFilter('');
+                onFilterChange?.('');
+              }}
               title="Clear filter"
               className="absolute right-1.5 text-[#8c919a] hover:text-[#e6e8ea] p-0.5"
             >
@@ -308,7 +465,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
         ) : filteredTables.length === 0 ? (
           <div className="px-3 py-6 text-center text-[#8c919a] space-y-1">
             <p className="text-xs">
-              {filter ? `No tables matching "${filter}"` : 'No tables in database.'}
+              {debouncedFilter ? `No tables matching "${debouncedFilter}"` : 'No tables in database.'}
             </p>
           </div>
         ) : (

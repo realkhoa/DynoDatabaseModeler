@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { Sidebar } from './Sidebar';
 import type { ConnectionConfig, TableSchema } from '../types/database';
 
@@ -92,7 +92,7 @@ describe('Sidebar component', () => {
   /**
    * @brief Verifies table search filter functionality.
    */
-  it('filters tables based on search input', () => {
+  it('filters tables based on search input', async () => {
     render(
       <Sidebar
         connections={mockConnections}
@@ -108,8 +108,10 @@ describe('Sidebar component', () => {
     const searchInput = screen.getByPlaceholderText('Filter tables...');
     fireEvent.change(searchInput, { target: { value: 'user' } });
 
+    await waitFor(() => {
+      expect(screen.queryByText('orders')).toBeNull();
+    });
     expect(screen.getByText('users')).toBeDefined();
-    expect(screen.queryByText('orders')).toBeNull();
   });
 
   /**
@@ -307,5 +309,187 @@ describe('Sidebar component', () => {
 
     fireEvent.click(inspectBtn);
     expect(handleInspect).toHaveBeenCalledWith(mockTables[0]);
+  });
+
+  /**
+   * @brief Verifies default expanded mode layout with 256px width and search bar.
+   */
+  it('renders 256px width, search bar, and full table tree in expanded mode by default', () => {
+    render(
+      <Sidebar
+        connections={mockConnections}
+        activeConnection={mockConnections[0]}
+        tables={mockTables}
+        onOpenNewConnection={vi.fn()}
+        onSelectConnection={vi.fn()}
+        onSelectTable={vi.fn()}
+        onRefresh={vi.fn()}
+        mode="expanded"
+      />
+    );
+
+    const aside = screen.getByRole('complementary', { name: 'Database Sidebar' });
+    expect(aside.className).toContain('w-64');
+    expect(screen.getByPlaceholderText('Filter tables...')).toBeDefined();
+    expect(screen.getByText('users')).toBeDefined();
+    expect(screen.getByText('orders')).toBeDefined();
+  });
+
+  /**
+   * @brief Verifies collapse button triggers onToggleMode with rail mode.
+   */
+  it('renders collapse button in expanded mode and invokes onToggleMode with rail', () => {
+    const handleToggleMode = vi.fn();
+    render(
+      <Sidebar
+        connections={mockConnections}
+        activeConnection={mockConnections[0]}
+        tables={mockTables}
+        onOpenNewConnection={vi.fn()}
+        onSelectConnection={vi.fn()}
+        onSelectTable={vi.fn()}
+        onRefresh={vi.fn()}
+        mode="expanded"
+        onToggleMode={handleToggleMode}
+      />
+    );
+
+    const collapseBtn = screen.getByRole('button', { name: /collapse sidebar/i });
+    expect(collapseBtn).toBeDefined();
+    fireEvent.click(collapseBtn);
+    expect(handleToggleMode).toHaveBeenCalledWith('rail');
+  });
+
+  /**
+   * @brief Verifies compact 48px rail mode layout with micro action icons.
+   */
+  it('renders compact 48px rail with micro icons in rail mode', () => {
+    render(
+      <Sidebar
+        connections={mockConnections}
+        activeConnection={mockConnections[0]}
+        tables={mockTables}
+        onOpenNewConnection={vi.fn()}
+        onSelectConnection={vi.fn()}
+        onSelectTable={vi.fn()}
+        onRefresh={vi.fn()}
+        mode="rail"
+      />
+    );
+
+    const aside = screen.getByRole('complementary', { name: 'Database Sidebar' });
+    expect(aside.className).toContain('w-12');
+    expect(screen.queryByPlaceholderText('Filter tables...')).toBeNull();
+    expect(screen.queryByText('users')).toBeNull();
+    expect(screen.getByRole('button', { name: /search tables/i })).toBeDefined();
+    expect(screen.getByRole('button', { name: /refresh schema/i })).toBeDefined();
+    expect(screen.getByRole('button', { name: /expand sidebar/i })).toBeDefined();
+  });
+
+  /**
+   * @brief Verifies clicking expand or search buttons in rail mode calls onToggleMode with expanded.
+   */
+  it('invokes onToggleMode with expanded when expand or search button is clicked in rail mode', () => {
+    const handleToggleMode = vi.fn();
+    render(
+      <Sidebar
+        connections={mockConnections}
+        activeConnection={mockConnections[0]}
+        tables={mockTables}
+        onOpenNewConnection={vi.fn()}
+        onSelectConnection={vi.fn()}
+        onSelectTable={vi.fn()}
+        onRefresh={vi.fn()}
+        mode="rail"
+        onToggleMode={handleToggleMode}
+      />
+    );
+
+    const expandBtn = screen.getByRole('button', { name: /expand sidebar/i });
+    fireEvent.click(expandBtn);
+    expect(handleToggleMode).toHaveBeenCalledWith('expanded');
+
+    const searchBtn = screen.getByRole('button', { name: /search tables/i });
+    fireEvent.click(searchBtn);
+    expect(handleToggleMode).toHaveBeenCalledWith('expanded');
+  });
+
+  /**
+   * @brief Verifies refresh button in rail mode invokes onRefresh.
+   */
+  it('invokes onRefresh when refresh button is clicked in rail mode', () => {
+    const handleRefresh = vi.fn();
+    render(
+      <Sidebar
+        connections={mockConnections}
+        activeConnection={mockConnections[0]}
+        tables={mockTables}
+        onOpenNewConnection={vi.fn()}
+        onSelectConnection={vi.fn()}
+        onSelectTable={vi.fn()}
+        onRefresh={handleRefresh}
+        mode="rail"
+      />
+    );
+
+    const refreshBtn = screen.getByRole('button', { name: /refresh schema/i });
+    fireEvent.click(refreshBtn);
+    expect(handleRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * @brief Verifies zen mode renders 0px width or display none container.
+   */
+  it('renders 0px or hidden element in zen mode', () => {
+    const { container } = render(
+      <Sidebar
+        connections={mockConnections}
+        activeConnection={mockConnections[0]}
+        tables={mockTables}
+        onOpenNewConnection={vi.fn()}
+        onSelectConnection={vi.fn()}
+        onSelectTable={vi.fn()}
+        onRefresh={vi.fn()}
+        mode="zen"
+      />
+    );
+
+    const aside = container.querySelector('aside');
+    expect(aside).not.toBeNull();
+    expect(aside?.className).toContain('w-0');
+    expect(aside?.className).toContain('hidden');
+    expect(aside?.style.display).toBe('none');
+    expect(screen.queryByPlaceholderText('Filter tables...')).toBeNull();
+  });
+
+  /**
+   * @brief Verifies debouncing of table search filter input.
+   */
+  it('debounces table search input by 150ms before updating filtered list', async () => {
+    render(
+      <Sidebar
+        connections={mockConnections}
+        activeConnection={mockConnections[0]}
+        tables={mockTables}
+        onOpenNewConnection={vi.fn()}
+        onSelectConnection={vi.fn()}
+        onSelectTable={vi.fn()}
+        onRefresh={vi.fn()}
+        debounceMs={150}
+      />
+    );
+
+    const searchInput = screen.getByPlaceholderText('Filter tables...');
+    fireEvent.change(searchInput, { target: { value: 'user' } });
+
+    // Immediately after typing, debounced value has not yet updated
+    expect(screen.getByText('users')).toBeDefined();
+    expect(screen.getByText('orders')).toBeDefined();
+
+    // After debounce interval, orders is filtered out
+    await waitFor(() => {
+      expect(screen.queryByText('orders')).toBeNull();
+    });
+    expect(screen.getByText('users')).toBeDefined();
   });
 });
