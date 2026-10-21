@@ -275,6 +275,12 @@ fn test_generate_empty_diff_returns_empty_ddl() {
         DatabaseType::MySql,
         DatabaseType::Mssql,
         DatabaseType::DuckDb,
+        DatabaseType::MariaDb,
+        DatabaseType::CockroachDb,
+        DatabaseType::LibSql,
+        DatabaseType::Redshift,
+        DatabaseType::ClickHouse,
+        DatabaseType::Universal,
     ] {
         let out = generate_ddl(&diff, dialect);
         assert!(

@@ -6,7 +6,7 @@
  */
 
 import type { ColumnSchema, DatabaseType } from '../types/database';
-import { formatCanonicalType } from '../types/database';
+import { formatCanonicalType, getEngineDialectFamily } from '../types/database';
 
 /**
  * @brief Supported mock data generation strategy types.
@@ -276,10 +276,11 @@ export function formatSqlLiteral(val: unknown, col: ColumnSchema): string {
  * @return Quoted identifier.
  */
 export function quoteIdentifier(identifier: string, dbType: DatabaseType = 'Postgres'): string {
-  if (dbType === 'MySql') {
+  const family = getEngineDialectFamily(dbType);
+  if (family === 'mysql') {
     return `\`${identifier.replace(/`/g, '``')}\``;
   }
-  if (dbType === 'Mssql') {
+  if (family === 'mssql') {
     return `[${identifier.replace(/]/g, ']]')}]`;
   }
   return `"${identifier.replace(/"/g, '""')}"`;

@@ -1,12 +1,25 @@
 /**
  * @file ConnectionFormFields.tsx
  * @brief Subcomponent rendering input fields and status banners for database connections.
- * @details Separates connection form controls from modal dialog presentation logic.
+ * @details Separates connection form controls from modal dialog presentation logic, supporting
+ * PostgreSQL, MySQL, MariaDB, SQL Server, SQLite, CockroachDB, ClickHouse, Redshift, LibSQL, DuckDB,
+ * and Universal / Any SQL database engines.
  */
 
-import React from 'react';
-import { CheckCircle2, AlertCircle, Shield, Terminal, RefreshCw, Loader2 } from 'lucide-react';
+import React, { useState } from 'react';
+import {
+  CheckCircle2,
+  AlertCircle,
+  Shield,
+  Terminal,
+  RefreshCw,
+  Loader2,
+  Globe,
+  ChevronDown,
+  ChevronUp,
+} from 'lucide-react';
 import type { DatabaseType } from '../types/database';
+import { isEmbeddedEngine, isUniversalEngine } from '../types/database';
 
 /**
  * @brief Properties accepted by ConnectionFormFields.
@@ -40,9 +53,9 @@ export interface ConnectionFormFieldsProps {
   password: string;
   /** @brief State setter for password. */
   setPassword: (val: string) => void;
-  /** @brief SQLite database file path. */
+  /** @brief SQLite / LibSQL / DuckDB database file path. */
   filePath: string;
-  /** @brief State setter for SQLite file path. */
+  /** @brief State setter for file path. */
   setFilePath: (val: string) => void;
   /** @brief SSL encryption flag. */
   ssl: boolean;
@@ -82,6 +95,14 @@ export interface ConnectionFormFieldsProps {
   sshKeyPath: string;
   /** @brief State setter for SSH private key path. */
   setSshKeyPath: (val: string) => void;
+  /** @brief Raw connection string or database URL for Universal mode. */
+  connectionUrl?: string;
+  /** @brief State setter for connection URL. */
+  setConnectionUrl?: (val: string) => void;
+  /** @brief Explicit dialect family for Universal mode. */
+  dialectFamily?: string;
+  /** @brief State setter for dialect family. */
+  setDialectFamily?: (val: string) => void;
   /** @brief Validation error message, if any. */
   validationError: string;
   /** @brief Status of connectivity test. */
@@ -95,6 +116,38 @@ export interface ConnectionFormFieldsProps {
   /** @brief Discovered list of database names available on remote server. */
   availableDatabases?: string[];
 }
+
+const ENGINE_GROUPS: {
+  category: string;
+  engines: { type: DatabaseType; label: string; badge?: string }[];
+}[] = [
+  {
+    category: 'Popular',
+    engines: [
+      { type: 'Postgres', label: 'PostgreSQL' },
+      { type: 'MySql', label: 'MySQL' },
+      { type: 'MariaDb', label: 'MariaDB' },
+      { type: 'Mssql', label: 'SQL Server' },
+      { type: 'Sqlite', label: 'SQLite' },
+    ],
+  },
+  {
+    category: 'Cloud & Analytics',
+    engines: [
+      { type: 'CockroachDb', label: 'CockroachDB', badge: 'Cloud' },
+      { type: 'ClickHouse', label: 'ClickHouse', badge: 'Analytics' },
+      { type: 'Redshift', label: 'Redshift', badge: 'AWS' },
+      { type: 'LibSql', label: 'LibSQL', badge: 'Edge' },
+      { type: 'DuckDb', label: 'DuckDB', badge: 'Analytics' },
+    ],
+  },
+  {
+    category: 'Universal / Any Database',
+    engines: [
+      { type: 'Universal', label: '⚡ Universal / Any SQL', badge: 'URL & Dialect' },
+    ],
+  },
+];
 
 /**
  * @brief Renders the database configuration form fields and feedback banners.
@@ -140,39 +193,67 @@ export const ConnectionFormFields: React.FC<ConnectionFormFieldsProps> = ({
   setSshPassword,
   sshKeyPath,
   setSshKeyPath,
+  connectionUrl = '',
+  setConnectionUrl,
+  dialectFamily = 'postgres',
+  setDialectFamily,
   validationError,
   testStatus,
   testMessage,
 }) => {
+  const [showAdvancedDirectParams, setShowAdvancedDirectParams] = useState(false);
+  const isEmbedded = isEmbeddedEngine(dbType);
+  const isUniversal = isUniversalEngine(dbType);
+
   return (
     <div className="space-y-4">
-      {/* Engine Selector */}
-      <div>
-        <label className="block text-[11px] font-semibold text-[#8c919a] uppercase tracking-wider mb-1.5">
+      {/* Categorized Engine Selector */}
+      <div className="space-y-2">
+        <label className="block text-[11px] font-semibold text-[#8c919a] uppercase tracking-wider">
           Database Engine
         </label>
-        <div className="grid grid-cols-5 gap-1.5 bg-[#18191c] p-1 rounded-md border border-[#35373c]">
-          {(
-            [
-              { type: 'Postgres', label: 'PostgreSQL' },
-              { type: 'Sqlite', label: 'SQLite' },
-              { type: 'DuckDb', label: 'DuckDB' },
-              { type: 'MySql', label: 'MySQL' },
-              { type: 'Mssql', label: 'SQL Server' },
-            ] as const
-          ).map(({ type, label }) => (
-            <button
-              key={type}
-              type="button"
-              onClick={() => onEngineChange(type)}
-              className={`py-1.5 px-2 rounded text-center font-medium transition-colors ${
-                dbType === type
-                  ? 'bg-[#3a82f7] text-white shadow-sm'
-                  : 'text-[#8c919a] hover:text-[#e6e8ea] hover:bg-[#26282d]'
-              }`}
-            >
-              {label}
-            </button>
+        <div className="space-y-2 bg-[#18191c] p-2 rounded-lg border border-[#35373c]">
+          {ENGINE_GROUPS.map((group) => (
+            <div key={group.category} className="space-y-1">
+              <span className="text-[10px] uppercase font-bold text-[#8c919a]/70 tracking-wider px-1">
+                {group.category}
+              </span>
+              <div
+                className={`grid gap-1.5 ${
+                  group.engines.length === 1
+                    ? 'grid-cols-1'
+                    : group.engines.length <= 5
+                    ? 'grid-cols-5'
+                    : 'grid-cols-3'
+                }`}
+              >
+                {group.engines.map(({ type, label, badge }) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => onEngineChange(type)}
+                    className={`py-1.5 px-2 rounded text-center text-xs font-medium transition-colors flex items-center justify-center gap-1.5 relative ${
+                      dbType === type
+                        ? 'bg-[#3a82f7] text-white shadow-sm ring-1 ring-[#5a9cff]'
+                        : 'bg-[#222429] text-[#8c919a] hover:text-[#e6e8ea] hover:bg-[#2c2e34]'
+                    }`}
+                  >
+                    <span>{label}</span>
+                    {badge && (
+                      <span
+                        className={`text-[9px] px-1 py-0.2 rounded font-normal ${
+                          dbType === type
+                            ? 'bg-black/20 text-white'
+                            : 'bg-[#35373c] text-[#8c919a]'
+                        }`}
+                      >
+                        {badge}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       </div>
@@ -195,8 +276,98 @@ export const ConnectionFormFields: React.FC<ConnectionFormFieldsProps> = ({
         />
       </div>
 
-      {/* Embedded Database File Fields (SQLite / DuckDB) */}
-      {dbType === 'Sqlite' || dbType === 'DuckDb' ? (
+      {/* Universal Connection Mode */}
+      {isUniversal && (
+        <div className="space-y-3 p-3 bg-[#18191c] border border-[#3a82f7]/40 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Globe className="w-4 h-4 text-[#3a82f7]" />
+              <span className="text-xs font-semibold text-[#e6e8ea]">Universal / Any SQL Database</span>
+            </div>
+            <span className="text-[10px] bg-[#3a82f7]/20 text-[#3a82f7] px-2 py-0.5 rounded font-medium">
+              URL & Dialect
+            </span>
+          </div>
+
+          <div>
+            <label
+              htmlFor="conn-url"
+              className="block text-[11px] font-semibold text-[#8c919a] uppercase tracking-wider mb-1"
+            >
+              Connection URL / String
+            </label>
+            <textarea
+              id="conn-url"
+              data-testid="universal-connection-url"
+              rows={2}
+              value={connectionUrl}
+              onChange={(e) => setConnectionUrl?.(e.target.value)}
+              placeholder="postgresql://user:password@hostname:5432/dbname?sslmode=require"
+              className="w-full bg-[#141517] border border-[#35373c] rounded px-3 py-1.5 font-mono text-xs text-[#e6e8ea] focus:outline-none focus:border-[#3a82f7]"
+            />
+            {/* Quick Presets */}
+            <div className="mt-1.5 flex flex-wrap gap-1 text-[10px] items-center">
+              <span className="text-[#8c919a] mr-1">Presets:</span>
+              {[
+                { label: 'Postgres', url: 'postgresql://postgres:secret@localhost:5432/postgres', dialect: 'postgres' },
+                { label: 'MySQL', url: 'mysql://root:secret@localhost:3306/mysql', dialect: 'mysql' },
+                { label: 'SQLite', url: 'sqlite:app.db', dialect: 'sqlite' },
+                { label: 'DuckDB', url: 'duckdb:analytics.duckdb', dialect: 'duckdb' },
+                { label: 'SQL Server', url: 'sqlserver://sa:secret@localhost:1433/master', dialect: 'mssql' },
+              ].map((p) => (
+                <button
+                  key={p.label}
+                  type="button"
+                  onClick={() => {
+                    setConnectionUrl?.(p.url);
+                    setDialectFamily?.(p.dialect);
+                  }}
+                  className="px-1.5 py-0.5 rounded bg-[#26282d] hover:bg-[#35373c] text-[#8c919a] hover:text-[#e6e8ea] transition-colors"
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Dialect Family Selector */}
+          <div>
+            <label
+              htmlFor="conn-dialect"
+              className="block text-[11px] font-semibold text-[#8c919a] uppercase tracking-wider mb-1"
+            >
+              Dialect Family
+            </label>
+            <select
+              id="conn-dialect"
+              data-testid="universal-dialect-family"
+              value={dialectFamily}
+              onChange={(e) => setDialectFamily?.(e.target.value)}
+              className="w-full bg-[#141517] border border-[#35373c] rounded px-3 py-1.5 text-xs text-[#e6e8ea] focus:outline-none focus:border-[#3a82f7]"
+            >
+              <option value="postgres">PostgreSQL-compatible (CockroachDB, Redshift, Timescale, Supabase, Neon)</option>
+              <option value="mysql">MySQL-compatible (MariaDB, ClickHouse, TiDB, SingleStore)</option>
+              <option value="sqlite">SQLite-compatible (LibSQL, Turso, Cloudflare D1)</option>
+              <option value="mssql">MSSQL-compatible (SQL Server, Azure SQL)</option>
+              <option value="duckdb">DuckDB-compatible (MotherDuck, local files)</option>
+              <option value="ansi">Generic ANSI SQL</option>
+            </select>
+          </div>
+
+          {/* Collapsible toggle for direct host/port override */}
+          <button
+            type="button"
+            onClick={() => setShowAdvancedDirectParams((prev) => !prev)}
+            className="text-[11px] text-[#3a82f7] hover:underline flex items-center gap-1 cursor-pointer pt-1"
+          >
+            {showAdvancedDirectParams ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            <span>{showAdvancedDirectParams ? 'Hide direct parameters' : 'Or configure via host, port & credentials'}</span>
+          </button>
+        </div>
+      )}
+
+      {/* Embedded File Path Inputs (SQLite / DuckDB / LibSQL) */}
+      {isEmbedded && (
         <div>
           <label
             htmlFor="conn-file-path"
@@ -215,16 +386,21 @@ export const ConnectionFormFields: React.FC<ConnectionFormFieldsProps> = ({
             placeholder={
               dbType === 'DuckDb'
                 ? '/path/to/analytics.duckdb or :memory:'
+                : dbType === 'LibSql'
+                ? '/path/to/replica.db or :memory:'
                 : '/path/to/database.db or :memory:'
             }
             className="w-full bg-[#18191c] border border-[#35373c] rounded px-3 py-1.5 font-mono text-[#e6e8ea] focus:outline-none focus:border-[#3a82f7]"
           />
           <p className="mt-1 text-[11px] text-[#8c919a]">
             Use <code className="text-[#3a82f7]">:memory:</code> for an isolated in-memory{' '}
-            {dbType === 'DuckDb' ? 'DuckDB' : 'SQLite'} database.
+            {dbType === 'DuckDb' ? 'DuckDB' : dbType === 'LibSql' ? 'LibSQL' : 'SQLite'} database.
           </p>
         </div>
-      ) : (
+      )}
+
+      {/* Remote Network Database Fields */}
+      {(!isEmbedded || (isUniversal && showAdvancedDirectParams)) && !(!isUniversal && isEmbedded) && (
         <>
           {/* Host and Port */}
           <div className="grid grid-cols-3 gap-3">
@@ -297,12 +473,14 @@ export const ConnectionFormFields: React.FC<ConnectionFormFieldsProps> = ({
               value={database}
               onChange={(e) => setDatabase(e.target.value)}
               placeholder={
-                dbType === 'Postgres'
-                  ? 'postgres (default if blank - like pgAdmin)'
+                dbType === 'Postgres' || dbType === 'CockroachDb' || dbType === 'Redshift'
+                  ? 'postgres (default if blank)'
                   : dbType === 'Mssql'
                   ? 'master (default if blank)'
-                  : dbType === 'MySql'
+                  : dbType === 'MySql' || dbType === 'MariaDb'
                   ? 'mysql (optional)'
+                  : dbType === 'ClickHouse'
+                  ? 'default'
                   : 'Database name'
               }
               className="w-full bg-[#18191c] border border-[#35373c] rounded px-3 py-1.5 text-[#e6e8ea] focus:outline-none focus:border-[#3a82f7]"
@@ -382,70 +560,57 @@ export const ConnectionFormFields: React.FC<ConnectionFormFieldsProps> = ({
             </div>
           </div>
 
-          {/* Credential storage preference */}
-          <div className="flex items-center gap-2 pt-1">
-            <input
-              id="conn-remember-password"
-              type="checkbox"
-              checked={rememberPassword}
-              onChange={(e) => setRememberPassword(e.target.checked)}
-              className="rounded bg-[#18191c] border-[#35373c] text-[#3a82f7] focus:ring-0 focus:ring-offset-0"
-            />
-            <label
-              htmlFor="conn-remember-password"
-              className="text-xs text-[#e6e8ea] cursor-pointer select-none"
-            >
-              Remember password in the system credential store
-            </label>
-          </div>
-
-          {/* SSL Checkbox */}
-          <div className="flex items-start gap-2 pt-1">
-            <input
-              id="conn-ssl"
-              type="checkbox"
-              checked={ssl}
-              onChange={(e) => setSsl(e.target.checked)}
-              className="mt-0.5 rounded bg-[#18191c] border-[#35373c] text-[#3a82f7] focus:ring-0 focus:ring-offset-0"
-            />
-            <label
-              htmlFor="conn-ssl"
-              className="flex flex-col gap-0.5 text-xs text-[#e6e8ea] cursor-pointer select-none"
-            >
-              <span className="flex items-center gap-1.5">
-                <Shield className="w-3.5 h-3.5 text-[#8c919a]" />
-                <span>
-                  {dbType === 'Mssql' ? 'Verify server TLS certificate' : 'Require TLS encryption'}
-                </span>
-              </span>
-              <span className="text-[10px] text-[#8c919a]">
-                {dbType === 'Mssql'
-                  ? 'SQL Server always negotiates TLS; disabling this trusts any certificate.'
-                  : dbType === 'MySql'
-                  ? 'Requires an encrypted connection to the MySQL server.'
-                  : 'Requires an encrypted connection to the PostgreSQL server.'}
-              </span>
-            </label>
-          </div>
-
-          {/* SSH Bastion Tunnel Toggle */}
-          <div className="pt-2 border-t border-[#2c2e33]">
-            <div className="flex items-center gap-2">
-              <input
-                id="conn-ssh-enable"
-                data-testid="ssh-tunnel-enable"
-                type="checkbox"
-                checked={sshEnabled}
-                onChange={(e) => setSshEnabled(e.target.checked)}
-                className="rounded bg-[#18191c] border-[#35373c] text-[#3a82f7] focus:ring-0 focus:ring-offset-0"
-              />
-              <label
-                htmlFor="conn-ssh-enable"
-                className="flex items-center gap-1.5 text-xs text-[#e6e8ea] cursor-pointer select-none font-medium"
-              >
-                <Terminal className="w-3.5 h-3.5 text-blue-400" />
-                <span>Connect via SSH Bastion Tunnel</span>
+          {/* SSL and Credentials Options */}
+          <div className="space-y-2 pt-1 border-t border-[#2c2e33]">
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-2 cursor-pointer text-xs text-[#e6e8ea]">
+                <input
+                  type="checkbox"
+                  checked={rememberPassword}
+                  onChange={(e) => setRememberPassword(e.target.checked)}
+                  className="rounded bg-[#18191c] border-[#35373c] text-[#3a82f7] focus:ring-0 focus:ring-offset-0"
+                />
+                <span className="font-medium">Remember password securely</span>
               </label>
+              <div
+                className="flex items-center gap-1 text-[11px] text-[#8c919a]"
+                title="Uses native OS keychain (Windows Credential Manager, macOS Keychain, Linux Secret Service)"
+              >
+                <Shield className="w-3.5 h-3.5 text-[#3a82f7]" />
+                <span>OS Keychain</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-2 cursor-pointer text-xs text-[#e6e8ea]">
+                <input
+                  type="checkbox"
+                  checked={ssl}
+                  onChange={(e) => setSsl(e.target.checked)}
+                  className="rounded bg-[#18191c] border-[#35373c] text-[#3a82f7] focus:ring-0 focus:ring-offset-0"
+                />
+                <span className="font-medium">Require SSL/TLS encryption</span>
+              </label>
+            </div>
+          </div>
+
+          {/* SSH Bastion Tunnel Options */}
+          <div className="pt-2 border-t border-[#2c2e33]">
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-2 cursor-pointer text-xs text-[#e6e8ea]">
+                <input
+                  type="checkbox"
+                  data-testid="ssh-tunnel-enable"
+                  checked={sshEnabled}
+                  onChange={(e) => setSshEnabled(e.target.checked)}
+                  className="rounded bg-[#18191c] border-[#35373c] text-[#3a82f7] focus:ring-0 focus:ring-offset-0"
+                />
+                <span className="font-medium">Use SSH Bastion Tunnel</span>
+              </label>
+              <div className="flex items-center gap-1 text-[11px] text-[#8c919a]">
+                <Terminal className="w-3.5 h-3.5 text-[#3a82f7]" />
+                <span>Port Forwarding</span>
+              </div>
             </div>
 
             {sshEnabled && (

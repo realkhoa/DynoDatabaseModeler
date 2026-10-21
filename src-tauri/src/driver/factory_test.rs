@@ -1,7 +1,8 @@
 //! @file factory_test.rs
 //! @brief Unit tests for database driver factory and driver adapters.
 //! @details Validates factory instantiation, dialect matching, error handling for unreachable endpoints,
-//! and type mapping logic for PostgreSQL, MySQL, MSSQL, and SQLite.
+//! and type mapping logic for PostgreSQL, MySQL, MSSQL, SQLite, MariaDB, CockroachDB, LibSQL, Redshift,
+//! ClickHouse, and Universal SQL.
 
 use crate::driver::factory::DriverFactory;
 use crate::driver::mssql::parse_mssql_type;
@@ -34,6 +35,8 @@ fn create_test_config(
         file_path: None,
         ssl: false,
         ssh_tunnel: None,
+        connection_url: None,
+        dialect_family: None,
     }
 }
 
@@ -47,6 +50,41 @@ async fn test_factory_sqlite_creation() {
         .await
         .expect("Failed to create driver");
     assert_eq!(handle.driver.db_type(), DatabaseType::Sqlite);
+    assert!(handle.tunnel.is_none());
+}
+
+#[tokio::test]
+async fn test_factory_libsql_creation() {
+    let mut config = create_test_config("libsql-mem", DatabaseType::LibSql, None, None);
+    config.database = ":memory:".to_string();
+    config.file_path = Some(":memory:".to_string());
+
+    let handle = DriverFactory::create(&config)
+        .await
+        .expect("Failed to create LibSQL driver");
+    assert!(handle.tunnel.is_none());
+}
+
+#[tokio::test]
+async fn test_factory_universal_sqlite_url() {
+    let mut config = create_test_config("univ-sqlite", DatabaseType::Universal, None, None);
+    config.connection_url = Some("sqlite::memory:".to_string());
+
+    let handle = DriverFactory::create(&config)
+        .await
+        .expect("Failed to create universal sqlite driver");
+    assert!(handle.tunnel.is_none());
+}
+
+#[tokio::test]
+async fn test_factory_universal_dialect_fallback() {
+    let mut config = create_test_config("univ-fallback", DatabaseType::Universal, None, None);
+    config.dialect_family = Some("sqlite".to_string());
+    config.file_path = Some(":memory:".to_string());
+
+    let handle = DriverFactory::create(&config)
+        .await
+        .expect("Failed to create universal dialect fallback driver");
     assert!(handle.tunnel.is_none());
 }
 
@@ -77,6 +115,66 @@ async fn test_factory_mysql_unreachable() {
     assert!(
         result.is_err(),
         "Expected connection failure for unreachable MySQL"
+    );
+}
+
+#[tokio::test]
+async fn test_factory_mariadb_unreachable() {
+    let config = create_test_config(
+        "mariadb-fail",
+        DatabaseType::MariaDb,
+        Some("127.0.0.1"),
+        Some(59994),
+    );
+    let result = DriverFactory::create(&config).await;
+    assert!(
+        result.is_err(),
+        "Expected connection failure for unreachable MariaDB"
+    );
+}
+
+#[tokio::test]
+async fn test_factory_cockroach_unreachable() {
+    let config = create_test_config(
+        "cockroach-fail",
+        DatabaseType::CockroachDb,
+        Some("127.0.0.1"),
+        Some(59995),
+    );
+    let result = DriverFactory::create(&config).await;
+    assert!(
+        result.is_err(),
+        "Expected connection failure for unreachable CockroachDB"
+    );
+}
+
+#[tokio::test]
+async fn test_factory_redshift_unreachable() {
+    let config = create_test_config(
+        "redshift-fail",
+        DatabaseType::Redshift,
+        Some("127.0.0.1"),
+        Some(59996),
+    );
+    let result = DriverFactory::create(&config).await;
+    assert!(
+        result.is_err(),
+        "Expected connection failure for unreachable Redshift"
+    );
+}
+
+#[tokio::test]
+async fn test_factory_clickhouse_unreachable() {
+    let config = create_test_config(
+        "clickhouse-fail",
+        DatabaseType::ClickHouse,
+        Some("127.0.0.1"),
+        Some(59997),
+    );
+    let result = DriverFactory::create(&config).await;
+    assert!(
+        result.is_err(),
+        "Expected connection failure for unreachable ClickHouse"
     );
 }
 

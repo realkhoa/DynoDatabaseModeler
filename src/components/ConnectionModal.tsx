@@ -12,6 +12,8 @@ import {
   ConnectionConfig,
   DatabaseType,
   getDefaultPort,
+  isEmbeddedEngine,
+  isUniversalEngine,
 } from '../types/database';
 import { ConnectionFormFields } from './ConnectionFormFields';
 
@@ -63,7 +65,6 @@ export function formatErrorMessage(err: unknown): string {
  * @return Rendered modal dialog element or null if closed.
  */
 export const ConnectionModal: React.FC<ConnectionModalProps> = React.memo(({
-
   isOpen,
   onClose,
   onConnect,
@@ -85,6 +86,8 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = React.memo(({
   const [sshAuthType, setSshAuthType] = useState<'Password' | 'PrivateKey'>('Password');
   const [sshPassword, setSshPassword] = useState('');
   const [sshKeyPath, setSshKeyPath] = useState('');
+  const [connectionUrl, setConnectionUrl] = useState('');
+  const [dialectFamily, setDialectFamily] = useState('postgres');
   // Credentials are stored in the operating system secret store, never in browser storage.
   const [rememberPassword, setRememberPassword] = useState(true);
   // Whether the secret store already holds credentials for the profile being edited.
@@ -130,6 +133,8 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = React.memo(({
         setSshPassword('');
         setSshKeyPath('');
       }
+      setConnectionUrl(initialConfig.connection_url || '');
+      setDialectFamily(initialConfig.dialect_family || 'postgres');
     } else {
       setName('Local Postgres');
       setDbType('Postgres');
@@ -147,6 +152,8 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = React.memo(({
       setSshAuthType('Password');
       setSshPassword('');
       setSshKeyPath('');
+      setConnectionUrl('');
+      setDialectFamily('postgres');
     }
     setTestStatus('idle');
     setTestMessage('');
@@ -204,15 +211,33 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = React.memo(({
       if (!name || name.startsWith('Local ')) setName('Local DuckDB');
       if (!database) setDatabase('dyno_analytics.duckdb');
       if (!filePath) setFilePath('dyno_analytics.duckdb');
+    } else if (newType === 'LibSql') {
+      if (!name || name.startsWith('Local ')) setName('Local LibSQL');
+      if (!database) setDatabase('replica.db');
+      if (!filePath) setFilePath('replica.db');
     } else if (newType === 'Postgres') {
       if (!name || name.startsWith('Local ')) setName('Local Postgres');
       if (!username) setUsername('postgres');
     } else if (newType === 'MySql') {
       if (!name || name.startsWith('Local ')) setName('Local MySQL');
       if (!username) setUsername('root');
+    } else if (newType === 'MariaDb') {
+      if (!name || name.startsWith('Local ')) setName('Local MariaDB');
+      if (!username) setUsername('root');
+    } else if (newType === 'CockroachDb') {
+      if (!name || name.startsWith('Local ')) setName('Local CockroachDB');
+      if (!username) setUsername('root');
+    } else if (newType === 'ClickHouse') {
+      if (!name || name.startsWith('Local ')) setName('Local ClickHouse');
+      if (!username) setUsername('default');
+    } else if (newType === 'Redshift') {
+      if (!name || name.startsWith('Local ')) setName('Local Redshift');
+      if (!username) setUsername('awsuser');
     } else if (newType === 'Mssql') {
       if (!name || name.startsWith('Local ')) setName('Local SQL Server');
       if (!username) setUsername('sa');
+    } else if (newType === 'Universal') {
+      if (!name || name.startsWith('Local ')) setName('Universal Connection');
     }
   };
 
@@ -222,25 +247,37 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = React.memo(({
    */
   const buildConfig = (): ConnectionConfig => {
     const id = initialConfig?.id || `conn-${Date.now()}`;
-    const isEmbedded = dbType === 'Sqlite' || dbType === 'DuckDb';
+    const isEmbedded = isEmbeddedEngine(dbType);
+    const isUniversal = isUniversalEngine(dbType);
     let targetDb = database.trim();
-    if (!isEmbedded && !targetDb) {
-      targetDb = dbType === 'Postgres' ? 'postgres' : dbType === 'Mssql' ? 'master' : 'mysql';
+    if (!isEmbedded && !isUniversal && !targetDb) {
+      targetDb =
+        dbType === 'Postgres' || dbType === 'CockroachDb' || dbType === 'Redshift'
+          ? 'postgres'
+          : dbType === 'Mssql'
+          ? 'master'
+          : dbType === 'ClickHouse'
+          ? 'default'
+          : 'mysql';
     }
 
     return {
       id,
       name: name.trim() || `${dbType} Connection`,
       db_type: dbType,
-      host: !isEmbedded ? host.trim() : undefined,
-      port: !isEmbedded ? Number(port) : undefined,
-      database: isEmbedded ? (filePath.trim() || database.trim() || ':memory:') : targetDb,
-      username: !isEmbedded && username.trim() ? username.trim() : undefined,
-      password: !isEmbedded && password ? password : undefined,
-      file_path: isEmbedded ? (filePath.trim() || database.trim() || ':memory:') : undefined,
-      ssl: !isEmbedded ? ssl : false,
+      host: !isEmbedded && !isUniversal ? host.trim() : undefined,
+      port: !isEmbedded && !isUniversal ? Number(port) : undefined,
+      database: isEmbedded
+        ? filePath.trim() || database.trim() || ':memory:'
+        : isUniversal
+        ? database.trim() || 'universal'
+        : targetDb,
+      username: !isEmbedded && !isUniversal && username.trim() ? username.trim() : undefined,
+      password: !isEmbedded && !isUniversal && password ? password : undefined,
+      file_path: isEmbedded ? filePath.trim() || database.trim() || ':memory:' : undefined,
+      ssl: !isEmbedded && !isUniversal ? ssl : false,
       ssh_tunnel:
-        !isEmbedded && sshEnabled && sshHost.trim()
+        !isEmbedded && !isUniversal && sshEnabled && sshHost.trim()
           ? {
               enabled: true,
               host: sshHost.trim(),
@@ -251,6 +288,8 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = React.memo(({
               private_key_path: sshAuthType === 'PrivateKey' ? sshKeyPath.trim() : undefined,
             }
           : undefined,
+      connection_url: isUniversal ? connectionUrl.trim() || undefined : undefined,
+      dialect_family: isUniversal ? dialectFamily || 'postgres' : undefined,
     };
   };
 
@@ -358,10 +397,10 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = React.memo(({
       return;
     }
 
-    const isEmbedded = dbType === 'Sqlite' || dbType === 'DuckDb';
+    const isEmbedded = isEmbeddedEngine(dbType);
     if (isEmbedded && !filePath.trim() && !database.trim()) {
       setValidationError(
-        `Database path or :memory: is required for ${dbType === 'DuckDb' ? 'DuckDB' : 'SQLite'}.`
+        `Database path or :memory: is required for ${dbType}.`
       );
       return;
     }
@@ -454,6 +493,10 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = React.memo(({
             setSshPassword={setSshPassword}
             sshKeyPath={sshKeyPath}
             setSshKeyPath={setSshKeyPath}
+            connectionUrl={connectionUrl}
+            setConnectionUrl={setConnectionUrl}
+            dialectFamily={dialectFamily}
+            setDialectFamily={setDialectFamily}
             validationError={validationError}
             testStatus={testStatus}
             testMessage={testMessage}

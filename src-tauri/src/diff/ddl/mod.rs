@@ -1,7 +1,8 @@
 //! @file mod.rs
 //! @brief Multi-dialect DDL generation module.
 //! @details Formats SchemaDiff instances into executable SQL DDL statements
-//! for PostgreSQL, SQLite, MySQL, and Microsoft SQL Server.
+//! for PostgreSQL, SQLite, MySQL, Microsoft SQL Server, DuckDB, MariaDB, CockroachDB,
+//! LibSQL, Amazon Redshift, ClickHouse, and Universal SQL.
 //!
 //! Generation is intentionally exhaustive: every change in a `SchemaDiff` either produces a
 //! statement or an explicit warning. Nothing is silently dropped, so the migration script shown
@@ -88,16 +89,23 @@ impl DialectDdlGenerator for MssqlDdlGenerator {
 }
 
 /// @brief Generates executable DDL statements according to the target database dialect.
-/// @details Routes the schema diff to the corresponding dialect generator. DuckDB follows the
-/// PostgreSQL dialect, which it is largely compatible with.
+/// @details Routes the schema diff to the corresponding dialect generator.
+/// CockroachDB, Amazon Redshift, DuckDB, and Universal follow PostgreSQL-compatible dialect.
+/// LibSQL follows SQLite dialect. MariaDB and ClickHouse follow MySQL-compatible dialect.
 /// @param diff Reference to the computed schema diff.
 /// @param dialect Target database engine type.
 /// @return Generated SQL statements plus warnings for unsupported changes.
 pub fn generate_ddl(diff: &SchemaDiff, dialect: DatabaseType) -> GeneratedDdl {
     match dialect {
-        DatabaseType::Postgres | DatabaseType::DuckDb => PostgresDdlGenerator::generate(diff),
-        DatabaseType::Sqlite => SqliteDdlGenerator::generate(diff),
-        DatabaseType::MySql => MySqlDdlGenerator::generate(diff),
+        DatabaseType::Postgres
+        | DatabaseType::DuckDb
+        | DatabaseType::CockroachDb
+        | DatabaseType::Redshift
+        | DatabaseType::Universal => PostgresDdlGenerator::generate(diff),
+        DatabaseType::Sqlite | DatabaseType::LibSql => SqliteDdlGenerator::generate(diff),
+        DatabaseType::MySql | DatabaseType::MariaDb | DatabaseType::ClickHouse => {
+            MySqlDdlGenerator::generate(diff)
+        }
         DatabaseType::Mssql => MssqlDdlGenerator::generate(diff),
     }
 }

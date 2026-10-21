@@ -206,7 +206,7 @@ describe('ConnectionModal component', () => {
       />
     );
 
-    const duckDbBtn = screen.getByRole('button', { name: 'DuckDB' });
+    const duckDbBtn = screen.getByRole('button', { name: /DuckDB/i });
     fireEvent.click(duckDbBtn);
 
     const nameInput = screen.getByLabelText(/Connection Name/i);
@@ -331,5 +331,42 @@ describe('ConnectionModal component', () => {
     fireEvent.click(screen.getByRole('button', { name: 'custom_db' }));
     const dbInput = screen.getByLabelText(/defaults to maintenance db/i) as HTMLInputElement;
     expect(dbInput.value).toBe('custom_db');
+  });
+  /**
+   * @brief Verifies switching to Universal engine reveals URL input and dialect selector.
+   */
+  it('switches to Universal engine and configures connection URL', async () => {
+    const handleConnect = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ConnectionModal
+        isOpen={true}
+        onClose={vi.fn()}
+        onConnect={handleConnect}
+      />
+    );
+
+    // Switch to Universal
+    fireEvent.click(screen.getByRole('button', { name: /Universal/i }));
+    expect(screen.getByTestId('universal-connection-url')).toBeDefined();
+    expect(screen.getByTestId('universal-dialect-family')).toBeDefined();
+
+    // Type custom connection URL
+    const urlInput = screen.getByTestId('universal-connection-url');
+    fireEvent.change(urlInput, {
+      target: { value: 'postgresql://postgres:pass@remote.db:5432/analytics' },
+    });
+
+    const connectBtn = screen.getByRole('button', { name: 'Connect' });
+    fireEvent.click(connectBtn);
+
+    await waitFor(() => {
+      expect(handleConnect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          db_type: 'Universal',
+          connection_url: 'postgresql://postgres:pass@remote.db:5432/analytics',
+          dialect_family: 'postgres',
+        })
+      );
+    });
   });
 });

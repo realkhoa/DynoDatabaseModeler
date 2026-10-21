@@ -79,6 +79,8 @@ fn test_connection_config_serialization() {
         file_path: None,
         ssl: false,
         ssh_tunnel: None,
+        connection_url: None,
+        dialect_family: None,
     };
 
     let json =
@@ -101,6 +103,8 @@ fn test_connection_config_serialization() {
         file_path: Some("/path/to/local.db".to_string()),
         ssl: false,
         ssh_tunnel: None,
+        connection_url: None,
+        dialect_family: None,
     };
 
     let sqlite_json =
@@ -125,12 +129,60 @@ fn test_connection_config_serialization() {
         file_path: Some("/data/analytics.duckdb".to_string()),
         ssl: false,
         ssh_tunnel: None,
+        connection_url: None,
+        dialect_family: None,
     };
     let duckdb_json =
         serde_json::to_string(&duckdb_config).expect("Failed to serialize duckdb config");
     let duckdb_deserialized: ConnectionConfig =
         serde_json::from_str(&duckdb_json).expect("Failed to deserialize duckdb config");
     assert_eq!(duckdb_deserialized.db_type, DatabaseType::DuckDb);
+
+    // Test Universal connection configuration serialization
+    let universal_config = ConnectionConfig {
+        id: "conn-univ".to_string(),
+        name: "Universal Cluster".to_string(),
+        db_type: DatabaseType::Universal,
+        host: None,
+        port: None,
+        database: "production".to_string(),
+        username: None,
+        password: None,
+        file_path: None,
+        ssl: true,
+        ssh_tunnel: None,
+        connection_url: Some("postgresql://usr:pwd@db.host.io:5432/production".to_string()),
+        dialect_family: Some("postgres".to_string()),
+    };
+    let universal_json =
+        serde_json::to_string(&universal_config).expect("Failed to serialize universal config");
+    let universal_deserialized: ConnectionConfig =
+        serde_json::from_str(&universal_json).expect("Failed to deserialize universal config");
+    assert_eq!(universal_deserialized.db_type, DatabaseType::Universal);
+    assert_eq!(
+        universal_deserialized.connection_url,
+        Some("postgresql://usr:pwd@db.host.io:5432/production".to_string())
+    );
+    assert_eq!(
+        universal_deserialized.dialect_family,
+        Some("postgres".to_string())
+    );
+
+    // Verify all extended database types deserialize cleanly
+    let extended_engines = vec![
+        DatabaseType::MariaDb,
+        DatabaseType::CockroachDb,
+        DatabaseType::LibSql,
+        DatabaseType::Redshift,
+        DatabaseType::ClickHouse,
+        DatabaseType::Universal,
+    ];
+    for engine in extended_engines {
+        let serialized = serde_json::to_string(&engine).expect("Engine serialize failed");
+        let deserialized: DatabaseType =
+            serde_json::from_str(&serialized).expect("Engine deserialize failed");
+        assert_eq!(engine, deserialized);
+    }
 }
 
 /// @brief Tests CanonicalType serialization and deserialization across varied type variants.

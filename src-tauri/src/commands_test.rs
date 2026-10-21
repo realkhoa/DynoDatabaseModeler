@@ -26,6 +26,8 @@ fn make_sqlite_config(id: &str) -> ConnectionConfig {
         file_path: Some(":memory:".to_string()),
         ssl: false,
         ssh_tunnel: None,
+        connection_url: None,
+        dialect_family: None,
     }
 }
 
@@ -233,6 +235,8 @@ async fn test_cmd_test_connection_unreachable() {
         file_path: None,
         ssl: false,
         ssh_tunnel: None,
+        connection_url: None,
+        dialect_family: None,
     };
 
     let result = cmd_test_connection(config).await;

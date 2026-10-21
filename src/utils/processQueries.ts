@@ -7,6 +7,7 @@
  */
 
 import type { DatabaseType, QueryResult } from '../types/database';
+import { getEngineDialectFamily, isEmbeddedEngine } from '../types/database';
 
 /**
  * @brief Standardized representation of an active database server process or session.
@@ -34,16 +35,17 @@ export interface ProcessItem {
  * @return SQL statement text.
  */
 export function getProcessListQuery(dbType: DatabaseType = 'Postgres'): string {
-  switch (dbType) {
-    case 'Postgres':
+  const family = getEngineDialectFamily(dbType);
+  switch (family) {
+    case 'postgres':
       return `SELECT pid, usename AS "user", datname AS "database", COALESCE(client_addr::text, 'local') AS "client", state, COALESCE(TO_CHAR(NOW() - query_start, 'HH24:MI:SS'), '00:00:00') AS duration, query FROM pg_stat_activity WHERE query NOT LIKE '%pg_stat_activity%' ORDER BY query_start ASC NULLS LAST LIMIT 100;`;
-    case 'MySql':
+    case 'mysql':
       return `SHOW FULL PROCESSLIST;`;
-    case 'Mssql':
+    case 'mssql':
       return `SELECT r.session_id AS pid, s.login_name AS [user], COALESCE(DB_NAME(r.database_id), 'master') AS [database], COALESCE(s.client_net_address, 'local') AS [client], r.status AS state, CAST(DATEADD(ms, r.total_elapsed_time, '1900-01-01') AS TIME) AS duration, t.text AS query FROM sys.dm_exec_requests r CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) t JOIN sys.dm_exec_sessions s ON r.session_id = s.session_id WHERE r.session_id <> @@SPID;`;
-    case 'DuckDb':
+    case 'duckdb':
       return `SELECT query_id AS pid, 'duckdb' AS "user", 'memory' AS "database", 'localhost' AS "client", 'running' AS state, '00:00:01' AS duration, query FROM duckdb_queries() WHERE query NOT LIKE '%duckdb_queries%' LIMIT 50;`;
-    case 'Sqlite':
+    case 'sqlite':
       return `SELECT 1 AS pid, 'sqlite' AS "user", 'main' AS "database", 'local' AS "client", 'active' AS state, '00:00:00' AS duration, 'SQLite in-process active connection' AS query;`;
     default:
       return `SELECT 1 AS pid, 'user' AS "user", 'db' AS "database", 'localhost' AS "client", 'active' AS state, '00:00:00' AS duration, 'Active session' AS query;`;
@@ -62,16 +64,17 @@ export function getKillQuery(pid: string | number, dbType: DatabaseType = 'Postg
     throw new Error(`Invalid process ID: ${pid}`);
   }
 
-  switch (dbType) {
-    case 'Postgres':
+  if (isEmbeddedEngine(dbType)) {
+    throw new Error(`Process termination is not supported for embedded engine: ${dbType}`);
+  }
+  const family = getEngineDialectFamily(dbType);
+  switch (family) {
+    case 'postgres':
       return `SELECT pg_terminate_backend(${numericPid});`;
-    case 'MySql':
+    case 'mysql':
       return `KILL ${numericPid};`;
-    case 'Mssql':
+    case 'mssql':
       return `KILL ${numericPid};`;
-    case 'DuckDb':
-    case 'Sqlite':
-      throw new Error(`Process termination is not supported for embedded engine: ${dbType}`);
     default:
       throw new Error(`Unsupported database dialect for process kill: ${dbType}`);
   }

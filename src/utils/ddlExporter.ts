@@ -6,7 +6,7 @@
  */
 
 import type { DatabaseType, TableSchema, ColumnSchema } from '../types/database';
-import { formatCanonicalType } from '../types/database';
+import { formatCanonicalType, getEngineDialectFamily } from '../types/database';
 import { quoteIdentifier } from './mockDataGenerator';
 
 /**
@@ -16,15 +16,16 @@ import { quoteIdentifier } from './mockDataGenerator';
  * @return Dialect SQL type string.
  */
 export function formatColumnType(col: ColumnSchema, dbType: DatabaseType = 'Postgres'): string {
+  const family = getEngineDialectFamily(dbType);
   const typeStr = typeof col.data_type === 'string' ? col.data_type : formatCanonicalType(col.data_type);
   const upper = typeStr.toUpperCase();
 
   if (upper.includes('INT')) {
     if (col.is_primary_key && col.is_auto_increment) {
-      if (dbType === 'Postgres') return upper.includes('BIG') ? 'BIGSERIAL' : 'SERIAL';
-      if (dbType === 'MySql') return 'INT AUTO_INCREMENT';
-      if (dbType === 'Mssql') return 'INT IDENTITY(1,1)';
-      if (dbType === 'Sqlite') return 'INTEGER PRIMARY KEY AUTOINCREMENT';
+      if (family === 'postgres') return upper.includes('BIG') ? 'BIGSERIAL' : 'SERIAL';
+      if (family === 'mysql') return 'INT AUTO_INCREMENT';
+      if (family === 'mssql') return 'INT IDENTITY(1,1)';
+      if (family === 'sqlite') return 'INTEGER PRIMARY KEY AUTOINCREMENT';
     }
     if (upper.includes('BIG')) return 'BIGINT';
     if (upper.includes('SMALL')) return 'SMALLINT';
@@ -32,8 +33,8 @@ export function formatColumnType(col: ColumnSchema, dbType: DatabaseType = 'Post
   }
 
   if (upper.includes('FLOAT') || upper.includes('DOUBLE')) {
-    if (dbType === 'Postgres') return 'DOUBLE PRECISION';
-    if (dbType === 'Sqlite') return 'REAL';
+    if (family === 'postgres') return 'DOUBLE PRECISION';
+    if (family === 'sqlite') return 'REAL';
     return 'FLOAT';
   }
 
@@ -42,34 +43,34 @@ export function formatColumnType(col: ColumnSchema, dbType: DatabaseType = 'Post
   }
 
   if (upper.includes('BOOL')) {
-    if (dbType === 'MySql') return 'TINYINT(1)';
-    if (dbType === 'Mssql') return 'BIT';
-    if (dbType === 'Sqlite') return 'INTEGER';
+    if (family === 'mysql') return 'TINYINT(1)';
+    if (family === 'mssql') return 'BIT';
+    if (family === 'sqlite') return 'INTEGER';
     return 'BOOLEAN';
   }
 
   if (upper.includes('DATE') || upper.includes('TIME')) {
-    if (dbType === 'Postgres') return 'TIMESTAMPTZ';
-    if (dbType === 'MySql') return 'DATETIME';
-    if (dbType === 'Mssql') return 'DATETIME2';
+    if (family === 'postgres') return 'TIMESTAMPTZ';
+    if (family === 'mysql') return 'DATETIME';
+    if (family === 'mssql') return 'DATETIME2';
     return 'TEXT';
   }
 
   if (upper.includes('UUID')) {
-    if (dbType === 'Postgres') return 'UUID';
-    if (dbType === 'Mssql') return 'UNIQUEIDENTIFIER';
+    if (family === 'postgres') return 'UUID';
+    if (family === 'mssql') return 'UNIQUEIDENTIFIER';
     return 'VARCHAR(36)';
   }
 
   if (upper.includes('JSON')) {
-    if (dbType === 'Postgres') return 'JSONB';
-    if (dbType === 'MySql') return 'JSON';
+    if (family === 'postgres') return 'JSONB';
+    if (family === 'mysql') return 'JSON';
     return 'TEXT';
   }
 
   if (upper.includes('BINARY') || upper.includes('BYTEA') || upper.includes('BLOB')) {
-    if (dbType === 'Postgres') return 'BYTEA';
-    if (dbType === 'Mssql') return 'VARBINARY(MAX)';
+    if (family === 'postgres') return 'BYTEA';
+    if (family === 'mssql') return 'VARBINARY(MAX)';
     return 'BLOB';
   }
 
@@ -97,7 +98,7 @@ export function generateTableDdl(table: TableSchema, dbType: DatabaseType = 'Pos
     let colLine = `  ${quotedColName} ${typeStr}`;
 
     // SQLite AUTOINCREMENT handles PK in column definition
-    if (dbType === 'Sqlite' && col.is_primary_key && col.is_auto_increment) {
+    if (getEngineDialectFamily(dbType) === 'sqlite' && col.is_primary_key && col.is_auto_increment) {
       lines.push(colLine);
       continue;
     }
@@ -114,7 +115,7 @@ export function generateTableDdl(table: TableSchema, dbType: DatabaseType = 'Pos
   }
 
   // Primary Key constraint
-  if (pkCols.length > 0 && !(dbType === 'Sqlite' && pkCols.some((c) => c.is_auto_increment))) {
+  if (pkCols.length > 0 && !(getEngineDialectFamily(dbType) === 'sqlite' && pkCols.some((c) => c.is_auto_increment))) {
     const pkQuoted = pkCols.map((c) => quoteIdentifier(c.name, dbType)).join(', ');
     lines.push(`  PRIMARY KEY (${pkQuoted})`);
   }

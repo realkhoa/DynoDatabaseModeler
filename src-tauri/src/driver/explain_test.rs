@@ -21,6 +21,8 @@ fn create_test_config(id: &str) -> ConnectionConfig {
         file_path: Some(":memory:".to_string()),
         ssl: false,
         ssh_tunnel: None,
+        connection_url: None,
+        dialect_family: None,
     }
 }
 

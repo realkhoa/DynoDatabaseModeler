@@ -86,15 +86,32 @@ DynoDbModeler employs a modern multi-process desktop architecture leveraging Tau
 
 ## 3. Multi-Database Engine Support
 
-DynoDbModeler provides first-class support for five database engines:
+DynoDbModeler provides first-class support for ten specialized database engines plus a generic universal adapter:
 
-| Engine | Driver Crate | Introspection Source | Key Features & Safeguards |
-| :--- | :--- | :--- | :--- |
-| **SQLite** | `sqlx` (sqlite) | `sqlite_master`, `PRAGMA table_info`/`table_xinfo`, `PRAGMA foreign_key_list`, `PRAGMA index_list` | File-based & `:memory:` support, secondary index introspection, transactional DDL with foreign keys disabled for the batch, rebuild-based column changes. |
-| **PostgreSQL** | `sqlx` (postgres) | `pg_class`/`pg_namespace`, `information_schema.columns`, `pg_constraint`, `pg_index` | Fully-qualified schema quoting (`"schema"."table"`), composite-safe foreign key introspection, numeric precision/scale, identity columns, TLS via `sslmode=require`. |
-| **MySQL / MariaDB** | `sqlx` (mysql) | `information_schema.tables`, `columns`, `key_column_usage`, `statistics` | Backtick quoting, index introspection, safe `MODIFY COLUMN` omitting redundant `PRIMARY KEY` (prevents error 1068), TLS via `MySqlSslMode::Required`. |
-| **Microsoft SQL Server** | `tiberius` (TDS) | `sys.tables`, `sys.columns`, `sys.types`, `sys.foreign_keys`, `sys.indexes` | Parameterized catalog queries, square bracket quoting (`[dbo].[table]`), `COLUMNPROPERTY` identity detection, real execution plans via `SET SHOWPLAN_XML ON`. |
-| **DuckDB** | `duckdb` (bundled) | `information_schema.tables`, `PRAGMA table_info`, `PRAGMA foreign_key_list` | In-process analytical engine (file or `:memory:`), JSON execution plans, parameterized row updates. |
+| Engine | Category | Driver / Protocol | Introspection Source | Key Features & Safeguards |
+| :--- | :--- | :--- | :--- | :--- |
+| **SQLite** | Popular | `sqlx` (sqlite) | `sqlite_master`, `PRAGMA table_info`/`table_xinfo`, `PRAGMA foreign_key_list`, `PRAGMA index_list` | File-based & `:memory:` support, secondary index introspection, transactional DDL with foreign keys disabled for the batch, rebuild-based column changes. |
+| **PostgreSQL** | Popular | `sqlx` (postgres) | `pg_class`/`pg_namespace`, `information_schema.columns`, `pg_constraint`, `pg_index` | Fully-qualified schema quoting (`"schema"."table"`), composite-safe foreign key introspection, numeric precision/scale, identity columns, TLS via `sslmode=require`. |
+| **MySQL** | Popular | `sqlx` (mysql) | `information_schema.tables`, `columns`, `key_column_usage`, `statistics` | Backtick quoting, index introspection, safe `MODIFY COLUMN` omitting redundant `PRIMARY KEY` (prevents error 1068), TLS via `MySqlSslMode::Required`. |
+| **MariaDB** | Popular | `sqlx` (mysql wire) | `information_schema.tables`, `columns`, `key_column_usage`, `statistics` | Full MariaDB wire compatibility, temporal tables, backtick quoting, standard port 3306. |
+| **Microsoft SQL Server** | Popular | `tiberius` (TDS) | `sys.tables`, `sys.columns`, `sys.types`, `sys.foreign_keys`, `sys.indexes` | Parameterized catalog queries, square bracket quoting (`[dbo].[table]`), `COLUMNPROPERTY` identity detection, real execution plans via `SET SHOWPLAN_XML ON`. |
+| **DuckDB** | Analytics | `duckdb` (bundled) | `information_schema.tables`, `PRAGMA table_info`, `PRAGMA foreign_key_list` | In-process columnar analytical engine (file or `:memory:`), JSON execution plans, vectorized queries. |
+| **CockroachDB** | Cloud | `sqlx` (pgwire) | `information_schema.tables`, `pg_class`, `pg_constraint`, `pg_index` | Distributed SQL support, PostgreSQL wire compatibility, standard port 26257, SSL mode support. |
+| **ClickHouse** | Analytics | `sqlx` (mysql/http) | `information_schema.tables`, `columns` | Columnar OLAP engine, high-speed analytical queries, standard port 8123/9000, backtick quoting. |
+| **Amazon Redshift** | Cloud | `sqlx` (pgwire) | `information_schema.tables`, `pg_class`, `pg_constraint` | AWS cloud data warehouse, PostgreSQL dialect family, standard port 5439, SSL encryption. |
+| **LibSQL (Turso)** | Edge | `sqlx` (sqlite wire) | SQLite catalog & `PRAGMA` routines | Edge embedded replica and Turso cloud database compatibility, SQLite syntax and rebuild DDL. |
+| **Universal / Any SQL** | Universal | Dynamic Dispatcher | Auto-routed by protocol & dialect family | Connect to **ANY** SQL database via raw connection URL or host/port credentials. Choose from 6 dialect families (`postgres`, `mysql`, `sqlite`, `mssql`, `duckdb`, `ansi`) for precise quoting and pagination. |
+
+### Universal Connection Setup
+
+The **Universal / Any SQL** option provides maximum flexibility:
+1. **Raw Connection URL**: Paste any valid connection string (e.g. `postgresql://user:pass@host:5432/dbname`, `mysql://...`, `sqlite:path.db`, `duckdb:path.duckdb`, or `sqlserver://...`).
+2. **One-Click Presets**: Quick templates for Postgres, MySQL, SQLite, DuckDB, and SQL Server.
+3. **Dialect Family Selector**: Explicitly choose the dialect family (`postgres`, `mysql`, `sqlite`, `mssql`, `duckdb`, `ansi`) to control:
+   - Identifier quoting (`"..."`, ``` `...` ```, `[...]`)
+   - Pagination strategy (`LIMIT/OFFSET` vs `OFFSET/FETCH NEXT`)
+   - Diagnostic and process list queries
+4. **Direct Parameter Overrides**: Toggle manual host, port, username, and password credentials when URL format is not preferred.
 
 ### Dialect Capability Notes
 

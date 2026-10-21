@@ -6,6 +6,7 @@
  */
 
 import type { DatabaseType } from '../types/database';
+import { getEngineDialectFamily } from '../types/database';
 
 /**
  * @brief Escapes a table or column identifier according to database dialect conventions.
@@ -19,15 +20,16 @@ import type { DatabaseType } from '../types/database';
  */
 export function escapeIdentifier(ident: string, dbType: DatabaseType = 'Sqlite'): string {
   const parts = ident.split('.').map((p) => p.trim().replace(/^["`\[]|["`\]]$/g, ''));
+  const family = getEngineDialectFamily(dbType);
 
-  switch (dbType) {
-    case 'MySql':
+  switch (family) {
+    case 'mysql':
       return parts.map((p) => `\`${p}\``).join('.');
-    case 'Mssql':
+    case 'mssql':
       return parts.map((p) => `[${p}]`).join('.');
-    case 'Postgres':
-    case 'Sqlite':
-    case 'DuckDb':
+    case 'postgres':
+    case 'sqlite':
+    case 'duckdb':
     default:
       return parts.map((p) => `"${p}"`).join('.');
   }
@@ -55,7 +57,8 @@ export function buildPaginatedSelectQuery(
   const escapedTable = escapeIdentifier(tableKey, dbType);
   const offset = Math.max(0, pageIndex * pageSize);
 
-  if (dbType === 'Mssql') {
+  const family = getEngineDialectFamily(dbType);
+  if (family === 'mssql') {
     const orderClause = primaryKey ? `ORDER BY ${escapeIdentifier(primaryKey, dbType)}` : 'ORDER BY (SELECT NULL)';
     return `SELECT * FROM ${escapedTable} ${orderClause} OFFSET ${offset} ROWS FETCH NEXT ${pageSize} ROWS ONLY;`;
   }

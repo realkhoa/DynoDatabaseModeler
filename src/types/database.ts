@@ -8,7 +8,18 @@
 /**
  * @brief Supported relational database engine types.
  */
-export type DatabaseType = 'Sqlite' | 'Postgres' | 'MySql' | 'Mssql' | 'DuckDb';
+export type DatabaseType =
+  | 'Sqlite'
+  | 'Postgres'
+  | 'MySql'
+  | 'Mssql'
+  | 'DuckDb'
+  | 'MariaDb'
+  | 'CockroachDb'
+  | 'LibSql'
+  | 'Redshift'
+  | 'ClickHouse'
+  | 'Universal';
 
 /**
  * @brief Configuration parameters for establishing a database connection.
@@ -36,6 +47,10 @@ export interface ConnectionConfig {
   ssl: boolean;
   /** @brief Optional SSH bastion tunnel configuration for remote networks. */
   ssh_tunnel?: SshTunnelConfig;
+  /** @brief Raw connection string or database URL for Universal mode. */
+  connection_url?: string;
+  /** @brief Explicit dialect family for Universal mode. */
+  dialect_family?: string;
 }
 
 /**
@@ -446,17 +461,99 @@ export function isSameCanonicalType(a: CanonicalType, b: CanonicalType): boolean
 export function getDefaultPort(dbType: DatabaseType): number {
   switch (dbType) {
     case 'Postgres':
+    case 'Universal':
       return 5432;
+    case 'CockroachDb':
+      return 26257;
+    case 'Redshift':
+      return 5439;
     case 'MySql':
+    case 'MariaDb':
       return 3306;
+    case 'ClickHouse':
+      return 9004;
     case 'Mssql':
       return 1433;
     case 'Sqlite':
+    case 'LibSql':
     case 'DuckDb':
     default:
       return 0;
   }
 }
+
+/**
+ * @brief Checks if a database engine is an embedded file/in-memory engine.
+ * @param dbType Target database engine type.
+ * @return True if engine is local file or in-memory, false if networked.
+ */
+export function isEmbeddedEngine(dbType: DatabaseType): boolean {
+  return dbType === 'Sqlite' || dbType === 'DuckDb' || dbType === 'LibSql';
+}
+
+/**
+ * @brief Checks if an engine uses Universal connection string/URL configuration.
+ * @param dbType Target database engine type.
+ * @return True if engine is Universal adapter.
+ */
+export function isUniversalEngine(dbType: DatabaseType): boolean {
+  return dbType === 'Universal';
+}
+
+/**
+ * @brief Maps a database engine to its underlying SQL dialect family.
+ * @param dbType Target database engine type.
+ * @return Primary dialect family name.
+ */
+export function getEngineDialectFamily(
+  dbType: DatabaseType
+): 'postgres' | 'mysql' | 'sqlite' | 'mssql' | 'duckdb' {
+  switch (dbType) {
+    case 'Postgres':
+    case 'CockroachDb':
+    case 'Redshift':
+    case 'Universal':
+      return 'postgres';
+    case 'MySql':
+    case 'MariaDb':
+    case 'ClickHouse':
+      return 'mysql';
+    case 'Sqlite':
+    case 'LibSql':
+      return 'sqlite';
+    case 'Mssql':
+      return 'mssql';
+    case 'DuckDb':
+      return 'duckdb';
+    default:
+      return 'postgres';
+  }
+}
+
+/**
+ * @brief Categorized definition of database engines for connection UI menus.
+ */
+export interface DatabaseEngineMeta {
+  type: DatabaseType;
+  label: string;
+  description: string;
+  category: 'popular' | 'cloud_analytical' | 'universal';
+  badge?: string;
+}
+
+export const DATABASE_ENGINES: DatabaseEngineMeta[] = [
+  { type: 'Postgres', label: 'PostgreSQL', description: 'Advanced open-source relational database', category: 'popular' },
+  { type: 'MySql', label: 'MySQL', description: "World's most popular open-source database", category: 'popular' },
+  { type: 'MariaDb', label: 'MariaDB', description: 'High performance community fork of MySQL', category: 'popular' },
+  { type: 'Mssql', label: 'Microsoft SQL Server', description: 'Enterprise relational database & Azure SQL', category: 'popular' },
+  { type: 'Sqlite', label: 'SQLite', description: 'Lightweight serverless embedded SQL engine', category: 'popular' },
+  { type: 'CockroachDb', label: 'CockroachDB', description: 'Distributed, cloud-native SQL database', category: 'cloud_analytical', badge: 'Cloud' },
+  { type: 'ClickHouse', label: 'ClickHouse', description: 'Ultra-fast column-oriented analytical DBMS', category: 'cloud_analytical', badge: 'Analytics' },
+  { type: 'Redshift', label: 'Amazon Redshift', description: 'AWS petabyte-scale cloud data warehouse', category: 'cloud_analytical', badge: 'Warehouse' },
+  { type: 'LibSql', label: 'LibSQL / Turso', description: 'Distributed SQLite fork for the edge', category: 'cloud_analytical', badge: 'Edge' },
+  { type: 'DuckDb', label: 'DuckDB', description: 'Fast in-process analytical columnar engine', category: 'cloud_analytical', badge: 'Analytics' },
+  { type: 'Universal', label: 'Universal / Any SQL', description: 'Connect to any SQL database via URL or dialect adapter', category: 'universal', badge: 'Universal' },
+];
 
 /**
  * @brief Persistent SQL query execution history record.

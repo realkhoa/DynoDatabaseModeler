@@ -8,6 +8,10 @@ import {
   formatCanonicalType,
   isSameCanonicalType,
   getDefaultPort,
+  isEmbeddedEngine,
+  isUniversalEngine,
+  getEngineDialectFamily,
+  DATABASE_ENGINES,
   type ConnectionConfig,
   type TableSchema,
   type DatabaseSchema,
@@ -50,8 +54,15 @@ describe('database type helpers', () => {
     expect(isSameCanonicalType('Text', { Varchar: 255 })).toBe(false);
     expect(isSameCanonicalType({ Varchar: 255 }, { Varchar: 255 })).toBe(true);
     expect(isSameCanonicalType({ Varchar: 255 }, { Varchar: 100 })).toBe(false);
-    expect(isSameCanonicalType({ Decimal: { precision: 10, scale: 2 } }, { Decimal: { precision: 10, scale: 2 } })).toBe(true);
-    expect(isSameCanonicalType({ Decimal: { precision: 10 } }, { Decimal: { precision: 10, scale: null } })).toBe(true);
+    expect(
+      isSameCanonicalType(
+        { Decimal: { precision: 10, scale: 2 } },
+        { Decimal: { precision: 10, scale: 2 } }
+      )
+    ).toBe(true);
+    expect(
+      isSameCanonicalType({ Decimal: { precision: 10 } }, { Decimal: { precision: 10, scale: null } })
+    ).toBe(true);
     expect(isSameCanonicalType({ Decimal: { precision: 10 } }, { Decimal: { precision: 8 } })).toBe(false);
     expect(isSameCanonicalType({ Char: 10 }, { Char: 10 })).toBe(true);
     expect(isSameCanonicalType({ Char: 10 }, { Char: 20 })).toBe(false);
@@ -60,14 +71,72 @@ describe('database type helpers', () => {
   });
 
   /**
-   * @brief Verifies default port numbers per database engine.
+   * @brief Verifies default port numbers across all 11 supported database engines.
    */
-  it('resolves correct default ports for each database dialect', () => {
+  it('resolves correct default ports for all 11 database dialects', () => {
     expect(getDefaultPort('Postgres')).toBe(5432);
+    expect(getDefaultPort('Universal')).toBe(5432);
+    expect(getDefaultPort('CockroachDb')).toBe(26257);
+    expect(getDefaultPort('Redshift')).toBe(5439);
     expect(getDefaultPort('MySql')).toBe(3306);
+    expect(getDefaultPort('MariaDb')).toBe(3306);
+    expect(getDefaultPort('ClickHouse')).toBe(9004);
     expect(getDefaultPort('Mssql')).toBe(1433);
     expect(getDefaultPort('Sqlite')).toBe(0);
+    expect(getDefaultPort('LibSql')).toBe(0);
     expect(getDefaultPort('DuckDb')).toBe(0);
+  });
+
+  /**
+   * @brief Tests embedded engine detection helper.
+   */
+  it('correctly classifies embedded vs networked database engines', () => {
+    expect(isEmbeddedEngine('Sqlite')).toBe(true);
+    expect(isEmbeddedEngine('DuckDb')).toBe(true);
+    expect(isEmbeddedEngine('LibSql')).toBe(true);
+    expect(isEmbeddedEngine('Postgres')).toBe(false);
+    expect(isEmbeddedEngine('MySql')).toBe(false);
+    expect(isEmbeddedEngine('Universal')).toBe(false);
+  });
+
+  /**
+   * @brief Tests universal engine detection helper.
+   */
+  it('identifies universal database engine adapter', () => {
+    expect(isUniversalEngine('Universal')).toBe(true);
+    expect(isUniversalEngine('Postgres')).toBe(false);
+    expect(isUniversalEngine('Sqlite')).toBe(false);
+  });
+
+  /**
+   * @brief Tests dialect family resolution across database engines.
+   */
+  it('resolves correct dialect family for all engines', () => {
+    expect(getEngineDialectFamily('Postgres')).toBe('postgres');
+    expect(getEngineDialectFamily('CockroachDb')).toBe('postgres');
+    expect(getEngineDialectFamily('Redshift')).toBe('postgres');
+    expect(getEngineDialectFamily('Universal')).toBe('postgres');
+    expect(getEngineDialectFamily('MySql')).toBe('mysql');
+    expect(getEngineDialectFamily('MariaDb')).toBe('mysql');
+    expect(getEngineDialectFamily('ClickHouse')).toBe('mysql');
+    expect(getEngineDialectFamily('Sqlite')).toBe('sqlite');
+    expect(getEngineDialectFamily('LibSql')).toBe('sqlite');
+    expect(getEngineDialectFamily('Mssql')).toBe('mssql');
+    expect(getEngineDialectFamily('DuckDb')).toBe('duckdb');
+  });
+
+  /**
+   * @brief Verifies DATABASE_ENGINES contains all 11 options with metadata.
+   */
+  it('provides complete DATABASE_ENGINES directory', () => {
+    expect(DATABASE_ENGINES).toHaveLength(11);
+    const types = DATABASE_ENGINES.map((e) => e.type);
+    expect(types).toContain('Universal');
+    expect(types).toContain('MariaDb');
+    expect(types).toContain('CockroachDb');
+    expect(types).toContain('LibSql');
+    expect(types).toContain('Redshift');
+    expect(types).toContain('ClickHouse');
   });
 
   /**
@@ -82,6 +151,18 @@ describe('database type helpers', () => {
       ssl: false,
     };
     expect(config.db_type).toBe('Sqlite');
+
+    const universalConfig: ConnectionConfig = {
+      id: 'conn-u',
+      name: 'Universal DB',
+      db_type: 'Universal',
+      database: 'prod',
+      ssl: true,
+      connection_url: 'postgresql://postgres:secret@localhost:5432/prod',
+      dialect_family: 'postgres',
+    };
+    expect(universalConfig.db_type).toBe('Universal');
+    expect(universalConfig.connection_url).toContain('postgresql://');
 
     const table: TableSchema = {
       name: 'users',
@@ -122,4 +203,3 @@ describe('database type helpers', () => {
     expect(payload.updated_values).toEqual({ username: 'alice_new', is_active: false });
   });
 });
-
