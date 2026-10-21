@@ -611,4 +611,74 @@ describe('App root component', () => {
     expect(screen.queryByRole('dialog', { name: /customers/i })).toBeNull();
     expect(screen.getByText('SQL Query Console')).toBeDefined();
   });
+
+  /**
+   * @brief Verifies that Ctrl+B and Cmd+B shortcuts toggle sidebar display mode between expanded and rail.
+   */
+  it('toggles sidebar mode between expanded and rail using Ctrl+B and Cmd+B shortcuts', () => {
+    render(<App />);
+
+    const sidebar = screen.getByLabelText('Database Sidebar');
+    expect(sidebar.getAttribute('data-mode')).toBe('expanded');
+
+    // Trigger Ctrl+B
+    fireEvent.keyDown(window, { key: 'b', ctrlKey: true });
+    expect(sidebar.getAttribute('data-mode')).toBe('rail');
+
+    // Trigger Cmd+B (macOS metaKey)
+    fireEvent.keyDown(window, { key: 'B', metaKey: true });
+    expect(sidebar.getAttribute('data-mode')).toBe('expanded');
+  });
+
+  /**
+   * @brief Verifies that Ctrl+B does not toggle sidebar mode when typed inside an input or textarea.
+   */
+  it('does not toggle sidebar mode when keyboard shortcut is pressed within text inputs', () => {
+    render(<App />);
+
+    const sidebar = screen.getByLabelText('Database Sidebar');
+    expect(sidebar.getAttribute('data-mode')).toBe('expanded');
+
+    // Find table filter input in expanded sidebar
+    const filterInput = screen.getByLabelText('Filter tables');
+    fireEvent.keyDown(filterInput, { key: 'b', ctrlKey: true });
+
+    // Sidebar should remain expanded
+    expect(sidebar.getAttribute('data-mode')).toBe('expanded');
+  });
+
+  /**
+   * @brief Verifies that header bar toggle button toggles sidebar mode between expanded and rail.
+   */
+  it('toggles sidebar mode using headerbar toggle button', () => {
+    render(<App />);
+
+    const sidebar = screen.getByLabelText('Database Sidebar');
+    expect(sidebar.getAttribute('data-mode')).toBe('expanded');
+
+    const toggleBtn = screen.getByTestId('header-sidebar-toggle-btn');
+    fireEvent.click(toggleBtn);
+    expect(sidebar.getAttribute('data-mode')).toBe('rail');
+
+    fireEvent.click(toggleBtn);
+    expect(sidebar.getAttribute('data-mode')).toBe('expanded');
+  });
+
+  /**
+   * @brief Verifies that the sidebar collapse button toggles to rail mode and expand button toggles back.
+   */
+  it('toggles sidebar mode using sidebar collapse and expand buttons', () => {
+    render(<App />);
+
+    const sidebar = screen.getByLabelText('Database Sidebar');
+    expect(sidebar.getAttribute('data-mode')).toBe('expanded');
+
+    const collapseBtn = screen.getByLabelText('Collapse sidebar');
+    fireEvent.click(collapseBtn);
+    expect(sidebar.getAttribute('data-mode')).toBe('rail');
+
+    const expandBtn = screen.getByLabelText('Expand sidebar');
+    fireEvent.click(expandBtn);
+    expect(sidebar.getAttribute('data-mode')).toBe('expanded');
+  });
 });

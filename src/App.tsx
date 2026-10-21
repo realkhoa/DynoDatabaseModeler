@@ -10,7 +10,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { CheckCircle2, AlertCircle, X, Database, Plus } from 'lucide-react';
 import { HeaderBar, WorkspaceTab } from './components/HeaderBar';
-import { Sidebar } from './components/Sidebar';
+import { Sidebar, SidebarMode } from './components/Sidebar';
 import { ConnectionModal } from './components/ConnectionModal';
 import { ErdCanvas } from './components/canvas/ErdCanvas';
 import { TableDrawer } from './components/canvas/TableDrawer';
@@ -106,6 +106,7 @@ export default function App(): React.ReactElement {
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('erd');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingConfig, setEditingConfig] = useState<ConnectionConfig | null>(null);
+  const [sidebarMode, setSidebarMode] = useState<SidebarMode>('expanded');
 
   // Connection & Schema State. Secrets are stripped on load and on every save.
   const initialState = useMemo(loadSavedConnections, []);
@@ -182,6 +183,38 @@ export default function App(): React.ReactElement {
       // Storage unavailable
     }
   }, [connections]);
+
+  // Global keyboard shortcut listener for toggling the sidebar between 'expanded' and 'rail' (Ctrl+B / Cmd+B)
+  useEffect(() => {
+    /**
+     * @brief Window keydown event handler for Ctrl+B and Cmd+B sidebar toggling.
+     * @param e Keyboard event.
+     */
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'b' || e.key === 'B')) {
+        const target = e.target;
+        const element = target instanceof Element ? target : null;
+        const tagName = element?.tagName;
+        const isEditable =
+          (element instanceof HTMLElement && element.isContentEditable) ||
+          tagName === 'INPUT' ||
+          tagName === 'TEXTAREA' ||
+          Boolean(element?.closest('.monaco-editor'));
+
+        if (isEditable) {
+          return;
+        }
+
+        e.preventDefault();
+        setSidebarMode((prev) => (prev === 'expanded' ? 'rail' : 'expanded'));
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
 
   /**
    * @brief Handles establishing a connection and introspecting its schema.
@@ -672,6 +705,8 @@ export default function App(): React.ReactElement {
         onOpenDiff={handleOpenDiff}
         pendingChangesCount={pendingChangesCount}
         onOpenProcesses={() => setIsProcessModalOpen(true)}
+        sidebarMode={sidebarMode}
+        onToggleSidebar={() => setSidebarMode((prev) => (prev === 'expanded' ? 'rail' : 'expanded'))}
       />
 
       {/* Main Workspace (Sidebar + Canvas / Editor) */}
@@ -707,6 +742,8 @@ export default function App(): React.ReactElement {
           isLoadingDatabases={isLoadingDatabases}
           onViewTableData={handleViewTableData}
           onInspectTableStructure={(table) => setInspectingTable(table)}
+          mode={sidebarMode}
+          onToggleMode={setSidebarMode}
         />
 
         {/* Center / Right Content Panel */}
