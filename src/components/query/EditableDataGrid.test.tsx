@@ -652,11 +652,11 @@ describe('EditableDataGrid component', () => {
       confirmSpy.mockRestore();
     });
   });
-describe('Quick client-side filter bar', () => {
+  describe('Quick client-side filter bar', () => {
     /**
      * @brief Verifies that typing into the filter input restricts visible rows.
      */
-    it('filters rows matching text and shows row count indicator', () => {
+    it('filters rows matching text and shows row count indicator', async () => {
       render(<EditableDataGrid columns={columns} rows={rows} />);
 
       const filterInput = screen.getByTestId('grid-filter-input');
@@ -665,10 +665,13 @@ describe('Quick client-side filter bar', () => {
       // Filter by 'Bob'
       fireEvent.change(filterInput, { target: { value: 'Bob' } });
 
+      await waitFor(() => {
+        expect(screen.getByTestId('grid-filter-count').textContent).toContain('Showing 1 of 3 rows');
+      });
+
       expect(screen.getByText('Bob')).toBeDefined();
       expect(screen.queryByText('Alice')).toBeNull();
       expect(screen.queryByText('Charlie')).toBeNull();
-      expect(screen.getByTestId('grid-filter-count').textContent).toContain('Showing 1 of 3 rows');
 
       // Clear filter via clear button
       const clearBtn = screen.getByTestId('grid-filter-clear-btn');
@@ -683,13 +686,15 @@ describe('Quick client-side filter bar', () => {
     /**
      * @brief Verifies message when no rows match the active filter.
      */
-    it('shows placeholder message when no rows match the filter', () => {
+    it('shows placeholder message when no rows match the filter', async () => {
       render(<EditableDataGrid columns={columns} rows={rows} />);
 
       const filterInput = screen.getByTestId('grid-filter-input');
       fireEvent.change(filterInput, { target: { value: 'nonexistent_query' } });
 
-      expect(screen.getByText(/No rows match filter/i)).toBeDefined();
+      await waitFor(() => {
+        expect(screen.getByText(/No rows match filter/i)).toBeDefined();
+      });
     });
 
     /**
@@ -711,6 +716,10 @@ describe('Quick client-side filter bar', () => {
       // Filter for Charlie (original row index 2)
       fireEvent.change(filterInput, { target: { value: 'Charlie' } });
 
+      await waitFor(() => {
+        expect(screen.queryByText('Alice')).toBeNull();
+      });
+
       const charlieCell = screen.getByText('Charlie').closest('td')!;
       fireEvent.doubleClick(charlieCell);
 
@@ -727,6 +736,122 @@ describe('Quick client-side filter bar', () => {
             table: 'users',
             primary_keys: { id: 3 },
             updated_values: { name: 'Charles' },
+            expect_single_row: true,
+          },
+        ]);
+      });
+    });
+  });
+
+  describe('Virtual windowing and debounced filter', () => {
+    /**
+     * @brief Verifies that a large dataset renders only visible rows plus overscan instead of all DOM nodes.
+     */
+    it('renders large dataset efficiently with virtual windowing', () => {
+      const largeCols = ['id', 'name', 'value'];
+      const largeRows = Array.from({ length: 500 }, (_, i) => [i + 1, `Item ${i + 1}`, i * 10]);
+
+      const { container } = render(
+        <EditableDataGrid
+          columns={largeCols}
+          rows={largeRows}
+        />
+      );
+
+      // Instead of 500 rows in DOM, only visible window + overscan rows are present
+      const domRows = container.querySelectorAll('tbody tr');
+      expect(domRows.length).toBeLessThan(100);
+      expect(domRows.length).toBeGreaterThan(0);
+    });
+
+    /**
+     * @brief Verifies filtering a dataset with debounced search input.
+     */
+    it('filters large dataset with debounced search input', async () => {
+      const filterCols = ['id', 'name'];
+      const filterRows = [
+        [1, 'Alice'],
+        [2, 'Bob'],
+        [3, 'Charlie'],
+      ];
+
+      render(<EditableDataGrid columns={filterCols} rows={filterRows} />);
+
+      const filterInput = screen.getByTestId('grid-filter-input');
+      fireEvent.change(filterInput, { target: { value: 'Bob' } });
+
+      // With debounce, wait for debounced update
+      await waitFor(() => {
+        expect(screen.getByText('Showing 1 of 3 rows')).toBeDefined();
+      });
+      expect(screen.getByText('Bob')).toBeDefined();
+      expect(screen.queryByText('Alice')).toBeNull();
+    });
+
+    /**
+     * @brief Verifies that scrolling container updates rendered slice and renders top spacer.
+     */
+    it('updates rendered window and spacer heights on scroll event', () => {
+      const largeCols = ['id', 'name'];
+      const largeRows = Array.from({ length: 500 }, (_, i) => [i + 1, `Item ${i + 1}`]);
+
+      const { container } = render(
+        <EditableDataGrid
+          columns={largeCols}
+          rows={largeRows}
+        />
+      );
+
+      const scrollContainer = screen.getByTestId('grid-scroll-container');
+      expect(scrollContainer).toBeDefined();
+
+      // Scroll down by 2800px (100 rows * 28px)
+      fireEvent.scroll(scrollContainer, { target: { scrollTop: 2800 } });
+
+      // After scrolling down, top spacer row exists with positive height
+      const spacerTrs = container.querySelectorAll('tbody tr[aria-hidden="true"]');
+      expect(spacerTrs.length).toBeGreaterThan(0);
+      const topSpacer = spacerTrs[0] as HTMLElement;
+      expect(topSpacer.style.height).not.toBe('0px');
+    });
+
+    /**
+     * @brief Verifies editing and saving a cell works seamlessly on virtualized datasets.
+     */
+    it('allows editing and saving cells in a virtualized large dataset', async () => {
+      const onSave = vi.fn().mockResolvedValue(undefined);
+      const largeCols = ['id', 'name'];
+      const largeRows = Array.from({ length: 200 }, (_, i) => [i + 1, `User ${i + 1}`]);
+
+      render(
+        <EditableDataGrid
+          tableName="users"
+          columns={largeCols}
+          rows={largeRows}
+          primaryKeyColumns={['id']}
+          onSave={onSave}
+        />
+      );
+
+      const user1Cell = screen.getByText('User 1').closest('td')!;
+      fireEvent.doubleClick(user1Cell);
+
+      const input = user1Cell.querySelector('input')!;
+      fireEvent.change(input, { target: { value: 'User One Updated' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+
+      expect(screen.getByText('User One Updated')).toBeDefined();
+      expect(screen.getByText(/1 unsaved change/i)).toBeDefined();
+
+      const saveBtn = screen.getByRole('button', { name: /save changes/i });
+      fireEvent.click(saveBtn);
+
+      await waitFor(() => {
+        expect(onSave).toHaveBeenCalledWith([
+          {
+            table: 'users',
+            primary_keys: { id: 1 },
+            updated_values: { name: 'User One Updated' },
             expect_single_row: true,
           },
         ]);

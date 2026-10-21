@@ -23,6 +23,13 @@ import {
   X,
 } from 'lucide-react';
 import type { RowUpdatePayload } from '../../types/database';
+import { useVirtualRows } from '../../utils/useVirtualRows';
+import { useDebouncedValue } from '../../utils/useDebouncedValue';
+
+/**
+ * @brief Fixed row height in pixels for virtual windowing calculations.
+ */
+const ROW_HEIGHT = 28;
 
 /**
  * @brief State and navigation callbacks for interactive pagination in EditableDataGrid.
@@ -238,7 +245,7 @@ const GridRow: React.FC<GridRowProps> = React.memo(
     onInputBlur,
   }) => {
     return (
-      <tr className="border-b border-[#2b2d30] hover:bg-[#24262b]/80 transition-colors">
+      <tr style={{ height: `${ROW_HEIGHT}px` }} className="border-b border-[#2b2d30] hover:bg-[#24262b]/80 transition-colors">
         {columns.map((_, cIdx) => {
           const isDirty = dirtyMap?.[cIdx] !== undefined;
           const isEditing = editingColIndex === cIdx;
@@ -324,11 +331,13 @@ export const EditableDataGrid = React.memo(
     const [internalSelectedCell, setInternalSelectedCell] = useState<CellCoord | null>(null);
     const [saveError, setSaveError] = useState<string | null>(null);
     const [filterText, setFilterText] = useState<string>('');
+    const debouncedFilter = useDebouncedValue(filterText, 150);
 
     const activeSelectedCell =
       controlledSelectedCell !== undefined ? controlledSelectedCell : internalSelectedCell;
 
     const inputRef = useRef<HTMLInputElement | null>(null);
+    const tableContainerRef = useRef<HTMLDivElement | null>(null);
 
     // Reset dirty cells when rows dataset changes
     useEffect(() => {
@@ -601,7 +610,7 @@ export const EditableDataGrid = React.memo(
      * @brief Filtered row set preserving original row indices for dirty tracking and cell editing.
      */
     const filteredRowsWithIndices = useMemo(() => {
-      const q = filterText.trim().toLowerCase();
+      const q = (filterText ? debouncedFilter : '').trim().toLowerCase();
       if (!q) {
         return rows.map((row, idx) => ({ row, originalIndex: idx }));
       }
@@ -614,7 +623,31 @@ export const EditableDataGrid = React.memo(
             return str.toLowerCase().includes(q);
           });
         });
-    }, [rows, filterText]);
+    }, [rows, filterText, debouncedFilter]);
+
+    const {
+      startIndex,
+      endIndex,
+      topPadding,
+      bottomPadding,
+      onScroll,
+    } = useVirtualRows({
+      totalCount: filteredRowsWithIndices.length,
+      rowHeight: ROW_HEIGHT,
+      containerRef: tableContainerRef,
+      overscan: 5,
+    });
+
+    const visibleRows = useMemo(() => {
+      return filteredRowsWithIndices.slice(startIndex, endIndex);
+    }, [filteredRowsWithIndices, startIndex, endIndex]);
+
+    // Reset container scroll position when filter query or dataset changes
+    useEffect(() => {
+      if (tableContainerRef.current) {
+        tableContainerRef.current.scrollTop = 0;
+      }
+    }, [debouncedFilter, rows]);
 
     return (
       <div className="relative flex flex-col h-full w-full bg-[#18191c] overflow-hidden select-text font-mono text-xs">
@@ -676,7 +709,12 @@ export const EditableDataGrid = React.memo(
         </div>
 
         {/* Scrollable Data Table Container */}
-        <div className="flex-1 overflow-auto">
+        <div
+          ref={tableContainerRef}
+          onScroll={onScroll}
+          data-testid="grid-scroll-container"
+          className="flex-1 overflow-auto"
+        >
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="sticky top-0 bg-[#24262b] text-[#8c919a] border-b border-[#35373c] z-10 shadow-xs">
@@ -710,28 +748,40 @@ export const EditableDataGrid = React.memo(
                   </td>
                 </tr>
               ) : (
-                filteredRowsWithIndices.map(({ row, originalIndex }) => (
-                  <GridRow
-                    key={originalIndex}
-                    rIdx={originalIndex}
-                    row={row}
-                    columns={columns}
-                    selectedColIndex={
-                      activeSelectedCell?.rowIndex === originalIndex ? activeSelectedCell.colIndex : null
-                    }
-                    editingColIndex={
-                      editingCell?.rowIndex === originalIndex ? editingCell.colIndex : null
-                    }
-                    dirtyMap={dirtyRowsMap[originalIndex]}
-                    editValue={editValue}
-                    inputRef={inputRef}
-                    onCellClick={handleCellClick}
-                    onCellDoubleClick={handleCellDoubleClick}
-                    onEditChange={setEditValue}
-                    onInputKeyDown={handleInputKeyDown}
-                    onInputBlur={commitEdit}
-                  />
-                ))
+                <>
+                  {topPadding > 0 && (
+                    <tr style={{ height: `${topPadding}px` }} aria-hidden="true">
+                      <td colSpan={columns.length || 1} style={{ padding: 0, border: 0, height: `${topPadding}px` }} />
+                    </tr>
+                  )}
+                  {visibleRows.map(({ row, originalIndex }) => (
+                    <GridRow
+                      key={originalIndex}
+                      rIdx={originalIndex}
+                      row={row}
+                      columns={columns}
+                      selectedColIndex={
+                        activeSelectedCell?.rowIndex === originalIndex ? activeSelectedCell.colIndex : null
+                      }
+                      editingColIndex={
+                        editingCell?.rowIndex === originalIndex ? editingCell.colIndex : null
+                      }
+                      dirtyMap={dirtyRowsMap[originalIndex]}
+                      editValue={editValue}
+                      inputRef={inputRef}
+                      onCellClick={handleCellClick}
+                      onCellDoubleClick={handleCellDoubleClick}
+                      onEditChange={setEditValue}
+                      onInputKeyDown={handleInputKeyDown}
+                      onInputBlur={commitEdit}
+                    />
+                  ))}
+                  {bottomPadding > 0 && (
+                    <tr style={{ height: `${bottomPadding}px` }} aria-hidden="true">
+                      <td colSpan={columns.length || 1} style={{ padding: 0, border: 0, height: `${bottomPadding}px` }} />
+                    </tr>
+                  )}
+                </>
               )}
             </tbody>
           </table>

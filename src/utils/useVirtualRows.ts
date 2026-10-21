@@ -81,8 +81,8 @@ export function computeVirtualRows({
   const rawStart = Math.floor(scrollTop / rowHeight);
   const rawEnd = Math.ceil((scrollTop + effectiveContainerHeight) / rowHeight);
 
-  const startIndex = Math.max(0, rawStart - overscan);
   const endIndex = Math.min(totalCount, rawEnd + overscan);
+  const startIndex = Math.min(endIndex, Math.max(0, rawStart - overscan));
 
   const topPadding = startIndex * rowHeight;
   const bottomPadding = Math.max(0, (totalCount - endIndex) * rowHeight);

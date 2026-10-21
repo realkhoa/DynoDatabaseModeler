@@ -91,6 +91,21 @@ describe('computeVirtualRows', () => {
     expect(result.startIndex).toBeGreaterThanOrEqual(0);
   });
 
+  it('should ensure startIndex does not exceed endIndex even when scrollTop is huge', () => {
+    const result = computeVirtualRows({
+      totalCount: 50,
+      rowHeight: 28,
+      containerHeight: 280,
+      scrollTop: 100000,
+      overscan: 5,
+    });
+
+    expect(result.endIndex).toBe(50);
+    expect(result.startIndex).toBe(50);
+    expect(result.visibleIndices).toEqual([]);
+    expect(result.bottomPadding).toBe(0);
+  });
+
   it('should handle overscan default value of 5 when omitted', () => {
     const result = computeVirtualRows({
       totalCount: 100,
