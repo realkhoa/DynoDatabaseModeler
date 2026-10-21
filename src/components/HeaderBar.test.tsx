@@ -1,6 +1,6 @@
 /**
  * @file HeaderBar.test.tsx
- * @brief Unit tests for HeaderBar component tab navigation and connection telemetry status.
+ * @brief Unit tests for HeaderBar component tab navigation, connection telemetry, and theme switching.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -123,7 +123,8 @@ describe('HeaderBar component', () => {
     fireEvent.click(diffBtn);
     expect(handleOpenDiff).toHaveBeenCalledTimes(1);
   });
-/**
+
+  /**
    * @brief Verifies Processes button renders and triggers onOpenProcesses callback.
    */
   it('renders Processes button when connected and triggers onOpenProcesses callback', () => {
@@ -144,5 +145,41 @@ describe('HeaderBar component', () => {
     fireEvent.click(processesBtn);
     expect(handleOpenProcesses).toHaveBeenCalledTimes(1);
   });
-});
 
+  /**
+   * @brief Verifies theme switcher button renders and opens theme selector popover.
+   */
+  it('renders theme switcher button and toggles theme dropdown popover', () => {
+    const handleSelectTheme = vi.fn();
+    render(
+      <HeaderBar
+        activeTab="erd"
+        onSelectTab={vi.fn()}
+        activeConnection={null}
+        onOpenNewConnection={vi.fn()}
+        onSelectTheme={handleSelectTheme}
+      />
+    );
+
+    const themeBtn = screen.getByTestId('header-theme-switcher-btn');
+    expect(themeBtn).toBeDefined();
+
+    // Dropdown is initially closed
+    expect(screen.queryByTestId('header-theme-dropdown')).toBeNull();
+
+    // Click to open dropdown
+    fireEvent.click(themeBtn);
+    expect(screen.getByTestId('header-theme-dropdown')).toBeDefined();
+    expect(screen.getByText('GitIngest')).toBeDefined();
+    expect(screen.getByText('GitHub Light')).toBeDefined();
+    expect(screen.getByText('Midnight OLED')).toBeDefined();
+
+    // Select GitIngest
+    const gitingestOption = screen.getByTestId('theme-option-gitingest');
+    fireEvent.click(gitingestOption);
+
+    expect(handleSelectTheme).toHaveBeenCalledWith('gitingest');
+    // Dropdown closes after selection
+    expect(screen.queryByTestId('header-theme-dropdown')).toBeNull();
+  });
+});

@@ -1,11 +1,11 @@
 /**
  * @file HeaderBar.tsx
- * @brief Modern dark-styled top header navigation and status bar component.
+ * @brief Modern top header navigation, status bar, and theme switcher component.
  * @details Houses workspace navigation tabs (ERD Canvas, SQL Query, Settings),
- * active connection status badge, and disconnect / connection triggers.
+ * active connection status badge, quick theme switcher dropdown, and disconnect / connection triggers.
  */
 
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   GitGraph,
   Code,
@@ -14,8 +14,14 @@ import {
   Plus,
   GitCompare,
   Activity,
+  Sun,
+  Moon,
+  Check,
 } from 'lucide-react';
 import type { ConnectionConfig } from '../types/database';
+import type { AppTheme } from '../types/theme';
+import { THEMES } from '../types/theme';
+import { getSavedTheme, setSavedTheme, applyTheme, onThemeChange } from '../utils/themeManager';
 
 /**
  * @brief Tab identifier types available in DynoDbModeler workspace.
@@ -42,11 +48,15 @@ export interface HeaderBarProps {
   pendingChangesCount?: number;
   /** @brief Optional callback triggered to open the active database processes and query monitor. */
   onOpenProcesses?: () => void;
+  /** @brief Currently selected application visual theme. */
+  currentTheme?: AppTheme;
+  /** @brief Callback triggered when a new visual theme is selected. */
+  onSelectTheme?: (theme: AppTheme) => void;
 }
 
 /**
- * @brief Modern dark-themed header bar displaying application tabs and connection telemetry.
- * @param props Component properties configuring active tabs and connection state.
+ * @brief Modern dark-themed header bar displaying application tabs, connection telemetry, and theme switcher.
+ * @param props Component properties configuring active tabs, connection state, and theme controls.
  * @return Rendered HeaderBar element.
  */
 export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
@@ -58,7 +68,63 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
   onOpenDiff,
   pendingChangesCount = 0,
   onOpenProcesses,
+  currentTheme,
+  onSelectTheme,
 }) => {
+  const [isThemeOpen, setIsThemeOpen] = useState(false);
+  const [activeTheme, setActiveTheme] = useState<AppTheme>(currentTheme || getSavedTheme());
+  const themeMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (currentTheme) {
+      setActiveTheme(currentTheme);
+    }
+  }, [currentTheme]);
+
+  useEffect(() => {
+    const unsub = onThemeChange((t) => {
+      setActiveTheme(t);
+    });
+    return unsub;
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (themeMenuRef.current && !themeMenuRef.current.contains(event.target as Node)) {
+        setIsThemeOpen(false);
+      }
+    };
+    if (isThemeOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isThemeOpen]);
+
+  /**
+   * @brief Handles selecting a new visual theme from the popover menu.
+   * @param theme Target theme to activate.
+   */
+  const handlePickTheme = (theme: AppTheme) => {
+    setActiveTheme(theme);
+    setSavedTheme(theme);
+    applyTheme(theme);
+    onSelectTheme?.(theme);
+    setIsThemeOpen(false);
+  };
+
+  /**
+   * @brief Renders the dynamic icon reflecting the currently active theme.
+   * @return React icon element.
+   */
+  const renderThemeIcon = () => {
+    if (activeTheme === 'gitingest') return <Sun className="w-3.5 h-3.5 text-amber-500" />;
+    if (activeTheme === 'github-light') return <Sun className="w-3.5 h-3.5 text-blue-500" />;
+    if (activeTheme === 'midnight') return <Moon className="w-3.5 h-3.5 text-cyan-400" />;
+    return <Moon className="w-3.5 h-3.5 text-[#8c919a]" />;
+  };
+
   return (
     <header className="h-11 bg-[#18191c] border-b border-[#35373c] flex items-center justify-between px-3 select-none shrink-0 text-xs">
       {/* Brand & Logo */}
@@ -78,7 +144,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
         <button
           type="button"
           onClick={() => onSelectTab('erd')}
-          className={`flex items-center space-x-1.5 px-3 py-1.5 rounded transition-colors ${
+          className={`flex items-center space-x-1.5 px-3 py-1.5 rounded transition-colors cursor-pointer ${
             activeTab === 'erd'
               ? 'bg-[#2b2d30] text-[#ffffff] font-medium shadow-xs border-b-2 border-[#3a82f7]'
               : 'text-[#8c919a] hover:text-[#e6e8ea] hover:bg-[#222428]'
@@ -91,7 +157,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
         <button
           type="button"
           onClick={() => onSelectTab('sql')}
-          className={`flex items-center space-x-1.5 px-3 py-1.5 rounded transition-colors ${
+          className={`flex items-center space-x-1.5 px-3 py-1.5 rounded transition-colors cursor-pointer ${
             activeTab === 'sql' || activeTab === 'query'
               ? 'bg-[#2b2d30] text-[#ffffff] font-medium shadow-xs border-b-2 border-[#3a82f7]'
               : 'text-[#8c919a] hover:text-[#e6e8ea] hover:bg-[#222428]'
@@ -104,7 +170,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
         <button
           type="button"
           onClick={() => onSelectTab('settings')}
-          className={`flex items-center space-x-1.5 px-3 py-1.5 rounded transition-colors ${
+          className={`flex items-center space-x-1.5 px-3 py-1.5 rounded transition-colors cursor-pointer ${
             activeTab === 'settings'
               ? 'bg-[#2b2d30] text-[#ffffff] font-medium shadow-xs border-b-2 border-[#3a82f7]'
               : 'text-[#8c919a] hover:text-[#e6e8ea] hover:bg-[#222428]'
@@ -115,8 +181,62 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
         </button>
       </nav>
 
-      {/* Connection Status & Actions */}
+      {/* Connection Status, Actions & Theme Switcher */}
       <div className="flex items-center space-x-2 ml-auto">
+        {/* Theme Switcher Popover */}
+        <div className="relative" ref={themeMenuRef}>
+          <button
+            type="button"
+            data-testid="header-theme-switcher-btn"
+            onClick={() => setIsThemeOpen((prev) => !prev)}
+            className="flex items-center space-x-1.5 px-2 py-1 bg-[#24262b] hover:bg-[#2f3238] border border-[#35373c] text-[#e6e8ea] rounded font-medium shadow-xs transition-colors cursor-pointer"
+            title={`Theme: ${THEMES[activeTheme]?.label || 'Theme'}`}
+          >
+            {renderThemeIcon()}
+            <span className="hidden sm:inline text-[11px] font-normal">{THEMES[activeTheme]?.label || 'Theme'}</span>
+          </button>
+
+          {isThemeOpen && (
+            <div
+              data-testid="header-theme-dropdown"
+              className="absolute right-0 mt-1.5 w-52 bg-[#1e1f22] border border-[#35373c] rounded-lg shadow-xl p-1.5 z-50 space-y-1"
+            >
+              <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#8c919a] border-b border-[#35373c]/50 mb-1">
+                Appearance / Theme
+              </div>
+              {(Object.keys(THEMES) as AppTheme[]).map((tId) => {
+                const meta = THEMES[tId];
+                const isSelected = activeTheme === tId;
+                return (
+                  <button
+                    key={tId}
+                    type="button"
+                    data-testid={`theme-option-${tId}`}
+                    onClick={() => handlePickTheme(tId)}
+                    className={`flex items-center justify-between w-full px-2 py-1.5 rounded text-left transition-colors cursor-pointer text-xs ${
+                      isSelected
+                        ? 'bg-[#2b2d30] text-white font-medium'
+                        : 'text-[#e6e8ea] hover:bg-[#26282d]'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2">
+                      <span
+                        className="w-3.5 h-3.5 rounded-full border border-[#35373c] shrink-0"
+                        style={{ backgroundColor: meta.previewColor }}
+                      />
+                      <div>
+                        <div className="leading-tight">{meta.label}</div>
+                        <div className="text-[10px] text-[#8c919a] font-normal">{meta.description}</div>
+                      </div>
+                    </div>
+                    {isSelected && <Check className="w-3.5 h-3.5 text-[#3a82f7] shrink-0 ml-1.5" />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
         {activeConnection ? (
           <div className="flex items-center space-x-2">
             {onOpenDiff && (
@@ -169,7 +289,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
                   onClick={onDisconnect}
                   title="Disconnect from database"
                   aria-label="Disconnect database"
-                  className="p-1 hover:bg-[#35373c] text-[#8c919a] hover:text-red-400 rounded transition-colors ml-1"
+                  className="p-1 hover:bg-[#35373c] text-[#8c919a] hover:text-red-400 rounded transition-colors ml-1 cursor-pointer"
                 >
                   <Unplug className="w-3.5 h-3.5" />
                 </button>
@@ -185,7 +305,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = React.memo(({
             <button
               type="button"
               onClick={onOpenNewConnection}
-              className="flex items-center space-x-1 px-2.5 py-1 bg-[#3a82f7] hover:bg-[#2f6fd6] text-white rounded font-medium shadow-xs transition-colors"
+              className="flex items-center space-x-1 px-2.5 py-1 bg-[#3a82f7] hover:bg-[#2f6fd6] text-white rounded font-medium shadow-xs transition-colors cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Connect</span>
